@@ -62,3 +62,29 @@ func doMain() error {
 - `doMain()` → calls `parseArgs()` and contains all logic
 - `parseArgs()` → returns an `Args` struct with all parsed arguments
 - **Tests go in the same directory as the code being tested**
+
+## Client Package Layout & Naming Conventions
+
+- **Package Name:**  
+  Use the form `fooclient` (e.g., `pbsclient`, `barclient`).
+
+- **Directory Name:**  
+  The directory must match the package name (e.g., `pbsclient/`, `barclient/`).
+
+- **Main Type:**  
+  The main exported type must be `Client`.
+
+- **Constructor:**  
+  Provide a `New()` function (e.g., `fooclient.New(...)`) that returns a pointer to `Client`.
+
+- **Test Files:**  
+  - Place test files in the same directory as the implementation.
+  - Test files must use the same package name as the code they test (e.g., `package pbsclient`).
+
+- **Documentation:**  
+  - Document the package, `Client` type, constructor, and all exported methods using Go-style comments.
+  - Include a brief example usage in the package comment.
+
+- **General Rule:**  
+  - The directory name must always match the package name.
+  - The package name must always be in the form `fooclient` for service clients.
