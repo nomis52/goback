@@ -27,6 +27,10 @@
    - Test files should use the same package name as the code they test
    - Example: tests in `orchestrator/` should have `package orchestrator`
 
+10. **The directory name must always match the package name.**
+    - For example, code in the `pbsclient` package must be in the `pbsclient/` directory.
+    - This ensures consistency and clarity in the codebase structure.
+
 ## Example Template
 ```go
 type Args struct {
