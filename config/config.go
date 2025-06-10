@@ -60,6 +60,7 @@ type BackupConfig struct {
 type MonitoringConfig struct {
 	VictoriaMetricsURL string `yaml:"victoriametrics_url"`
 	MetricsPrefix      string `yaml:"metrics_prefix"`
+	JobName            string `yaml:"jobname"`
 }
 
 // BehaviorConfig defines application behavior settings
@@ -117,6 +118,9 @@ func (c *Config) SetDefaults() {
 	}
 	if c.Monitoring.MetricsPrefix == "" {
 		c.Monitoring.MetricsPrefix = "pbs_automation"
+	}
+	if c.Monitoring.JobName == "" {
+		c.Monitoring.JobName = "goback"
 	}
 	if c.Behavior.MaxRetries == 0 {
 		c.Behavior.MaxRetries = 2
