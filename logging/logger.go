@@ -34,14 +34,8 @@ type Config struct {
 	AddSource bool `yaml:"add_source"`
 }
 
-// Logger wraps slog.Logger
-type Logger struct {
-	*slog.Logger
-	config Config
-}
-
 // New creates a new logger with the given configuration.
-func New(cfg Config) (*Logger, error) {
+func New(cfg Config) (*slog.Logger, error) {
 	if err := cfg.validate(); err != nil {
 		return nil, fmt.Errorf("invalid logging config: %w", err)
 	}
@@ -85,12 +79,7 @@ func New(cfg Config) (*Logger, error) {
 		return nil, fmt.Errorf("unsupported log format: %s", cfg.Format)
 	}
 
-	logger := slog.New(handler)
-
-	return &Logger{
-		Logger: logger,
-		config: cfg,
-	}, nil
+	return slog.New(handler), nil
 }
 
 // validate checks if the configuration is valid.
