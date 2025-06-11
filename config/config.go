@@ -162,6 +162,7 @@ func LoadConfig(path string) (Config, error) {
 	if err := dec.Decode(&cfg); err != nil {
 		return cfg, err
 	}
+	cfg.SetDefaults()
 	if err := cfg.Validate(); err != nil {
 		return cfg, err
 	}
