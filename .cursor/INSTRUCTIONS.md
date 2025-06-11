@@ -88,3 +88,44 @@ func doMain() error {
 - **General Rule:**  
   - The directory name must always match the package name.
   - The package name must always be in the form `fooclient` for service clients.
+
+## Making Code Changes
+
+When making code changes, follow these guidelines:
+
+1. Use the Options pattern for Go constructors that take multiple parameters:
+   - Define an `Option` type as a function that modifies the struct
+   - Create option functions with the `With` prefix (e.g., `WithTimeout`, `WithPrefix`)
+   - Make the constructor accept variadic options
+   - Set sensible defaults in the constructor
+   - Document each option function clearly
+
+Example:
+```go
+type Option func(*Client)
+
+func WithTimeout(timeout time.Duration) Option {
+    return func(c *Client) {
+        c.timeout = timeout
+    }
+}
+
+func NewClient(url string, opts ...Option) *Client {
+    client := &Client{
+        timeout: DefaultTimeout,
+    }
+    for _, opt := range opts {
+        opt(client)
+    }
+    return client
+}
+```
+
+2. Use constants for default values and magic numbers
+3. Use standard library constants instead of string literals (e.g., `http.MethodPost` instead of "POST")
+4. Only accept HTTP 200 responses unless there's a specific reason to accept other status codes
+5. Add all necessary import statements, dependencies, and endpoints required to run the code
+
+## Calling External APIs
+
+When selecting which version of an API or package to use, choose one that is compatible with the USER's dependency management file. If an external API requires an API Key, be sure to point this out to the USER. Adhere to best security practices (e.g. DO NOT hardcode an API key in a place where it can be exposed)
