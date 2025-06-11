@@ -17,6 +17,7 @@ type Config struct {
 	Backup     BackupConfig     `yaml:"backup"`
 	Monitoring MonitoringConfig `yaml:"monitoring"`
 	Behavior   BehaviorConfig   `yaml:"behavior"`
+	Logging    LoggingConfig    `yaml:"logging"`
 }
 
 // IPMIConfig holds IPMI connection settings
@@ -68,6 +69,14 @@ type BehaviorConfig struct {
 	ShutdownOnPartialFailure bool          `yaml:"shutdown_on_partial_failure"`
 	MaxRetries               int           `yaml:"max_retries"`
 	RetryDelay               time.Duration `yaml:"retry_delay"`
+}
+
+// LoggingConfig defines logging behavior settings
+type LoggingConfig struct {
+	Level     string `yaml:"level"`
+	Format    string `yaml:"format"`
+	Output    string `yaml:"output"`
+	AddSource bool   `yaml:"add_source"`
 }
 
 // Validate performs basic validation on the configuration
@@ -127,6 +136,16 @@ func (c *Config) SetDefaults() {
 	}
 	if c.Behavior.RetryDelay == 0 {
 		c.Behavior.RetryDelay = 30 * time.Second
+	}
+	// Set logging defaults
+	if c.Logging.Level == "" {
+		c.Logging.Level = "info"
+	}
+	if c.Logging.Format == "" {
+		c.Logging.Format = "json"
+	}
+	if c.Logging.Output == "" {
+		c.Logging.Output = "stdout"
 	}
 	// Defaults for boolean fields are already false, which is appropriate
 }
