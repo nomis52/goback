@@ -8,6 +8,26 @@
    - This includes naming conventions, error handling, channel usage, struct organization, etc.
    - The rules below supplement but do not override the Uber guide
 
+## Go Testing Style (Always Prefer Testify)
+
+- **Always use [testify](https://github.com/stretchr/testify) for assertions and requirements in all Go tests.**
+  - Use `require` for checks that should halt the test on failure (e.g., setup, critical preconditions).
+  - Use `assert` for checks where the test can continue after a failure.
+- Do **not** use the standard library's `t.Errorf`, `t.Fatal`, or similar assertion patterns unless absolutely necessary.
+- Import as:
+  ```go
+  import (
+      "github.com/stretchr/testify/assert"
+      "github.com/stretchr/testify/require"
+  )
+  ```
+- Prefer expressive, one-line assertions:
+  ```go
+  require.NoError(t, err)
+  assert.Equal(t, expected, actual)
+  assert.Len(t, slice, 3)
+  ```
+
 ## Program Structure
 
 2. All program logic should be inside `doMain()`.
