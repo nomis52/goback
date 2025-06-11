@@ -2,57 +2,34 @@ package ipmi
 
 import (
 	"fmt"
+	"log/slog"
 	"os/exec"
 	"strings"
 )
 
 const IPMI_TOOL = "ipmitool"
 
-// PowerState represents the possible IPMI power states
-type PowerState int
+// Option is a function that configures an IPMIController
+type Option func(*IPMIController)
 
-const (
-	PowerStateUnknown PowerState = iota
-	PowerStateOn
-	PowerStateOff
-	PowerStateSoftOff
-	PowerStateCycling
-	PowerStateFault
-)
-
-func (p PowerState) String() string {
-	switch p {
-	case PowerStateOn:
-		return "on"
-	case PowerStateOff:
-		return "off"
-	case PowerStateSoftOff:
-		return "soft-off"
-	case PowerStateCycling:
-		return "cycling"
-	case PowerStateFault:
-		return "fault"
-	default:
-		return "unknown"
+// WithLogger sets a custom logger for the IPMIController
+func WithLogger(logger *slog.Logger) Option {
+	return func(c *IPMIController) {
+		c.logger = logger
 	}
 }
 
-// ParsePowerState converts a string to a PowerState enum
-func ParsePowerState(state string) PowerState {
-	state = strings.ToLower(strings.TrimSpace(state))
-	switch state {
-	case "on":
-		return PowerStateOn
-	case "off":
-		return PowerStateOff
-	case "soft-off":
-		return PowerStateSoftOff
-	case "cycling":
-		return PowerStateCycling
-	case "fault":
-		return PowerStateFault
-	default:
-		return PowerStateUnknown
+// WithUsername sets the username for the IPMIController
+func WithUsername(username string) Option {
+	return func(c *IPMIController) {
+		c.username = username
+	}
+}
+
+// WithPassword sets the password for the IPMIController
+func WithPassword(password string) Option {
+	return func(c *IPMIController) {
+		c.password = password
 	}
 }
 
@@ -61,26 +38,30 @@ type IPMIController struct {
 	host     string
 	username string
 	password string
+	logger   *slog.Logger
 }
 
 // NewIPMIController creates a new IPMI controller
-func NewIPMIController(host, username, password string) *IPMIController {
-	return &IPMIController{
-		host:     host,
-		username: username,
-		password: password,
+func NewIPMIController(host string, opts ...Option) *IPMIController {
+	c := &IPMIController{
+		host:   host,
+		logger: slog.Default(),
 	}
+
+	for _, opt := range opts {
+		opt(c)
+	}
+
+	return c
 }
 
 // Status returns the current status of the remote system
 func (c *IPMIController) Status() (PowerState, error) {
-	// Get chassis status
 	output, err := c.runIPMICommand("chassis", "status")
 	if err != nil {
 		return PowerStateUnknown, fmt.Errorf("failed to get chassis status: %v", err)
 	}
 
-	// Parse power state from output
 	lines := strings.Split(string(output), "\n")
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
@@ -91,6 +72,7 @@ func (c *IPMIController) Status() (PowerState, error) {
 			}
 		}
 	}
+
 	return PowerStateUnknown, fmt.Errorf("failed to read status")
 }
 
@@ -127,5 +109,25 @@ func (c *IPMIController) runIPMICommand(args ...string) ([]byte, error) {
 	cmdArgs = append(cmdArgs, args...)
 
 	cmd := exec.Command(IPMI_TOOL, cmdArgs...)
-	return cmd.CombinedOutput()
+	output, err := cmd.CombinedOutput()
+
+	// Log command details (with redacted password)
+	logArgs := []string{"-H", c.host, "-U", c.username, "-P", "[REDACTED]"}
+	logArgs = append(logArgs, args...)
+
+	if err != nil {
+		c.logger.Error("IPMI command failed",
+			"command", IPMI_TOOL,
+			"args", logArgs,
+			"error", err,
+			"output", string(output))
+		return output, err
+	}
+
+	c.logger.Debug("IPMI command succeeded",
+		"command", IPMI_TOOL,
+		"args", logArgs,
+		"output", string(output))
+
+	return output, nil
 }

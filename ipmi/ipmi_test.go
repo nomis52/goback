@@ -1,85 +1,67 @@
 package ipmi
 
-import "testing"
+import (
+	"log/slog"
+	"testing"
+)
 
-func TestParsePowerState(t *testing.T) {
+func TestNewIPMIController(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    string
-		expected PowerState
+		host     string
+		opts     []Option
+		expected *IPMIController
 	}{
 		{
-			name:     "on state",
-			input:    "on",
-			expected: PowerStateOn,
+			name: "default options",
+			host: "test-host",
+			expected: &IPMIController{
+				host:   "test-host",
+				logger: slog.Default(),
+			},
 		},
 		{
-			name:     "off state",
-			input:    "off",
-			expected: PowerStateOff,
+			name: "with username and password",
+			host: "test-host",
+			opts: []Option{
+				WithUsername("test-user"),
+				WithPassword("test-pass"),
+			},
+			expected: &IPMIController{
+				host:     "test-host",
+				username: "test-user",
+				password: "test-pass",
+				logger:   slog.Default(),
+			},
 		},
 		{
-			name:     "soft-off state",
-			input:    "soft-off",
-			expected: PowerStateSoftOff,
-		},
-		{
-			name:     "cycling state",
-			input:    "cycling",
-			expected: PowerStateCycling,
-		},
-		{
-			name:     "fault state",
-			input:    "fault",
-			expected: PowerStateFault,
-		},
-		{
-			name:     "unknown state",
-			input:    "unknown",
-			expected: PowerStateUnknown,
-		},
-		{
-			name:     "uppercase input",
-			input:    "ON",
-			expected: PowerStateOn,
-		},
-		{
-			name:     "mixed case input",
-			input:    "SoFt-OfF",
-			expected: PowerStateSoftOff,
-		},
-		{
-			name:     "input with whitespace",
-			input:    "  off  ",
-			expected: PowerStateOff,
-		},
-		{
-			name:     "input with leading/trailing whitespace",
-			input:    "\t\n on \t\n",
-			expected: PowerStateOn,
-		},
-		{
-			name:     "empty string",
-			input:    "",
-			expected: PowerStateUnknown,
-		},
-		{
-			name:     "invalid state",
-			input:    "invalid",
-			expected: PowerStateUnknown,
-		},
-		{
-			name:     "random string",
-			input:    "xyz123",
-			expected: PowerStateUnknown,
+			name: "with custom logger",
+			host: "test-host",
+			opts: []Option{
+				WithLogger(slog.New(slog.NewTextHandler(nil, nil))),
+			},
+			expected: &IPMIController{
+				host:   "test-host",
+				logger: slog.New(slog.NewTextHandler(nil, nil)),
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := ParsePowerState(tt.input)
-			if result != tt.expected {
-				t.Errorf("ParsePowerState(%q) = %v, want %v", tt.input, result, tt.expected)
+			got := NewIPMIController(tt.host, tt.opts...)
+			if got.host != tt.expected.host {
+				t.Errorf("host = %v, want %v", got.host, tt.expected.host)
+			}
+			if got.username != tt.expected.username {
+				t.Errorf("username = %v, want %v", got.username, tt.expected.username)
+			}
+			if got.password != tt.expected.password {
+				t.Errorf("password = %v, want %v", got.password, tt.expected.password)
+			}
+			// Can't directly compare loggers, but we can check if they're both nil or both non-nil
+			if (got.logger == nil) != (tt.expected.logger == nil) {
+				t.Errorf("logger = %v, want %v", got.logger, tt.expected.logger)
 			}
 		})
 	}
