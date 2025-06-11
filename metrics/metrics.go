@@ -14,7 +14,12 @@ import (
 	"github.com/prometheus/prometheus/prompb"
 )
 
-// Metric represents a single metric point
+const (
+	// DefaultTimeout is the default timeout for HTTP requests
+	DefaultTimeout = 30 * time.Second
+)
+
+// Metric represents a single metric endpoint
 type Metric struct {
 	Name      string
 	Value     float64
@@ -27,18 +32,63 @@ type Client struct {
 	httpClient *http.Client
 	registry   *prometheus.Registry
 	prefix     string
+	job        string
+	instance   string
+	timeout    time.Duration
 }
 
-func NewClient(url string, prefix string) *Client {
-	return &Client{
-		url:        url + "/api/v1/write",
-		httpClient: &http.Client{Timeout: 30 * time.Second},
-		registry:   prometheus.NewRegistry(),
-		prefix:     prefix,
+// Option is a function that configures a Client
+type Option func(*Client)
+
+// WithPrefix sets the metric name prefix. All metric names will be prefixed with this value
+// followed by an underscore. For example, with prefix "app" and metric name "requests",
+// the final metric name will be "app_requests".
+func WithPrefix(prefix string) Option {
+	return func(c *Client) {
+		c.prefix = prefix
 	}
 }
 
-func (c *Client) PushMetrics(ctx context.Context, metrics []Metric) error {
+// WithJob sets the job label for all metrics. This is typically used to identify
+// the service or application that the metrics belong to.
+func WithJob(job string) Option {
+	return func(c *Client) {
+		c.job = job
+	}
+}
+
+// WithInstance sets the instance label for all metrics. This is typically used to
+// identify the specific instance of the service that generated the metrics.
+func WithInstance(instance string) Option {
+	return func(c *Client) {
+		c.instance = instance
+	}
+}
+
+// WithTimeout sets the HTTP client timeout for metric pushes. The default timeout
+// is DefaultTimeout. This timeout applies to the entire HTTP request, including
+// connection establishment, request writing, and response reading.
+func WithTimeout(timeout time.Duration) Option {
+	return func(c *Client) {
+		c.timeout = timeout
+	}
+}
+
+func NewClient(url string, opts ...Option) *Client {
+	client := &Client{
+		url:        url + "/api/v1/write",
+		httpClient: &http.Client{Timeout: DefaultTimeout},
+		registry:   prometheus.NewRegistry(),
+		timeout:    DefaultTimeout,
+	}
+	for _, opt := range opts {
+		opt(client)
+	}
+	client.httpClient.Timeout = client.timeout
+	return client
+}
+
+func (c *Client) PushMetrics(ctx context.Context, metrics ...Metric) error {
 	if len(metrics) == 0 {
 		return nil
 	}
@@ -62,7 +112,7 @@ func (c *Client) PushMetrics(ctx context.Context, metrics []Metric) error {
 
 	compressed := snappy.Encode(nil, data)
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.url, bytes.NewReader(compressed))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.url, bytes.NewReader(compressed))
 	if err != nil {
 		return fmt.Errorf("creating HTTP request: %w", err)
 	}
@@ -77,7 +127,7 @@ func (c *Client) PushMetrics(ctx context.Context, metrics []Metric) error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode/100 != 2 {
+	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
 	}
@@ -88,7 +138,7 @@ func (c *Client) PushMetrics(ctx context.Context, metrics []Metric) error {
 // metricToTimeSeries converts a Metric to Prometheus TimeSeries format
 func (c *Client) metricToTimeSeries(metric Metric) prompb.TimeSeries {
 	// Build labels
-	labels := make([]prompb.Label, 0, len(metric.Labels)+1)
+	labels := make([]prompb.Label, 0, len(metric.Labels)+3)
 
 	// Add metric name with prefix
 	name := metric.Name
@@ -99,6 +149,20 @@ func (c *Client) metricToTimeSeries(metric Metric) prompb.TimeSeries {
 		Name:  "__name__",
 		Value: name,
 	})
+
+	// Add job and instance labels
+	if c.job != "" {
+		labels = append(labels, prompb.Label{
+			Name:  "job",
+			Value: c.job,
+		})
+	}
+	if c.instance != "" {
+		labels = append(labels, prompb.Label{
+			Name:  "instance",
+			Value: c.instance,
+		})
+	}
 
 	// Add custom labels
 	for k, v := range metric.Labels {
