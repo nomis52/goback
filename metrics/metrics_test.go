@@ -11,6 +11,8 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/prometheus/prometheus/prompb"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewClient(t *testing.T) {
@@ -70,24 +72,12 @@ func TestNewClient(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			client := NewClient(tt.url, tt.opts...)
 
-			if client.url != tt.wantURL {
-				t.Errorf("NewClient() url = %v, want %v", client.url, tt.wantURL)
-			}
-			if client.prefix != tt.wantPref {
-				t.Errorf("NewClient() prefix = %v, want %v", client.prefix, tt.wantPref)
-			}
-			if client.job != tt.wantJob {
-				t.Errorf("NewClient() job = %v, want %v", client.job, tt.wantJob)
-			}
-			if client.instance != tt.wantInst {
-				t.Errorf("NewClient() instance = %v, want %v", client.instance, tt.wantInst)
-			}
-			if client.timeout != tt.wantTimeout {
-				t.Errorf("NewClient() timeout = %v, want %v", client.timeout, tt.wantTimeout)
-			}
-			if client.httpClient.Timeout != tt.wantTimeout {
-				t.Errorf("NewClient() httpClient.Timeout = %v, want %v", client.httpClient.Timeout, tt.wantTimeout)
-			}
+			assert.Equal(t, tt.wantURL, client.url)
+			assert.Equal(t, tt.wantPref, client.prefix)
+			assert.Equal(t, tt.wantJob, client.job)
+			assert.Equal(t, tt.wantInst, client.instance)
+			assert.Equal(t, tt.wantTimeout, client.timeout)
+			assert.Equal(t, tt.wantTimeout, client.httpClient.Timeout)
 		})
 	}
 }
@@ -108,61 +98,25 @@ func TestMetricToTimeSeries(t *testing.T) {
 
 	ts := client.metricToTimeSeries(metric)
 
+	// Helper function to find a label value
+	findLabel := func(labels []prompb.Label, name string) string {
+		for _, l := range labels {
+			if l.Name == name {
+				return l.Value
+			}
+		}
+		return ""
+	}
+
 	// Check metric name with prefix
-	found := false
-	for _, label := range ts.Labels {
-		if label.Name == "__name__" && label.Value == "test_test_metric" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Error("metric name with prefix not found in labels")
-	}
-
-	// Check job label
-	found = false
-	for _, label := range ts.Labels {
-		if label.Name == "job" && label.Value == "testjob" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Error("job label not found")
-	}
-
-	// Check instance label
-	found = false
-	for _, label := range ts.Labels {
-		if label.Name == "instance" && label.Value == "testinstance" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Error("instance label not found")
-	}
-
-	// Check custom label
-	found = false
-	for _, label := range ts.Labels {
-		if label.Name == "custom" && label.Value == "label" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Error("custom label not found")
-	}
+	assert.Equal(t, "test_test_metric", findLabel(ts.Labels, "__name__"))
+	assert.Equal(t, "testjob", findLabel(ts.Labels, "job"))
+	assert.Equal(t, "testinstance", findLabel(ts.Labels, "instance"))
+	assert.Equal(t, "label", findLabel(ts.Labels, "custom"))
 
 	// Check sample value
-	if len(ts.Samples) != 1 {
-		t.Errorf("expected 1 sample, got %d", len(ts.Samples))
-	}
-	if ts.Samples[0].Value != 42.0 {
-		t.Errorf("expected sample value 42.0, got %f", ts.Samples[0].Value)
-	}
+	require.Len(t, ts.Samples, 1)
+	assert.Equal(t, 42.0, ts.Samples[0].Value)
 }
 
 func TestPushMetrics(t *testing.T) {
@@ -170,38 +124,20 @@ func TestPushMetrics(t *testing.T) {
 	receivedMetrics := make(chan []prompb.TimeSeries, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify headers
-		if r.Header.Get("Content-Encoding") != "snappy" {
-			t.Error("expected Content-Encoding: snappy")
-		}
-		if r.Header.Get("Content-Type") != "application/x-protobuf" {
-			t.Error("expected Content-Type: application/x-protobuf")
-		}
-		if r.Header.Get("X-Prometheus-Remote-Write-Version") != "0.1.0" {
-			t.Error("expected X-Prometheus-Remote-Write-Version: 0.1.0")
-		}
+		assert.Equal(t, "snappy", r.Header.Get("Content-Encoding"))
+		assert.Equal(t, "application/x-protobuf", r.Header.Get("Content-Type"))
+		assert.Equal(t, "0.1.0", r.Header.Get("X-Prometheus-Remote-Write-Version"))
 
 		// Read and decompress the body
 		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			t.Errorf("failed to read request body: %v", err)
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
+		require.NoError(t, err)
 
 		decoded, err := snappy.Decode(nil, body)
-		if err != nil {
-			t.Errorf("failed to decode snappy: %v", err)
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
+		require.NoError(t, err)
 
 		// Unmarshal the protobuf
 		var writeReq prompb.WriteRequest
-		if err := proto.Unmarshal(decoded, &writeReq); err != nil {
-			t.Errorf("failed to unmarshal protobuf: %v", err)
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
+		require.NoError(t, proto.Unmarshal(decoded, &writeReq))
 
 		// Send the received metrics to the channel
 		receivedMetrics <- writeReq.Timeseries
@@ -235,17 +171,13 @@ func TestPushMetrics(t *testing.T) {
 
 	// Push the metrics
 	ctx := context.Background()
-	if err := client.PushMetrics(ctx, metrics...); err != nil {
-		t.Fatalf("failed to push metrics: %v", err)
-	}
+	require.NoError(t, client.PushMetrics(ctx, metrics...))
 
 	// Wait for the server to receive the metrics
 	select {
 	case received := <-receivedMetrics:
 		// Verify the received metrics
-		if len(received) != 2 {
-			t.Fatalf("expected 2 metrics, got %d", len(received))
-		}
+		require.Len(t, received, 2)
 
 		// Helper function to find a label value
 		findLabel := func(labels []prompb.Label, name string) string {
@@ -260,45 +192,23 @@ func TestPushMetrics(t *testing.T) {
 		// Verify each metric
 		for i, ts := range received {
 			// Check metric name
-			name := findLabel(ts.Labels, "__name__")
 			expectedName := "test_test_metric_" + string(rune('1'+i))
-			if name != expectedName {
-				t.Errorf("metric %d: expected name %s, got %s", i, expectedName, name)
-			}
-
-			// Check job label
-			if job := findLabel(ts.Labels, "job"); job != "testjob" {
-				t.Errorf("metric %d: expected job testjob, got %s", i, job)
-			}
-
-			// Check instance label
-			if instance := findLabel(ts.Labels, "instance"); instance != "testinstance" {
-				t.Errorf("metric %d: expected instance testinstance, got %s", i, instance)
-			}
+			assert.Equal(t, expectedName, findLabel(ts.Labels, "__name__"))
+			assert.Equal(t, "testjob", findLabel(ts.Labels, "job"))
+			assert.Equal(t, "testinstance", findLabel(ts.Labels, "instance"))
 
 			// Check custom label
 			expectedCustom := "label" + string(rune('1'+i))
-			if custom := findLabel(ts.Labels, "custom"); custom != expectedCustom {
-				t.Errorf("metric %d: expected custom label %s, got %s", i, expectedCustom, custom)
-			}
+			assert.Equal(t, expectedCustom, findLabel(ts.Labels, "custom"))
 
 			// Check sample value
-			if len(ts.Samples) != 1 {
-				t.Errorf("metric %d: expected 1 sample, got %d", i, len(ts.Samples))
-				continue
-			}
+			require.Len(t, ts.Samples, 1)
 			expectedValue := 42.0
 			if i == 1 {
 				expectedValue = 24.0
 			}
-			if ts.Samples[0].Value != expectedValue {
-				t.Errorf("metric %d: expected value %f, got %f", i, expectedValue, ts.Samples[0].Value)
-			}
-
-			// Check timestamp
-			if ts.Samples[0].Timestamp != now.UnixMilli() {
-				t.Errorf("metric %d: expected timestamp %d, got %d", i, now.UnixMilli(), ts.Samples[0].Timestamp)
-			}
+			assert.Equal(t, expectedValue, ts.Samples[0].Value)
+			assert.Equal(t, now.UnixMilli(), ts.Samples[0].Timestamp)
 		}
 
 	case <-time.After(5 * time.Second):
