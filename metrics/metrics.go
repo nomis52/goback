@@ -127,7 +127,7 @@ func (c *Client) PushMetrics(ctx context.Context, metrics ...Metric) error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
 	}
