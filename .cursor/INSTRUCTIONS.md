@@ -30,12 +30,12 @@
 
 ## Program Structure
 
-2. All program logic should be inside `doMain()`.
-3. The `main()` function must only call `doMain()` and handle its error (e.g., print to stderr and exit with a nonzero code).
+2. All program logic should be inside `run()`.
+3. The `main()` function must only call `run()` and handle its error (e.g., print to stderr and exit with a nonzero code).
 4. Argument parsing must be handled in a separate function called `parseArgs()`, which returns an `Args` struct containing all parsed command-line arguments.
-5. `doMain()` must call `parseArgs()` at the start and use the returned `Args` struct for further logic.
+5. `run()` must call `parseArgs()` at the start and use the returned `Args` struct for further logic.
 6. The `Args` struct should be defined at the top level of the file. All command-line arguments should be fields in this struct.
-7. No argument parsing should occur in `main()` or directly in `doMain()`; always use `parseArgs()`.
+7. No argument parsing should occur in `main()` or directly in `run()`; always use `parseArgs()`.
 8. If you add new command-line arguments, update the `Args` struct and `parseArgs()` accordingly.
 
 ## File Organization
@@ -59,7 +59,7 @@ type Args struct {
 }
 
 func main() {
-    if err := doMain(); err != nil {
+    if err := run(); err != nil {
         fmt.Fprintf(os.Stderr, "Error: %v\n", err)
         os.Exit(1)
     }
@@ -70,7 +70,7 @@ func parseArgs() Args {
     // Return Args struct
 }
 
-func doMain() error {
+func run() error {
     args := parseArgs()
     // All main logic here, using args
 }
@@ -78,8 +78,8 @@ func doMain() error {
 
 **Summary:**
 - **Follow the Uber Go Style Guide for all code style decisions**
-- `main()` → only calls `doMain()`
-- `doMain()` → calls `parseArgs()` and contains all logic
+- `main()` → only calls `run()`
+- `run()` → calls `parseArgs()` and contains all logic
 - `parseArgs()` → returns an `Args` struct with all parsed arguments
 - **Tests go in the same directory as the code being tested**
 
