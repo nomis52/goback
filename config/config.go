@@ -8,6 +8,31 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const (
+	// Default timeouts
+	defaultBootTimeout         = 5 * time.Minute
+	defaultPBSBootTimeout      = 10 * time.Minute
+	defaultBackupJobTimeout    = 2 * time.Hour
+	defaultTotalRuntimeTimeout = 8 * time.Hour
+	defaultShutdownTimeout     = 2 * time.Minute
+
+	// Default backup settings
+	defaultMaxConcurrent = 3
+
+	// Default monitoring settings
+	defaultMetricsPrefix = "pbs_automation"
+	defaultJobName       = "goback"
+
+	// Default behavior settings
+	defaultMaxRetries = 2
+	defaultRetryDelay = 30 * time.Second
+
+	// Default logging settings
+	defaultLogLevel  = "info"
+	defaultLogFormat = "json"
+	defaultLogOutput = "stdout"
+)
+
 // Config represents the complete application configuration
 type Config struct {
 	IPMI       IPMIConfig       `yaml:"ipmi"`
@@ -120,44 +145,44 @@ func (c *Config) Validate() error {
 // SetDefaults sets reasonable default values for optional fields
 func (c *Config) SetDefaults() {
 	if c.Timeouts.BootTimeout == 0 {
-		c.Timeouts.BootTimeout = 5 * time.Minute
+		c.Timeouts.BootTimeout = defaultBootTimeout
 	}
 	if c.PBS.BootTimeout == 0 {
-		c.PBS.BootTimeout = 10 * time.Minute
+		c.PBS.BootTimeout = defaultPBSBootTimeout
 	}
 	if c.Timeouts.BackupJobTimeout == 0 {
-		c.Timeouts.BackupJobTimeout = 2 * time.Hour
+		c.Timeouts.BackupJobTimeout = defaultBackupJobTimeout
 	}
 	if c.Timeouts.TotalRuntimeTimeout == 0 {
-		c.Timeouts.TotalRuntimeTimeout = 8 * time.Hour
+		c.Timeouts.TotalRuntimeTimeout = defaultTotalRuntimeTimeout
 	}
 	if c.Timeouts.ShutdownTimeout == 0 {
-		c.Timeouts.ShutdownTimeout = 2 * time.Minute
+		c.Timeouts.ShutdownTimeout = defaultShutdownTimeout
 	}
 	if c.Backup.MaxConcurrent == 0 {
-		c.Backup.MaxConcurrent = 3
+		c.Backup.MaxConcurrent = defaultMaxConcurrent
 	}
 	if c.Monitoring.MetricsPrefix == "" {
-		c.Monitoring.MetricsPrefix = "pbs_automation"
+		c.Monitoring.MetricsPrefix = defaultMetricsPrefix
 	}
 	if c.Monitoring.JobName == "" {
-		c.Monitoring.JobName = "goback"
+		c.Monitoring.JobName = defaultJobName
 	}
 	if c.Behavior.MaxRetries == 0 {
-		c.Behavior.MaxRetries = 2
+		c.Behavior.MaxRetries = defaultMaxRetries
 	}
 	if c.Behavior.RetryDelay == 0 {
-		c.Behavior.RetryDelay = 30 * time.Second
+		c.Behavior.RetryDelay = defaultRetryDelay
 	}
 	// Set logging defaults
 	if c.Logging.Level == "" {
-		c.Logging.Level = "info"
+		c.Logging.Level = defaultLogLevel
 	}
 	if c.Logging.Format == "" {
-		c.Logging.Format = "json"
+		c.Logging.Format = defaultLogFormat
 	}
 	if c.Logging.Output == "" {
-		c.Logging.Output = "stdout"
+		c.Logging.Output = defaultLogOutput
 	}
 	// Defaults for boolean fields are already false, which is appropriate
 }

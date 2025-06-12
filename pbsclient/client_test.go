@@ -1,6 +1,7 @@
 package pbsclient
 
 import (
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -18,10 +19,11 @@ func TestPing(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	client := New(ts.URL)
+	logger := slog.New(slog.NewTextHandler(nil, nil))
+	client, err := New(ts.URL, logger)
+	require.NoError(t, err, "Failed to create client")
+
 	resp, err := client.Ping()
-	if err != nil {
-		require.NoError(t, err, "Ping failed")
-	}
+	require.NoError(t, err, "Ping failed")
 	assert.Equal(t, `{"data":"pong"}`, resp)
 }
