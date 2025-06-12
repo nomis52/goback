@@ -4,6 +4,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestPing(t *testing.T) {
@@ -18,9 +21,7 @@ func TestPing(t *testing.T) {
 	client := New(ts.URL)
 	resp, err := client.Ping()
 	if err != nil {
-		t.Fatalf("Ping failed: %v", err)
+		require.NoError(t, err, "Ping failed")
 	}
-	if resp != `{"data":"pong"}` {
-		t.Errorf("unexpected response: %s", resp)
-	}
+	assert.Equal(t, `{"data":"pong"}`, resp)
 }

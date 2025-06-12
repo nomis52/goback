@@ -36,7 +36,11 @@ func (a *MetricsActivity) Init() error {
 	}
 	a.hostname = hostname
 
-	a.client = metrics.NewClient(a.VictoriaMetricsURL, a.MetricsPrefix, a.JobName, a.hostname)
+	a.client = metrics.NewClient(a.VictoriaMetricsURL,
+		metrics.WithPrefix(a.MetricsPrefix),
+		metrics.WithJob(a.JobName),
+		metrics.WithInstance(a.hostname),
+	)
 
 	// Record start time for duration metrics
 	a.startTime = time.Now()

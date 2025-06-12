@@ -4,6 +4,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestVersion(t *testing.T) {
@@ -18,9 +21,7 @@ func TestVersion(t *testing.T) {
 	client := New(ts.URL)
 	resp, err := client.Version()
 	if err != nil {
-		t.Fatalf("Version failed: %v", err)
+		require.NoError(t, err, "Version failed")
 	}
-	if resp != `{"data":{"version":"7.1-10","release":"2021-11-23"}}` {
-		t.Errorf("unexpected response: %s", resp)
-	}
+	assert.Equal(t, `{"data":{"version":"7.1-10","release":"2021-11-23"}}`, resp)
 }

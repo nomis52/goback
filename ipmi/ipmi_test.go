@@ -3,6 +3,8 @@ package ipmi
 import (
 	"log/slog"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestNewIPMIController(t *testing.T) {
@@ -50,18 +52,11 @@ func TestNewIPMIController(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := NewIPMIController(tt.host, tt.opts...)
-			if got.host != tt.expected.host {
-				t.Errorf("host = %v, want %v", got.host, tt.expected.host)
-			}
-			if got.username != tt.expected.username {
-				t.Errorf("username = %v, want %v", got.username, tt.expected.username)
-			}
-			if got.password != tt.expected.password {
-				t.Errorf("password = %v, want %v", got.password, tt.expected.password)
-			}
-			// Can't directly compare loggers, but we can check if they're both nil or both non-nil
+			assert.Equal(t, tt.expected.host, got.host)
+			assert.Equal(t, tt.expected.username, got.username)
+			assert.Equal(t, tt.expected.password, got.password)
 			if (got.logger == nil) != (tt.expected.logger == nil) {
-				t.Errorf("logger = %v, want %v", got.logger, tt.expected.logger)
+				assert.Fail(t, "logger = %v, want %v", got.logger, tt.expected.logger)
 			}
 		})
 	}

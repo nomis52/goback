@@ -1,6 +1,10 @@
 package ipmi
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
 
 func TestParsePowerState(t *testing.T) {
 	tests := []struct {
@@ -78,9 +82,7 @@ func TestParsePowerState(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := ParsePowerState(tt.input)
-			if result != tt.expected {
-				t.Errorf("ParsePowerState(%q) = %v, want %v", tt.input, result, tt.expected)
-			}
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
@@ -131,9 +133,7 @@ func TestPowerStateString(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.input.String()
-			if result != tt.expected {
-				t.Errorf("PowerState(%d).String() = %q, want %q", tt.input, result, tt.expected)
-			}
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
