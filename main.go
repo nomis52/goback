@@ -4,13 +4,16 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log/slog"
 	"os"
-	"time"
 
+	"github.com/nomis52/goback/activities"
 	"github.com/nomis52/goback/config"
 	"github.com/nomis52/goback/ipmi"
 	"github.com/nomis52/goback/logging"
 	"github.com/nomis52/goback/metrics"
+	"github.com/nomis52/goback/orchestrator"
+	"github.com/nomis52/goback/pbsclient"
 )
 
 type Args struct {
@@ -20,21 +23,21 @@ type Args struct {
 const jobName = "goback"
 
 func main() {
-	if err := doMain(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func doMain() error {
+func run() error {
 	args := parseArgs()
 	if args.ConfigPath == "" {
-		return fmt.Errorf("-c or --config flag is required")
+		return fmt.Errorf("config flag (-c or --config) is required")
 	}
 
 	cfg, err := config.LoadConfig(args.ConfigPath)
 	if err != nil {
-		return fmt.Errorf("Error loading config: %w", err)
+		return fmt.Errorf("failed to load config: %w", err)
 	}
 
 	// Initialize logger
@@ -51,12 +54,34 @@ func doMain() error {
 
 	logger.Info("goback started", "config_path", args.ConfigPath)
 
-	hostname, err := os.Hostname()
-	if err != nil {
-		return fmt.Errorf("Error getting hostname: %w", err)
+	// Create orchestrator with config
+	o := orchestrator.NewOrchestratorWithLogger(&cfg, logger)
+
+	// Inject dependencies
+	if err := injectClients(o, cfg, logger); err != nil {
+		return fmt.Errorf("failed to inject clients: %w", err)
 	}
 
-	// Initialize IPMI controller
+	// Add activities
+	powerOnPBS := &activities.PowerOnPBS{}
+	o.AddActivity(powerOnPBS)
+
+	// Execute orchestrator
+	ctx := context.Background()
+	if err := o.Execute(ctx); err != nil {
+		return fmt.Errorf("orchestrator execution failed: %w", err)
+	}
+
+	logger.Info("goback completed successfully")
+	return nil
+}
+
+func injectClients(o *orchestrator.Orchestrator, cfg config.Config, logger *slog.Logger) error {
+	hostname, err := os.Hostname()
+	if err != nil {
+		return fmt.Errorf("failed to get hostname: %w", err)
+	}
+
 	ctrl := ipmi.NewIPMIController(
 		cfg.IPMI.Host,
 		ipmi.WithUsername(cfg.IPMI.Username),
@@ -64,14 +89,11 @@ func doMain() error {
 		ipmi.WithLogger(logger),
 	)
 
-	logger.Info("checking PBS power status", "host", cfg.IPMI.Host)
-	s, err := ctrl.Status()
+	pbsClient, err := pbsclient.New(cfg.PBS.Host, logger)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create PBS client: %w", err)
 	}
-	logger.Info("power status retrieved", "status", s)
 
-	// Initialize metrics client
 	metricsClient := metrics.NewClient(
 		cfg.Monitoring.VictoriaMetricsURL,
 		metrics.WithPrefix(cfg.Monitoring.MetricsPrefix),
@@ -79,26 +101,7 @@ func doMain() error {
 		metrics.WithInstance(hostname),
 	)
 
-	ctx := context.Background()
-	ms := []metrics.Metric{
-		{
-			Name:      "wake",
-			Value:     1,
-			Timestamp: time.Now(),
-			Labels: map[string]string{
-				"job":      jobName,
-				"instance": hostname,
-			},
-		},
-	}
-	logger.Info("pushing metrics", "count", len(ms), "url", cfg.Monitoring.VictoriaMetricsURL)
-	err = metricsClient.PushMetrics(ctx, ms...)
-	if err != nil {
-		return err
-	}
-	logger.Info("metrics pushed successfully")
-
-	logger.Info("goback completed successfully")
+	o.Inject(logger, metricsClient, ctrl, pbsClient)
 	return nil
 }
 
