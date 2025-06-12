@@ -11,19 +11,19 @@ import (
 
 // Orchestrator manages the execution of activities with dependency injection
 type Orchestrator struct {
-	activities      []Activity
-	results         map[string]Result
-	config          interface{}
-	logger          *slog.Logger
-	
+	activities []Activity
+	results    map[string]Result
+	config     interface{}
+	logger     *slog.Logger
+
 	// Dependency injection map: type -> instance
-	injectedTypes   map[reflect.Type]interface{}
-	
+	injectedTypes map[reflect.Type]interface{}
+
 	// Dependency graph and execution coordination
 	activityMap     map[string]Activity
-	dependencyMap   map[string][]string  // activity name -> list of dependency names
+	dependencyMap   map[string][]string      // activity name -> list of dependency names
 	completionChans map[string]chan struct{} // activity name -> completion signal (closed when done)
-	resultMap       map[string]Result    // activity name -> result (protected by mutex)
+	resultMap       map[string]Result        // activity name -> result (protected by mutex)
 	mu              sync.RWMutex
 }
 
@@ -56,7 +56,7 @@ func (o *Orchestrator) Inject(deps ...interface{}) {
 			o.logger.Warn("attempted to inject nil dependency")
 			continue
 		}
-		
+
 		depType := reflect.TypeOf(dep)
 		o.injectedTypes[depType] = dep
 		o.logger.Debug("dependency injected", "type", depType.String())
@@ -90,7 +90,7 @@ func (o *Orchestrator) Execute(ctx context.Context) error {
 	for _, activity := range o.activities {
 		activityName := o.getActivityName(activity)
 		activityLogger := o.logger.With("activity", activityName)
-		
+
 		activityLogger.Debug("initializing activity")
 		if err := activity.Init(); err != nil {
 			activityLogger.Error("activity initialization failed", "error", err)
@@ -110,7 +110,7 @@ func (o *Orchestrator) Execute(ctx context.Context) error {
 	// 4. Start goroutines for each activity
 	var wg sync.WaitGroup
 	errorChan := make(chan error, len(o.activities))
-	
+
 	for name, activity := range o.activityMap {
 		wg.Add(1)
 		o.logger.Debug("starting activity goroutine", "activity", name)
@@ -147,7 +147,7 @@ func (o *Orchestrator) runActivity(ctx context.Context, name string, activity Ac
 	// Wait for all dependencies to complete successfully
 	dependencies := o.dependencyMap[name]
 	activityLogger.Debug("checking dependencies", "dependency_count", len(dependencies), "dependencies", dependencies)
-	
+
 	for _, depName := range dependencies {
 		activityLogger.Debug("waiting for dependency", "dependency", depName)
 		select {
@@ -157,18 +157,18 @@ func (o *Orchestrator) runActivity(ctx context.Context, name string, activity Ac
 			return
 		case <-o.completionChans[depName]:
 			activityLogger.Debug("dependency completed", "dependency", depName)
-			
+
 			// Check if the dependency was successful
 			o.mu.RLock()
 			result, exists := o.resultMap[depName]
 			o.mu.RUnlock()
-			
+
 			if !exists {
 				activityLogger.Error("dependency completed but no result found", "dependency", depName)
 				errorChan <- fmt.Errorf("activity %s: dependency %s completed but no result found", name, depName)
 				return
 			}
-			
+
 			if !result.IsSuccess() {
 				activityLogger.Error("dependency failed", "dependency", depName)
 				errorChan <- fmt.Errorf("activity %s failed because dependency %s failed", name, depName)
@@ -209,18 +209,18 @@ func (o *Orchestrator) runActivity(ctx context.Context, name string, activity Ac
 // buildDependencyGraph analyzes activity dependencies and injects config/dependencies
 func (o *Orchestrator) buildDependencyGraph() error {
 	o.logger.Debug("building dependency graph")
-	
+
 	// First pass: build activity map and inject config
 	activityTypeMap := make(map[reflect.Type]string)
-	
+
 	for _, activity := range o.activities {
 		name := o.getActivityName(activity)
 		activityType := reflect.TypeOf(activity).Elem()
-		
+
 		o.activityMap[name] = activity
 		activityTypeMap[activityType] = name
 		o.logger.Debug("registered activity", "activity", name)
-		
+
 		// Inject config values
 		if err := o.injectConfig(activity); err != nil {
 			o.logger.Error("config injection failed", "activity", name, "error", err)
@@ -228,11 +228,16 @@ func (o *Orchestrator) buildDependencyGraph() error {
 		}
 	}
 
+	// Validate dependencies before proceeding
+	if err := o.validateDependencies(); err != nil {
+		return fmt.Errorf("dependency validation failed: %w", err)
+	}
+
 	// Second pass: build dependency graph and inject activity dependencies
 	for _, activity := range o.activities {
 		name := o.getActivityName(activity)
 		dependencies := []string{}
-		
+
 		activityValue := reflect.ValueOf(activity).Elem()
 		activityType := activityValue.Type()
 
@@ -265,11 +270,11 @@ func (o *Orchestrator) buildDependencyGraph() error {
 				}
 			} else if _, exists := activityTypeMap[field.Type]; exists {
 				// Direct struct dependency - this is not allowed!
-				return fmt.Errorf("activity %s dependency field %s must be a pointer (*%s), not a struct (%s)", 
+				return fmt.Errorf("activity %s dependency field %s must be a pointer (*%s), not a struct (%s)",
 					name, field.Name, field.Type.Name(), field.Type.Name())
 			}
 		}
-		
+
 		o.dependencyMap[name] = dependencies
 	}
 
@@ -346,19 +351,19 @@ func (o *Orchestrator) injectConfig(activity Activity) error {
 func (o *Orchestrator) validateNoCycles() error {
 	// Use Kahn's algorithm for topological sorting
 	inDegree := make(map[string]int)
-	
+
 	// Initialize in-degree counts
 	for name := range o.activityMap {
 		inDegree[name] = 0
 	}
-	
+
 	// Calculate in-degrees: if A depends on B, then A has incoming edge from B
 	for activityName, deps := range o.dependencyMap {
 		inDegree[activityName] = len(deps) // Number of dependencies = in-degree
 	}
-	
+
 	o.logger.Debug("calculated in-degrees", "in_degrees", inDegree)
-	
+
 	// Find activities with no incoming edges (no dependencies)
 	queue := []string{}
 	for name, degree := range inDegree {
@@ -367,14 +372,14 @@ func (o *Orchestrator) validateNoCycles() error {
 			o.logger.Debug("activity has no dependencies", "activity", name)
 		}
 	}
-	
+
 	processed := 0
 	for len(queue) > 0 {
 		current := queue[0]
 		queue = queue[1:]
 		processed++
 		o.logger.Debug("processing activity", "activity", current, "processed", processed, "total", len(o.activityMap))
-		
+
 		// For each activity that depends on current, reduce its in-degree
 		for activityName, deps := range o.dependencyMap {
 			for _, dep := range deps {
@@ -388,12 +393,43 @@ func (o *Orchestrator) validateNoCycles() error {
 			}
 		}
 	}
-	
+
 	if processed != len(o.activityMap) {
 		return fmt.Errorf("circular dependency detected - only %d of %d activities could be processed", processed, len(o.activityMap))
 	}
-	
+
 	o.logger.Debug("dependency validation completed", "processed", processed)
+	return nil
+}
+
+// validateDependencies checks that all required dependencies are properly injected
+func (o *Orchestrator) validateDependencies() error {
+	for name, activity := range o.activityMap {
+		activityLogger := o.logger.With("activity", name)
+		activityLogger.Debug("validating activity dependencies")
+
+		// Get activity type
+		activityType := reflect.TypeOf(activity).Elem()
+		activityValue := reflect.ValueOf(activity).Elem()
+
+		// Check each field
+		for i := 0; i < activityType.NumField(); i++ {
+			field := activityType.Field(i)
+			fieldValue := activityValue.Field(i)
+
+			// Skip non-pointer fields and fields with config tags
+			if fieldValue.Kind() != reflect.Ptr || field.Tag.Get("config") != "" {
+				continue
+			}
+
+			// Check if the field is nil
+			if fieldValue.IsNil() {
+				activityLogger.Error("nil dependency found", "field", field.Name, "type", field.Type.String())
+				return fmt.Errorf("activity %s has nil dependency: %s (%s)", name, field.Name, field.Type.String())
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -417,7 +453,7 @@ func (o *Orchestrator) injectConfigValue(fieldValue reflect.Value, configPath st
 
 		// Try to find the field by name, handling common Go naming conventions
 		var fieldVal reflect.Value
-		
+
 		// Try exact match first
 		fieldVal = value.FieldByName(part)
 		if !fieldVal.IsValid() {
@@ -429,7 +465,23 @@ func (o *Orchestrator) injectConfigValue(fieldValue reflect.Value, configPath st
 			// Try all uppercase (for acronyms like API)
 			fieldVal = value.FieldByName(strings.ToUpper(part))
 		}
-		
+
+		// If still not found, try looking for YAML tags
+		if !fieldVal.IsValid() {
+			typ := value.Type()
+			for i := 0; i < typ.NumField(); i++ {
+				field := typ.Field(i)
+				if yamlTag := field.Tag.Get("yaml"); yamlTag != "" {
+					// Split the YAML tag to handle options like omitempty
+					yamlName := strings.Split(yamlTag, ",")[0]
+					if yamlName == part {
+						fieldVal = value.Field(i)
+						break
+					}
+				}
+			}
+		}
+
 		if !fieldVal.IsValid() {
 			return fmt.Errorf("config path %s: field for '%s' not found", configPath, part)
 		}
