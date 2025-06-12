@@ -8,6 +8,19 @@
    - This includes naming conventions, error handling, channel usage, struct organization, etc.
    - The rules below supplement but do not override the Uber guide
 
+2. **Time values must be defined as constants**
+   - All time durations, intervals, and timeouts must be defined as constants
+   - Use descriptive names that indicate the purpose of the time value
+   - Example:
+     ```go
+     const (
+         defaultBootTimeout = 5 * time.Minute
+         pingCheckInterval  = 5 * time.Second
+     )
+     ```
+   - This applies to both default values and implementation details
+   - The only exception is when the time value is purely configurable and has no default
+
 ## Go Testing Style (Always Prefer Testify)
 
 - **Always use [testify](https://github.com/stretchr/testify) for assertions and requirements in all Go tests.**
