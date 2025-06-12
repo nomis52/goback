@@ -11,8 +11,8 @@ import (
 // Config represents the complete application configuration
 type Config struct {
 	IPMI       IPMIConfig       `yaml:"ipmi"`
-	Proxmox    ProxmoxConfig    `yaml:"proxmox"`
 	PBS        PBSConfig        `yaml:"pbs"`
+	Proxmox    ProxmoxConfig    `yaml:"proxmox"`
 	Timeouts   TimeoutsConfig   `yaml:"timeouts"`
 	Backup     BackupConfig     `yaml:"backup"`
 	Monitoring MonitoringConfig `yaml:"monitoring"`
@@ -27,17 +27,23 @@ type IPMIConfig struct {
 	Password string `yaml:"password"`
 }
 
+// PBSConfig holds Proxmox Backup Server settings
+type PBSConfig struct {
+	// Host is the address of the Proxmox Backup Server
+	Host string `yaml:"host"`
+
+	// Datastore is the name of the backup datastore to use
+	Datastore string `yaml:"datastore"`
+
+	// BootTimeout is the maximum time to wait for the PBS server to become available after boot
+	BootTimeout time.Duration `yaml:"boot_timeout"`
+}
+
 // ProxmoxConfig holds Proxmox API connection settings
 type ProxmoxConfig struct {
 	Host     string `yaml:"host"`
 	Username string `yaml:"username"`
 	Password string `yaml:"password"`
-}
-
-// PBSConfig holds Proxmox Backup Server settings
-type PBSConfig struct {
-	Host      string `yaml:"host"`
-	Datastore string `yaml:"datastore"`
 }
 
 // TimeoutsConfig defines various timeout durations
@@ -93,6 +99,9 @@ func (c *Config) Validate() error {
 	if c.PBS.Datastore == "" {
 		return fmt.Errorf("PBS datastore is required")
 	}
+	if c.PBS.BootTimeout <= 0 {
+		return fmt.Errorf("PBS boot timeout must be positive")
+	}
 	if c.Monitoring.VictoriaMetricsURL == "" {
 		return fmt.Errorf("VictoriaMetrics URL is required")
 	}
@@ -112,6 +121,9 @@ func (c *Config) Validate() error {
 func (c *Config) SetDefaults() {
 	if c.Timeouts.BootTimeout == 0 {
 		c.Timeouts.BootTimeout = 5 * time.Minute
+	}
+	if c.PBS.BootTimeout == 0 {
+		c.PBS.BootTimeout = 10 * time.Minute
 	}
 	if c.Timeouts.BackupJobTimeout == 0 {
 		c.Timeouts.BackupJobTimeout = 2 * time.Hour

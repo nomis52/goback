@@ -19,7 +19,7 @@ func TestConfig_Validate(t *testing.T) {
 			cfg: Config{
 				IPMI:    IPMIConfig{Host: "1.2.3.4", Username: "u", Password: "p"},
 				Proxmox: ProxmoxConfig{Host: "1.2.3.5", Username: "u", Password: "p"},
-				PBS:     PBSConfig{Host: "1.2.3.6", Datastore: "ds"},
+				PBS:     PBSConfig{Host: "1.2.3.6", Datastore: "ds", BootTimeout: 10 * time.Minute},
 				Timeouts: TimeoutsConfig{
 					BootTimeout:         time.Minute,
 					BackupJobTimeout:    time.Minute,
