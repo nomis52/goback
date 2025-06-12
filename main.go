@@ -14,6 +14,7 @@ import (
 	"github.com/nomis52/goback/metrics"
 	"github.com/nomis52/goback/orchestrator"
 	"github.com/nomis52/goback/pbsclient"
+	"github.com/nomis52/goback/proxmoxclient"
 )
 
 type Args struct {
@@ -63,7 +64,9 @@ func run() error {
 
 	// Add activities
 	powerOnPBS := &activities.PowerOnPBS{}
+	runProxmoxBackup := &activities.RunProxmoxBackup{}
 	o.AddActivity(powerOnPBS)
+	o.AddActivity(runProxmoxBackup)
 
 	// Execute orchestrator
 	ctx := context.Background()
@@ -92,6 +95,8 @@ func injectClients(o *orchestrator.Orchestrator, cfg config.Config, logger *slog
 		return fmt.Errorf("failed to create PBS client: %w", err)
 	}
 
+	proxmoxClient := proxmoxclient.New(cfg.Proxmox.Host)
+
 	metricsClient := metrics.NewClient(
 		cfg.Monitoring.VictoriaMetricsURL,
 		metrics.WithPrefix(cfg.Monitoring.MetricsPrefix),
@@ -99,7 +104,7 @@ func injectClients(o *orchestrator.Orchestrator, cfg config.Config, logger *slog
 		metrics.WithInstance(hostname),
 	)
 
-	o.Inject(logger, metricsClient, ctrl, pbsClient)
+	o.Inject(logger, metricsClient, ctrl, pbsClient, proxmoxClient)
 	return nil
 }
 

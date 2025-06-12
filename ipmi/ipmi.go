@@ -87,7 +87,7 @@ func (c *IPMIController) PowerOn() error {
 
 // PowerOff turns off the remote system
 func (c *IPMIController) PowerOff() error {
-	_, err := c.runIPMICommand("chassis", "power", "off")
+	_, err := c.runIPMICommand("chassis", "power", "soft")
 	if err != nil {
 		return fmt.Errorf("failed to power off system: %v", err)
 	}
