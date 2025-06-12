@@ -22,7 +22,6 @@ type PowerOnPBS struct {
 	PBSClient  *pbsclient.Client
 	Logger     *slog.Logger
 
-	// Config
 	BootTimeout time.Duration `config:"pbs.boot_timeout"`
 }
 
@@ -47,6 +46,11 @@ func (a *PowerOnPBS) Run(ctx context.Context) (orchestrator.Result, error) {
 		a.Logger.Info("power on command sent successfully")
 	} else {
 		a.Logger.Info("PBS host is already powered on", "status", status)
+		// Do an immediate ping check since we know it's powered on
+		if _, err := a.PBSClient.Ping(); err == nil {
+			a.Logger.Info("PBS is available")
+			return orchestrator.NewSuccessResult(), nil
+		}
 	}
 
 	// Wait for PBS to be available

@@ -40,7 +40,6 @@ func run() error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Initialize logger
 	loggerConfig := logging.Config{
 		Level:     cfg.Logging.Level,
 		Format:    cfg.Logging.Format,
@@ -72,7 +71,6 @@ func run() error {
 		return fmt.Errorf("orchestrator execution failed: %w", err)
 	}
 
-	logger.Info("goback completed successfully")
 	return nil
 }
 

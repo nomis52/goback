@@ -99,8 +99,6 @@ func (o *Orchestrator) Execute(ctx context.Context) error {
 		activityLogger.Debug("activity initialized successfully")
 	}
 
-	o.logger.Info("all activities initialized")
-
 	// 3. Create completion channels for each activity
 	for name := range o.activityMap {
 		o.completionChans[name] = make(chan struct{}) // Unbuffered channel, closed when activity completes
@@ -134,7 +132,6 @@ func (o *Orchestrator) Execute(ctx context.Context) error {
 		}
 	}
 
-	o.logger.Info("execution completed successfully")
 	return nil
 }
 
