@@ -161,7 +161,7 @@
 //		dbSetup := &DatabaseSetup{}
 //		dataMigration := &DataMigration{}
 //
-//		orchestrator := NewOrchestrator(config)
+//		orchestrator := NewOrchestrator(WithConfig(config))
 //		orchestrator.Inject(logger)
 //		orchestrator.AddActivity(dbSetup, dataMigration)
 //
@@ -213,7 +213,7 @@
 //
 // Custom Logging: Provide custom loggers for detailed observability:
 //
-//	orchestrator := NewOrchestrator(config, WithLogger(customLogger))
+//	orchestrator := NewOrchestrator(WithConfig(config), WithLogger(customLogger))
 //
 // # Thread Safety
 //
