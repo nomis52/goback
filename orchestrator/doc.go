@@ -43,7 +43,7 @@
 //
 //     type ThirdActivity struct {
 //     First *FirstActivity  // Depends on FirstActivity
-//     _     *SeconcActivity // Depends on SecondActvity
+//     _     *SecondActivity // Depends on SecondActvity
 //     }
 //
 // The orchestrator detects these dependencies and ensures proper execution ordering.
