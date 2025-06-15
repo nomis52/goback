@@ -7,33 +7,22 @@ import (
 // Activity represents a single step in the orchestration process
 type Activity interface {
 	Init() error
-	Run(ctx context.Context) (Result, error)
+	// Execute runs the activity and returns an error if it fails
+	// Success is indicated by returning nil
+	Execute(ctx context.Context) error
 }
 
 // Result contains the outcome of an activity execution
-type Result interface {
-	IsSuccess() bool
+type Result struct {
+	// State indicates the current execution state
+	State ActivityState
+	
+	// Error contains any error that occurred during execution
+	// nil indicates successful execution
+	Error error
 }
 
-// ActivityResult is the standard implementation of Result
-type ActivityResult struct {
-	Success bool
-}
-
-func (r *ActivityResult) IsSuccess() bool {
-	return r.Success
-}
-
-// NewSuccessResult creates a successful result
-func NewSuccessResult() Result {
-	return &ActivityResult{
-		Success: true,
-	}
-}
-
-// NewFailureResult creates a failed result
-func NewFailureResult() Result {
-	return &ActivityResult{
-		Success: false,
-	}
+// IsSuccess returns true if the activity completed successfully
+func (r *Result) IsSuccess() bool {
+	return r.State == Completed && r.Error == nil
 }
