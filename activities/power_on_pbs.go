@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/nomis52/goback/ipmi"
-	"github.com/nomis52/goback/orchestrator"
 	"github.com/nomis52/goback/pbsclient"
 )
 

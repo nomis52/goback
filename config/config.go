@@ -67,8 +67,7 @@ type PBSConfig struct {
 // ProxmoxConfig holds Proxmox API connection settings
 type ProxmoxConfig struct {
 	Host          string        `yaml:"host"`
-	Username      string        `yaml:"username"`
-	Password      string        `yaml:"password"`
+	Token         string        `yaml:"token"`
 	BackupTimeout time.Duration `yaml:"backup_timeout"`
 }
 

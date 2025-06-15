@@ -363,3 +363,64 @@ func TestListAllResources_EmptyResponse(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, resources, 0)
 }
+
+func TestBuildURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		host     string
+		path     string
+		expected string
+		wantErr  bool
+	}{
+		{
+			name:     "host without trailing slash",
+			host:     "https://pve.example.com:8006",
+			path:     "/api2/json/version",
+			expected: "https://pve.example.com:8006/api2/json/version",
+			wantErr:  false,
+		},
+		{
+			name:     "host with trailing slash",
+			host:     "https://pve.example.com:8006/",
+			path:     "/api2/json/version",
+			expected: "https://pve.example.com:8006/api2/json/version",
+			wantErr:  false,
+		},
+		{
+			name:     "host with path and trailing slash",
+			host:     "https://pve.example.com:8006/proxmox/",
+			path:     "/api2/json/version",
+			expected: "https://pve.example.com:8006/api2/json/version",
+			wantErr:  false,
+		},
+		{
+			name:     "path with query parameters",
+			host:     "https://pve.example.com:8006",
+			path:     "/api2/json/cluster/resources?type=vm",
+			expected: "https://pve.example.com:8006/api2/json/cluster/resources?type=vm",
+			wantErr:  false,
+		},
+		{
+			name:     "invalid host URL",
+			host:     "://invalid-url",
+			path:     "/api2/json/version",
+			expected: "",
+			wantErr:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := New(tt.host)
+			result, err := client.buildURL(tt.path)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Empty(t, result)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.expected, result)
+			}
+		})
+	}
+}

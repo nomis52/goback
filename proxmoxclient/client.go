@@ -2,7 +2,10 @@
 //
 // Example usage:
 //
-//	client := proxmoxclient.New("https://proxmox.example.com")
+//	client, err := proxmoxclient.New("https://proxmox.example.com")
+//	if err != nil {
+//		log.Fatal(err)
+//	}
 //	version, err := client.Version()
 //	vms, err := client.ListVMs(ctx)
 package proxmoxclient
@@ -12,37 +15,43 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log/slog"
 	"net/http"
+	"net/url"
 )
 
-// VM represents a virtual machine or container in Proxmox.
-type VM struct {
-	VMID     int    `json:"vmid"`
-	Name     string `json:"name"`
-	Node     string `json:"node"`
-	Status   string `json:"status"`
-	Template int    `json:"template"`
-	Type     string `json:"type"`
-	MaxMem   int64  `json:"maxmem"`
-	MaxDisk  int64  `json:"maxdisk"`
+// Types
+
+// Resource represents a virtual machine or container in Proxmox.
+type Resource struct {
+	VMID     int     `json:"vmid"`
+	Name     string  `json:"name"`
+	Node     string  `json:"node"`
+	Status   string  `json:"status"`
+	Template int     `json:"template"`
+	Type     string  `json:"type"`
+	MaxMem   int64   `json:"maxmem"`
+	MaxDisk  int64   `json:"maxdisk"`
 	CPU      float64 `json:"cpu"`
-	Mem      int64  `json:"mem"`
-	Uptime   int64  `json:"uptime"`
+	Mem      int64   `json:"mem"`
+	Uptime   int64   `json:"uptime"`
 }
 
+// VM represents a virtual machine in Proxmox.
+type VM Resource
+
 // LXC represents an LXC container in Proxmox.
-type LXC struct {
-	VMID     int    `json:"vmid"`
-	Name     string `json:"name"`
-	Node     string `json:"node"`
-	Status   string `json:"status"`
-	Template int    `json:"template"`
-	Type     string `json:"type"`
-	MaxMem   int64  `json:"maxmem"`
-	MaxDisk  int64  `json:"maxdisk"`
-	CPU      float64 `json:"cpu"`
-	Mem      int64  `json:"mem"`
-	Uptime   int64  `json:"uptime"`
+type LXC Resource
+
+// Option is a function that configures a Client
+type Option func(*Client)
+
+// Client represents a Proxmox VE API client.
+// Use New() to create a new client for a given Proxmox host.
+type Client struct {
+	baseURL *url.URL
+	token   string
+	logger  *slog.Logger
 }
 
 // clusterResourcesResponse represents the response from /api2/json/cluster/resources
@@ -50,27 +59,54 @@ type clusterResourcesResponse struct {
 	Data []json.RawMessage `json:"data"`
 }
 
-// Client represents a Proxmox VE API client.
-// Use New() to create a new client for a given Proxmox host.
-type Client struct {
-	Host string
+// New and Options
+
+// WithToken sets the API token for authentication
+func WithToken(token string) Option {
+	return func(c *Client) {
+		c.token = token
+	}
+}
+
+// WithLogger sets the logger for the client
+func WithLogger(logger *slog.Logger) Option {
+	return func(c *Client) {
+		c.logger = logger
+	}
 }
 
 // New creates a new Client for the given Proxmox VE host.
 // The host should include the scheme (e.g., "https://proxmox.example.com").
-func New(host string) *Client {
-	return &Client{Host: host}
+// Options can be provided to configure the client.
+func New(host string, opts ...Option) (*Client, error) {
+	baseURL, err := url.Parse(host)
+	if err != nil {
+		return nil, fmt.Errorf("invalid host URL: %w", err)
+	}
+
+	client := &Client{
+		baseURL: baseURL,
+		logger:  slog.Default(),
+	}
+
+	for _, opt := range opts {
+		opt(client)
+	}
+
+	return client, nil
 }
+
+// Exported Methods
 
 // Version retrieves the Proxmox VE version information by calling the /api2/json/version endpoint.
 // It returns the raw response body as a string, or an error if the request fails.
 func (c *Client) Version() (string, error) {
-	url := fmt.Sprintf("%s/api2/json/version", c.Host)
-	resp, err := http.Get(url)
+	resp, err := c.doRequest(context.Background(), http.MethodGet, "/api2/json/version")
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
+
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return "", err
@@ -78,116 +114,10 @@ func (c *Client) Version() (string, error) {
 	return string(body), nil
 }
 
-// ListVMs retrieves all VMs across the entire Proxmox cluster.
-// It queries the /api2/json/cluster/resources?type=vm endpoint to get cluster-wide VM information.
-func (c *Client) ListVMs(ctx context.Context) ([]VM, error) {
-	url := fmt.Sprintf("%s/api2/json/cluster/resources?type=vm", c.Host)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	var response clusterResourcesResponse
-	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
-	}
-
-	vms := make([]VM, 0, len(response.Data))
-	for _, rawVM := range response.Data {
-		var vm VM
-		if err := json.Unmarshal(rawVM, &vm); err != nil {
-			// Skip invalid entries rather than failing completely
-			continue
-		}
-		vms = append(vms, vm)
-	}
-
-	return vms, nil
-}
-
-// ListLXCs retrieves all LXC containers across the entire Proxmox cluster.
-// It queries the /api2/json/cluster/resources?type=lxc endpoint to get cluster-wide LXC information.
-func (c *Client) ListLXCs(ctx context.Context) ([]LXC, error) {
-	url := fmt.Sprintf("%s/api2/json/cluster/resources?type=lxc", c.Host)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	var response clusterResourcesResponse
-	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
-	}
-
-	lxcs := make([]LXC, 0, len(response.Data))
-	for _, rawLXC := range response.Data {
-		var lxc LXC
-		if err := json.Unmarshal(rawLXC, &lxc); err != nil {
-			// Skip invalid entries rather than failing completely
-			continue
-		}
-		lxcs = append(lxcs, lxc)
-	}
-
-	return lxcs, nil
-}
-
-// Resource represents either a VM or LXC container for unified handling.
-type Resource struct {
-	VMID     int    `json:"vmid"`
-	Name     string `json:"name"`
-	Node     string `json:"node"`
-	Status   string `json:"status"`
-	Template int    `json:"template"`
-	Type     string `json:"type"` // "qemu" for VMs, "lxc" for containers
-	MaxMem   int64  `json:"maxmem"`
-	MaxDisk  int64  `json:"maxdisk"`
-	CPU      float64 `json:"cpu"`
-	Mem      int64  `json:"mem"`
-	Uptime   int64  `json:"uptime"`
-}
-
-// ListAllResources retrieves all VMs and LXC containers across the entire Proxmox cluster.
-// This is a convenience method that combines both VMs and LXCs into a unified list.
-// It queries the /api2/json/cluster/resources endpoint without a type filter.
-func (c *Client) ListAllResources(ctx context.Context) ([]Resource, error) {
-	url := fmt.Sprintf("%s/api2/json/cluster/resources", c.Host)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	resp, err := http.DefaultClient.Do(req)
+// ListComputeResources retrieves all resources (VMs and LXCs) across the entire Proxmox cluster.
+// It queries the /api2/json/cluster/resources endpoint to get cluster-wide resource information.
+func (c *Client) ListComputeResources(ctx context.Context) ([]Resource, error) {
+	resp, err := c.doRequest(ctx, http.MethodGet, "/api2/json/cluster/resources?type=vm")
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
@@ -214,11 +144,47 @@ func (c *Client) ListAllResources(ctx context.Context) ([]Resource, error) {
 			// Skip invalid entries rather than failing completely
 			continue
 		}
-		// Only include VMs and LXCs, skip other resource types like nodes, storage
-		if resource.Type == "qemu" || resource.Type == "lxc" {
-			resources = append(resources, resource)
-		}
+		resources = append(resources, resource)
 	}
 
 	return resources, nil
+}
+
+// Non-exported Methods
+
+// buildURL constructs a proper URL by joining the base host with the given path.
+// It handles cases where the host may or may not have a trailing slash.
+func (c *Client) buildURL(path string) (string, error) {
+	pathURL, err := url.Parse(path)
+	if err != nil {
+		return "", fmt.Errorf("invalid path: %w", err)
+	}
+
+	resolvedURL := c.baseURL.ResolveReference(pathURL)
+	return resolvedURL.String(), nil
+}
+
+// doRequest performs an HTTP request with the configured authentication
+func (c *Client) doRequest(ctx context.Context, method, path string) (*http.Response, error) {
+	url, err := c.buildURL(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build URL: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	if c.token != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("PVEAPIToken=%s", c.token))
+	}
+
+	// Log the request details
+	c.logger.Info("Proxmox API request",
+		"method", method,
+		"url", url,
+		"path", path)
+
+	return http.DefaultClient.Do(req)
 }

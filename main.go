@@ -97,7 +97,10 @@ func injectClients(o *orchestrator.Orchestrator, cfg config.Config, logger *slog
 		return fmt.Errorf("failed to create PBS client: %w", err)
 	}
 
-	proxmoxClient := proxmoxclient.New(cfg.Proxmox.Host)
+	proxmoxClient, err := proxmoxclient.New(cfg.Proxmox.Host, proxmoxclient.WithToken(cfg.Proxmox.Token))
+	if err != nil {
+		return fmt.Errorf("failed to create Proxmox client: %w", err)
+	}
 
 	metricsClient := metrics.NewClient(
 		cfg.Monitoring.VictoriaMetricsURL,
