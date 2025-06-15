@@ -1,241 +1,133 @@
-// Package orchestrator provides a sophisticated activity orchestration system
-// with dependency injection, concurrent execution, and comprehensive error handling.
+// Package orchestrator provides dependency-resolved execution of activities with comprehensive result tracking.
 //
-// The orchestrator enables workflows by managing dependencies between
-// activities, injecting required services and configuration, and executing
-// activities in the correct order while respecting dependency constraints.
+// # Overview
 //
-// # Core Concepts
+// The orchestrator manages the execution of activities with automatic dependency resolution,
+// configuration injection, and detailed result tracking. Activities are executed in dependency
+// order with proper error handling and state management.
 //
-// An Activity represents a single unit of work that can be executed within
-// the orchestration system. Activities can depend on other activities,
-// configuration values, and injected services.
+// # Core Guarantees
 //
-// The Orchestrator manages the lifecycle of activities:
-//   - Dependency resolution and injection
-//   - Concurrent execution with proper ordering
-//   - Error propagation and handling
-//   - Result collection and access
+// Result Availability: Results are available immediately after AddActivity() in NotStarted state
+// and persist with final state after Execute() completes. All result access methods are thread-safe.
 //
-// # Activity Identification
+// Dependency Management: Activities with pointer fields to other activity types automatically
+// get dependencies injected. Both named and unnamed dependency patterns are supported for
+// flexible ordering and access control.
 //
-// Activities are identified using an ActivityID to prevent
-// naming collisions in modular applications:
+// Error Isolation: Individual activity failures don't stop execution of other activities.
+// However, if an activity's Execute() method returns an error, all downstream activities
+// that depend on it will be skipped.
 //
-//	type ActivityID struct {
-//		Module string  // Full import path: "github.com/user/project/activities"
-//		Type   string  // Struct name: "PowerOnPBS"
+// # Activity Contract
+//
+// Activities must implement the Activity interface:
+//
+//	type Activity interface {
+//	    Init() error                       // Validate configuration after injection
+//	    Execute(ctx context.Context) error // Perform the work
 //	}
 //
-// This ensures that activities with identical struct names from different
-// packages remain uniquely identifiable:
+// Init() is called after all dependency and configuration injection but before Execute().
+// Use Init() to validate that required dependencies and configuration are properly set.
+// Execute() performs the actual work - return nil for success, error for failure.
 //
-//	// These are completely distinct activities:
-//	ActivityID{Module: "github.com/user/app/activities", Type: "BackupTask"}
-//	ActivityID{Module: "github.com/vendor/lib/activities", Type: "BackupTask"}
+// # Dependency Patterns
 //
-// # Activity Dependencies
+// Named Dependencies (Access + Ordering):
 //
-// Activities can declare dependencies in three ways:
-//
-//  1. Activity Dependencies: Activities can depend on other activities by
-//     declaring pointer fields of the activity type:
-//
-//     type ThirdActivity struct {
-//     First *FirstActivity  // Depends on FirstActivity
-//     _     *SecondActivity // Depends on SecondActvity
-//     }
-//
-// The orchestrator detects these dependencies and ensures proper execution ordering.
-//
-//  2. Configuration Injection: Activities can receive configuration values
-//     using struct tags:
-//
-//     type MyActivity struct {
-//     DBHost string `config:"database.host"`
-//     Port   int    `config:"database.port"`
-//     }
-//
-// Configuration paths use dot notation to navigate nested structures and
-// support multiple field name matching strategies including YAML tags.
-//
-// 3. Service Injection: Activities can receive injected services and clients:
-//
-//	type MyActivity struct {
-//		Logger  *slog.Logger
+//	type DataMigrationActivity struct {
+//	    Database *DatabaseSetupActivity // Can access in Init() and Execute()
 //	}
 //
-// Services are matched by exact type and must be registered via Inject()
-// before execution.
+// Unnamed Dependencies (Ordering Only):
 //
-// # Execution Model
-//
-// The orchestrator executes activities concurrently while respecting dependency
-// constraints. Activities with no dependencies start immediately, while dependent
-// activities wait for their dependencies to complete successfully.
-//
-// Each activity runs in its own goroutine, enabling maximum parallelism while
-// maintaining correctness. The execution order is determined by the dependency
-// graph, not the order in which activities are added to the orchestrator.
-//
-// # Result Access Patterns
-//
-// The orchestrator provides multiple ways to access activity results, addressing
-// the common problem of result utilization in complex workflows:
-//
-// Pattern 1 - Access by Activity Reference:
-//
-//	powerOnPBS := &activities.PowerOnPBS{}
-//	o.AddActivity(powerOnPBS)
-//	o.Execute(ctx)
-//
-//	if result, ok := o.GetResultByActivity(powerOnPBS); ok {
-//		if result.IsSuccess() {
-//			logger.Info("PBS powered on successfully")
-//		}
+//	type CleanupActivity struct {
+//	    Migration *DataMigrationActivity  // Named - can access
+//	    _         *BackupServiceActivity  // Unnamed - ordering only
 //	}
 //
-// Pattern 2 - Access by ActivityID:
+// # Configuration Injection
 //
-//	id := ActivityID{
-//		Module: "github.com/user/project/activities",
-//		Type:   "PowerOnPBS",
+// Use struct tags for configuration injection:
+//
+//	type DatabaseActivity struct {
+//	    Host     string `config:"database.host"`
+//	    Port     int    `config:"database.port"`
+//	    Logger   *Logger // Service injection via Inject()
 //	}
-//	if result, ok := o.GetResult(id); ok {
-//		// Process result
+//
+// Configuration supports dot notation for nested values and handles YAML tag matching.
+//
+// # State Progression
+//
+// Activities progress through states in a defined order:
+//
+//	NotStarted -> Pending -> Running -> (Completed|Skipped)
+//
+// Final states after Execute() depend on what occurred:
+//
+//	NotStarted: Activity was not executed (validation/circular dependency issues)
+//	Skipped:    Activity was prevented from running (dependency failed, context cancelled)
+//	Completed:  Activity's Execute() method was called (check Error for success/failure)
+//
+// The Result.Error field contains ONLY errors returned by the activity's Execute() method.
+// Validation errors, dependency failures, and cancellations are reflected in State only.
+//
+// # Usage Example
+//
+//	// Create activities
+//	dbSetup := &DatabaseSetupActivity{}
+//	migration := &DataMigrationActivity{}
+//	cleanup := &CleanupActivity{}
+//
+//	// Create orchestrator with config
+//	config := &AppConfig{Database: DatabaseConfig{Host: "localhost"}}
+//	logger := &Logger{}
+//
+//	orchestrator := NewOrchestrator(WithConfig(config))
+//	orchestrator.Inject(logger)
+//
+//	// Add activities (results immediately available)
+//	err := orchestrator.AddActivity(dbSetup, migration, cleanup)
+//	if err != nil {
+//	    log.Fatal(err)
 //	}
 //
-// Pattern 3 - Batch Access by Module:
+//	// Execute with dependency resolution
+//	ctx := context.Background()
+//	err = orchestrator.Execute(ctx)
 //
-//	results := o.GetResultsByModule("github.com/user/project/activities")
-//	for id, result := range results {
-//		logger.Info("activity result",
-//			"activity", id.String(),
-//			"success", result.IsSuccess())
+//	// Check individual results
+//	if result := orchestrator.GetResultByActivity(dbSetup); !result.IsSuccess() {
+//	    log.Printf("Database setup failed: %v", result.Error)
 //	}
 //
 // # Error Handling
 //
-// The orchestrator provides error handling:
-//   - Dependency cycle detection before execution
-//   - Validation of all dependencies and configuration
-//   - Context cancellation support
-//   - Failure propagation (dependent activities don't run if dependencies fail)
-//   - Logging and debugging information
+// The orchestrator separates structural/validation errors from activity execution errors:
 //
-// # Practical Usage Example
+// Structural Errors: Configuration errors, missing dependencies, circular dependencies,
+// and context cancellation prevent activities from executing. These are reflected in the
+// activity State (NotStarted or Skipped) but do NOT set the Result.Error field.
 //
-// Complete example demonstrating best practices for result utilization:
+// Execution Errors: Only errors returned by an activity's Execute() method are stored
+// in Result.Error. These activities will have State == Completed with a non-nil Error.
 //
-//	// Define your activities
-//	type DatabaseSetup struct {
-//		ConnectionString string `config:"database.connection"`
-//		Logger          *slog.Logger
-//	}
-//
-//	func (d *DatabaseSetup) Init() error { return nil }
-//	func (d *DatabaseSetup) Run(ctx context.Context) (Result, error) {
-//		// Setup database
-//		d.Logger.Info("setting up database")
-//		return NewSuccessResult(), nil
-//	}
-//
-//	type DataMigration struct {
-//		Setup  *DatabaseSetup  // Depends on DatabaseSetup
-//		Logger *slog.Logger
-//	}
-//
-//	func (d *DataMigration) Init() error { return nil }
-//	func (d *DataMigration) Run(ctx context.Context) (Result, error) {
-//		// Run migrations
-//		d.Logger.Info("running migrations")
-//		return NewSuccessResult(), nil
-//	}
-//
-//	// Configure and execute with result utilization
-//	func main() {
-//		config := &Config{Database: DatabaseConfig{Connection: "postgres://..."}}
-//		logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-//
-//		// Keep references to activities for result access
-//		dbSetup := &DatabaseSetup{}
-//		dataMigration := &DataMigration{}
-//
-//		orchestrator := NewOrchestrator(WithConfig(config))
-//		orchestrator.Inject(logger)
-//		orchestrator.AddActivity(dbSetup, dataMigration)
-//
-//		if err := orchestrator.Execute(ctx); err != nil {
-//			log.Fatal(err)
-//		}
-//
-//		// Access individual results for decision making
-//		if result, ok := orchestrator.GetResultByActivity(dbSetup); ok {
-//			if result.IsSuccess() {
-//				logger.Info("database setup completed successfully")
-//			} else {
-//				logger.Error("database setup failed")
-//				return // Don't proceed with dependent operations
-//			}
-//		}
-//
-//		if result, ok := orchestrator.GetResultByActivity(dataMigration); ok {
-//			if result.IsSuccess() {
-//				logger.Info("migrations completed successfully")
-//				// Emit success metrics, trigger notifications, etc.
-//			}
-//		}
-//
-//		// Example: Conditional logic based on results
-//		allResults := orchestrator.GetAllResults()
-//		successCount := 0
-//		for _, result := range allResults {
-//			if result.IsSuccess() {
-//				successCount++
-//			}
-//		}
-//
-//		if successCount == len(allResults) {
-//			logger.Info("all activities completed successfully")
-//			// Trigger cleanup, shutdown resources, etc.
-//		} else {
-//			logger.Warn("some activities failed", "success_count", successCount, "total", len(allResults))
-//			// Handle partial failure scenario
-//		}
-//	}
-//
-// # Avoiding Common Pitfalls
-//
-// 1. Result Access Timing: Always access results after Execute() completes
-// 2. Error Handling: Check both Execute() errors and individual activity results
-//
-// # Advanced Features
-//
-// Custom Logging: Provide custom loggers for detailed observability:
-//
-//	orchestrator := NewOrchestrator(WithConfig(config), WithLogger(customLogger))
+// Isolation: Individual activity execution failures don't stop other activities from
+// running. However, if an activity's Execute() method returns an error, all activities
+// that depend on it will be skipped (marked as Skipped state with nil Error).
 //
 // # Thread Safety
 //
-// The orchestrator is thread-safe. Multiple goroutines can safely call
-// result access methods while execution is in progress. However, activities
-// should not be added after Execute() has been called.
+// All orchestrator methods are thread-safe. Activities can safely call result methods
+// during execution. Result objects are immutable once set and GetAllResults() returns
+// a copy to prevent external modification.
 //
-// Safe operations during execution:
-//   - GetResult(), GetResultByActivity(), GetAllResults()
-//   - All result access methods
-//   - Logging operations
+// # Best Practices
 //
-// Unsafe operations during execution:
-//   - AddActivity()
-//   - Inject()
-//   - Concurrent Execute() calls
-//
-// # Debugging and Observability
-//
-// The orchestrator provides extensive structured logging for debugging:
-//   - Dependency graph construction details
-//   - Activity execution order and timing
-//   - Error details with full context
-//   - ActivityID information in all log messages
+// Use named dependencies when you need to access the dependency in your activity.
+// Use unnamed dependencies (_) when you only need ordering constraints.
+// Validate in Init() to fail fast for configuration issues.
+// Handle context cancellation gracefully in Execute().
 package orchestrator
