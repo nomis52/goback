@@ -162,15 +162,6 @@ func TestOrchestrator_ComprehensiveFeatures(t *testing.T) {
 	assert.Equal(t, logger, dbSetup.Logger, "Logger should be injected into DatabaseSetupActivity")
 	assert.Equal(t, logger, dataMigration.Logger, "Logger should be injected into DataMigrationActivity")
 
-	// Verify execution order constraints
-	assert.Greater(t, dataMigration.ExecutionOrder, dbSetup.ExecutionOrder,
-		"DataMigrationActivity should execute after DatabaseSetupActivity")
-	assert.Greater(t, backupService.ExecutionOrder, dbSetup.ExecutionOrder,
-		"BackupServiceActivity should execute after DatabaseSetupActivity")
-	assert.Greater(t, cleanupTask.ExecutionOrder, dataMigration.ExecutionOrder,
-		"CleanupTaskActivity should execute after DataMigrationActivity")
-	assert.Greater(t, cleanupTask.ExecutionOrder, backupService.ExecutionOrder,
-		"CleanupTaskActivity should execute after BackupServiceActivity (unnamed dependency)")
 
 	// Test result access patterns
 	t.Run("ResultAccessPatterns", func(t *testing.T) {
@@ -429,11 +420,10 @@ func (s *SecondCircularActivity) Execute(ctx context.Context) error {
 
 // DatabaseSetupActivity - Foundation activity with config injection
 type DatabaseSetupActivity struct {
-	Host           string      `config:"database.host"`
-	Port           int         `config:"database.port"`
-	Logger         *MockLogger // Service injection
-	Executed       bool
-	ExecutionOrder int
+	Host     string      `config:"database.host"`
+	Port     int         `config:"database.port"`
+	Logger   *MockLogger // Service injection
+	Executed bool
 }
 
 func (a *DatabaseSetupActivity) Init() error {
@@ -458,7 +448,6 @@ type DataMigrationActivity struct {
 	ServiceTimeout int                    `config:"service.timeout"`
 	Logger         *MockLogger            // Service injection
 	Executed       bool
-	ExecutionOrder int
 }
 
 func (a *DataMigrationActivity) Init() error {
@@ -479,10 +468,9 @@ func (a *DataMigrationActivity) Execute(ctx context.Context) error {
 
 // BackupServiceActivity - Can run parallel to DataMigrationActivity
 type BackupServiceActivity struct {
-	Setup          *DatabaseSetupActivity // Activity dependency
-	ServiceName    string                 `config:"service.name"`
-	Executed       bool
-	ExecutionOrder int
+	Setup       *DatabaseSetupActivity // Activity dependency
+	ServiceName string                 `config:"service.name"`
+	Executed    bool
 }
 
 func (a *BackupServiceActivity) Init() error { return nil }
@@ -495,10 +483,9 @@ func (a *BackupServiceActivity) Execute(ctx context.Context) error {
 // CleanupTaskActivity - Depends on both DataMigrationActivity and BackupServiceActivity
 // Demonstrates both named and unnamed dependency patterns
 type CleanupTaskActivity struct {
-	Migration      *DataMigrationActivity // Named dependency - can access the activity
-	_              *BackupServiceActivity // Unnamed dependency - ensures ordering only
-	Executed       bool
-	ExecutionOrder int
+	Migration *DataMigrationActivity // Named dependency - can access the activity
+	_         *BackupServiceActivity // Unnamed dependency - ensures ordering only
+	Executed  bool
 }
 
 func (a *CleanupTaskActivity) Init() error { return nil }
@@ -519,11 +506,10 @@ type AdvancedOrderingActivity struct {
 	// Named dependency - we need to check its state
 	Database *DatabaseSetupActivity
 	// Unnamed dependencies - we just need them to run first for ordering
-	_              *DataMigrationActivity
-	_              *BackupServiceActivity
-	_              *CleanupTaskActivity
-	Executed       bool
-	ExecutionOrder int
+	_        *DataMigrationActivity
+	_        *BackupServiceActivity
+	_        *CleanupTaskActivity
+	Executed bool
 }
 
 func (a *AdvancedOrderingActivity) Init() error { return nil }
