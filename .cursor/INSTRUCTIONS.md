@@ -51,6 +51,16 @@
 7. No argument parsing should occur in `main()` or directly in `run()`; always use `parseArgs()`.
 8. If you add new command-line arguments, update the `Args` struct and `parseArgs()` accordingly.
 
+## Documentation Standards
+
+11. **All documentation must be in godoc comments - never create separate .md files for API contracts or documentation.**
+    - Use package-level comments in `doc.go` for comprehensive package documentation
+    - Document API contracts, usage patterns, and examples directly in godoc comments
+    - Include state diagrams, behavior specifications, and error handling patterns in package documentation
+    - For complex packages, create a `doc.go` file with extensive package-level documentation
+    - Method and type documentation should be complete and self-contained
+    - **Exception:** Only README.md files for project overview and setup instructions are allowed
+
 ## File Organization
 
 9. **Test files must be placed in the same directory as the code they test.** 
@@ -119,6 +129,7 @@ func run() error {
   - Include a brief example usage in the package comment.
   - When writing documentation for methods, focus on what action is performed, rather than how the method is implemented.
   - The documentation on each method & type should specify the contract, don't document the contract in separate markdown files.
+  - **ALL documentation must be in godoc comments - never create separate .md files for API contracts or documentation.**
 
 - **General Rule:**  
   - The directory name must always match the package name.
