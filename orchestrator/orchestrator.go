@@ -164,11 +164,10 @@ func (o *Orchestrator) Execute(ctx context.Context) error {
 	if err := o.buildDependencyGraph(); err != nil {
 		o.logger.Error("dependency analysis failed", "error", err)
 		// For circular dependencies, leave results in NotStarted state with no individual errors
-		// For other validation failures, update results to show validation failure
+		// For other validation failures, leave results in NotStarted state with no individual errors
+		// (structural issues are not individual activity failures)
 		if !strings.Contains(err.Error(), "circular dependency") {
-			for id := range o.activityMap {
-				o.resultMap[id] = &Result{State: NotStarted, Error: fmt.Errorf("validation failed: %w", err)}
-			}
+			// Keep activities in NotStarted state with Error = nil for structural issues
 		}
 		return fmt.Errorf("dependency analysis failed: %w", err)
 	}
@@ -182,13 +181,8 @@ func (o *Orchestrator) Execute(ctx context.Context) error {
 		activityLogger.Debug("initializing activity")
 		if err := activity.Init(); err != nil {
 			activityLogger.Error("activity initialization failed", "error", err)
-			// Update results for remaining activities that haven't been initialized
-			for activityID := range o.activityMap {
-				// Only update if still in NotStarted state (hasn't been processed yet)
-				if result := o.resultMap[activityID]; result != nil && result.State == NotStarted {
-					o.resultMap[activityID] = &Result{State: NotStarted, Error: fmt.Errorf("initialization blocked by %s: %w", id.String(), err)}
-				}
-			}
+			// Activities remain in NotStarted state when initialization fails
+			// (initialization failure is a structural issue, not individual activity failures)
 			return fmt.Errorf("activity %s initialization failed: %w", id.String(), err)
 		}
 		activityLogger.Debug("activity initialized successfully")
@@ -256,11 +250,13 @@ func (o *Orchestrator) runActivity(ctx context.Context, id ActivityID, activity 
 
 	for _, depID := range dependencies {
 		activityLogger.Debug("waiting for dependency", "dependency", depID.String())
+
+		// Wait for this specific dependency to complete
 		select {
 		case <-ctx.Done():
 			activityLogger.Warn("activity cancelled due to context", "error", ctx.Err())
-			// Update result to show cancellation
-			result = &Result{State: Skipped, Error: fmt.Errorf("cancelled: %w", ctx.Err())}
+			// Update result to show cancellation (Error remains nil as per documentation)
+			result = &Result{State: Skipped, Error: nil}
 			o.mu.Lock()
 			o.resultMap[id] = result
 			o.mu.Unlock()
@@ -269,39 +265,43 @@ func (o *Orchestrator) runActivity(ctx context.Context, id ActivityID, activity 
 			errorChan <- fmt.Errorf("activity %s cancelled: %w", id.String(), ctx.Err())
 			return
 		case <-o.completionChans[depID]:
+			// This dependency has completed, now check if it was successful
 			activityLogger.Debug("dependency completed", "dependency", depID.String())
-
-			// Check if the dependency was successful using map lookup (O(1))
-			o.mu.RLock()
-			depResult, exists := o.resultMap[depID]
-			o.mu.RUnlock()
-
-			if !exists {
-				err := fmt.Errorf("dependency %s completed but no result found", depID.String())
-				activityLogger.Error("dependency completed but no result found", "dependency", depID.String())
-				result = &Result{State: Skipped, Error: err}
-				o.mu.Lock()
-				o.resultMap[id] = result
-				o.mu.Unlock()
-				// Signal completion for this activity since it's now skipped
-				close(o.completionChans[id])
-				errorChan <- fmt.Errorf("activity %s: %w", id.String(), err)
-				return
-			}
-
-			if !depResult.IsSuccess() {
-				err := fmt.Errorf("dependency %s failed: %w", depID.String(), depResult.Error)
-				activityLogger.Error("dependency failed", "dependency", depID.String(), "error", depResult.Error)
-				result = &Result{State: Skipped, Error: err}
-				o.mu.Lock()
-				o.resultMap[id] = result
-				o.mu.Unlock()
-				// Signal completion for this activity since it's now skipped
-				close(o.completionChans[id])
-				errorChan <- fmt.Errorf("activity %s skipped due to dependency failure: %s", id.String(), depID.String())
-				return
-			}
 		}
+
+		// Check if the dependency was successful using map lookup (O(1))
+		o.mu.RLock()
+		depResult, exists := o.resultMap[depID]
+		o.mu.RUnlock()
+
+		if !exists {
+			activityLogger.Error("dependency completed but no result found", "dependency", depID.String())
+			// Skipped activities have Error = nil as per documentation
+			result = &Result{State: Skipped, Error: nil}
+			o.mu.Lock()
+			o.resultMap[id] = result
+			o.mu.Unlock()
+			// Signal completion for this activity since it's now skipped
+			close(o.completionChans[id])
+			errorChan <- fmt.Errorf("activity %s skipped: dependency %s completed but no result found", id.String(), depID.String())
+			return
+		}
+
+		if !depResult.IsSuccess() {
+			activityLogger.Error("dependency failed", "dependency", depID.String(), "error", depResult.Error)
+			// Skipped activities have Error = nil as per documentation
+			result = &Result{State: Skipped, Error: nil}
+			o.mu.Lock()
+			o.resultMap[id] = result
+			o.mu.Unlock()
+			// Signal completion for this activity since it's now skipped
+			close(o.completionChans[id])
+			errorChan <- fmt.Errorf("activity %s skipped due to dependency failure: %s", id.String(), depID.String())
+			return
+		}
+
+		// This dependency succeeded, continue to check next dependency
+		activityLogger.Debug("dependency succeeded", "dependency", depID.String())
 	}
 
 	activityLogger.Info("all dependencies satisfied, executing activity")
@@ -373,8 +373,14 @@ func (o *Orchestrator) buildDependencyGraph() error {
 			field := activityType.Field(i)
 			fieldValue := activityValue.Field(i)
 
-			// Skip unexported fields and config fields
-			if !fieldValue.CanSet() || field.Tag.Get("config") != "" {
+			// Skip config fields
+			if field.Tag.Get("config") != "" {
+				continue
+			}
+
+			// Skip unexported fields (but allow blank identifier fields for dependency ordering)
+			if !fieldValue.CanSet() && field.Name != "_" {
+				o.logger.Debug("skipping unexported field", "activity_id", id.String(), "field_name", field.Name)
 				continue
 			}
 
@@ -400,11 +406,18 @@ func (o *Orchestrator) buildDependencyGraph() error {
 					if field.Name != "_" {
 						// Use map lookup to get dependency activity (O(1))
 						dependencyActivity := o.activityMap[depID]
-						fieldValue.Set(reflect.ValueOf(dependencyActivity))
-						o.logger.Debug("dependency injected into named field", "activity_id", id.String(), "field", field.Name)
+						if fieldValue.CanSet() {
+							fieldValue.Set(reflect.ValueOf(dependencyActivity))
+							o.logger.Debug("dependency injected into named field", "activity_id", id.String(), "field", field.Name)
+						} else {
+							o.logger.Debug("dependency detected but field not settable", "activity_id", id.String(), "field", field.Name)
+						}
 					} else {
 						o.logger.Debug("unnamed dependency registered for ordering only", "activity_id", id.String(), "dependency", depID.String())
 					}
+				} else {
+					// Log when a potential dependency is not found
+					o.logger.Debug("pointer field does not match any activity", "activity_id", id.String(), "field_name", field.Name, "pointed_type", pointedType.String())
 				}
 			} else if _, exists := activityTypeMap[field.Type]; exists {
 				// Direct struct dependency - this is not allowed!
@@ -436,10 +449,8 @@ func (o *Orchestrator) buildDependencyGraph() error {
 
 	// Validate dependencies after injection
 	if err := o.validateDependencies(); err != nil {
-		// For other validation failures, activities remain in NotStarted state with error
-		for id := range o.activityMap {
-			o.resultMap[id] = &Result{State: NotStarted, Error: fmt.Errorf("validation failed: %w", err)}
-		}
+		// For validation failures, activities remain in NotStarted state with Error = nil
+		// (dependency validation is a structural issue, not individual activity failures)
 		return fmt.Errorf("dependency validation failed: %w", err)
 	}
 
