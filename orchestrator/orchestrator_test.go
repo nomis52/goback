@@ -3,6 +3,8 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"os"
 	"sync"
 	"testing"
 
@@ -96,7 +98,6 @@ func TestOrchestrator_BasicFeatures(t *testing.T) {
 	})
 }
 
-/*
 // TestOrchestrator_ComprehensiveFeatures tests all major orchestrator features
 func TestOrchestrator_ComprehensiveFeatures(t *testing.T) {
 	// Create test config
@@ -162,7 +163,6 @@ func TestOrchestrator_ComprehensiveFeatures(t *testing.T) {
 	assert.Equal(t, logger, dbSetup.Logger, "Logger should be injected into DatabaseSetupActivity")
 	assert.Equal(t, logger, dataMigration.Logger, "Logger should be injected into DataMigrationActivity")
 
-
 	// Test result access patterns
 	t.Run("ResultAccessPatterns", func(t *testing.T) {
 		// Pattern 1: Access by activity reference (recommended)
@@ -201,7 +201,6 @@ func TestOrchestrator_ComprehensiveFeatures(t *testing.T) {
 	assert.Contains(t, messages, "Setting up database", "Logger should have been used")
 	assert.Contains(t, messages, "Running data migration", "Logger should have been used")
 }
-*/
 
 // TestOrchestrator_FailureHandling tests various failure scenarios
 func TestOrchestrator_FailureHandling(t *testing.T) {
