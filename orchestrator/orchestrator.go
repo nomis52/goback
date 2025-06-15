@@ -9,7 +9,16 @@ import (
 	"sync"
 )
 
-// Orchestrator manages the execution of activities with optimized lookups.
+// Orchestrator manages the execution of activities with dependency resolution.
+//
+// Core guarantees:
+// - Results are available immediately after AddActivity() in NotStarted state
+// - All activities will have final results after Execute() completes
+// - Thread-safe result access via GetResultByActivity() and related methods
+// - Automatic dependency injection for activity fields and configuration
+// - Circular dependency detection with error reporting
+//
+// See package documentation for complete usage patterns and examples.
 type Orchestrator struct {
 	config interface{}
 	logger *slog.Logger
@@ -66,7 +75,18 @@ func NewOrchestrator(opts ...OrchestratorOption) *Orchestrator {
 	return o
 }
 
-// Inject adds one or more typed dependencies to the orchestrator for injection into activities
+// Inject adds typed dependencies for injection into activity fields.
+//
+// BEHAVIOR:
+// - Dependencies are matched by exact type to activity struct fields
+// - Cannot inject the same type twice (returns error)
+// - Must be called before Execute() - dependencies are injected during execution setup
+// - Activities with missing dependencies will cause Execute() to fail
+//
+// EXAMPLE:
+//
+//	logger := &Logger{}
+//	orchestrator.Inject(logger) // Injects into fields of type *Logger
 func (o *Orchestrator) Inject(deps ...interface{}) error {
 	for _, dep := range deps {
 		if dep == nil {
@@ -86,8 +106,12 @@ func (o *Orchestrator) Inject(deps ...interface{}) error {
 }
 
 // AddActivity adds one or more activities to the orchestrator.
-// Upon return, the activity results are available via GetResult().
+//
+// IMPORTANT: Results are immediately available via GetResultByActivity() in NotStarted state.
+// This allows callers to access result objects before Execute() is called.
+//
 // Returns an error if an activity of the same type already exists.
+// Activity types are identified by their full module path + struct name to prevent collisions.
 func (o *Orchestrator) AddActivity(activities ...Activity) error {
 	for _, activity := range activities {
 		id := o.getOrCacheActivityID(activity)
@@ -109,44 +133,25 @@ func (o *Orchestrator) AddActivity(activities ...Activity) error {
 	return nil
 }
 
-// Execute runs all activities with proper dependency management using goroutines.
+// Execute runs all activities with dependency resolution and proper error handling.
 //
-// After Execute() returns (success or failure), every activity will have a Result
-// available via GetResultByActivity() that accurately reflects what happened:
+// BEHAVIOR CONTRACT:
+// After Execute() returns (success or failure), every activity will have a final Result
+// that accurately reflects what happened. Results progress through states:
+// NotStarted -> Pending -> Running -> (Completed|Skipped)
 //
-// AFTER EXECUTE() - depending on what occurred:
+// FINAL RESULT STATES:
+// - NotStarted: Validation failed or circular dependency detected
+// - Skipped: Dependency failed or context cancelled (Error field remains nil)
+// - Completed: Activity's Execute() was called (Error contains Execute() return value)
 //
-// 1. Circular Dependency Detection:
-//   - State: NotStarted, Error: nil
-//   - Activities never progressed due to structural issues
+// DEPENDENCY BEHAVIOR:
+// - Activities wait for ALL dependencies to complete successfully
+// - If any dependency fails, dependent activities are Skipped
+// - Execution continues for remaining activities (fail-fast disabled)
+// - Both named and unnamed dependencies establish execution ordering
 //
-// 2. Other Validation Failures (config errors, nil dependencies, etc.):
-//   - State: NotStarted, Error: "validation failed: <reason>"
-//   - Activities never progressed beyond initial registration
-//
-// 3. Initialization Failures:
-//   - State: NotStarted, Error: "initialization blocked by <activity>: <reason>"
-//   - Execution phase never started due to Init() failure
-//
-// 4. Waiting for Dependencies:
-//   - State: Pending, Error: nil
-//   - Execution started, activity is waiting for dependencies
-//
-// 5. Dependency Failures:
-//   - State: Skipped, Error: "dependency <dep> failed: <reason>"
-//   - Activity was ready to run but dependency failed
-//
-// 6. Context Cancellation:
-//   - State: Skipped, Error: "cancelled: context deadline exceeded"
-//
-// 7. Currently Executing:
-//   - State: Running, Error: nil
-//
-// 8. Execution Failures:
-//   - State: Completed, Error: <activity's execution error>
-//
-// 9. Success:
-//   - State: Completed, Error: nil
+// See package documentation for complete behavior specification.
 func (o *Orchestrator) Execute(ctx context.Context) error {
 	if len(o.activityMap) == 0 {
 		o.logger.Info("no activities to execute")
@@ -158,9 +163,12 @@ func (o *Orchestrator) Execute(ctx context.Context) error {
 	// 1. Build dependency graph and inject dependencies/config
 	if err := o.buildDependencyGraph(); err != nil {
 		o.logger.Error("dependency analysis failed", "error", err)
-		// Update all results to show validation failure (using map iteration)
-		for id := range o.activityMap {
-			o.resultMap[id] = &Result{State: NotStarted, Error: fmt.Errorf("validation failed: %w", err)}
+		// For circular dependencies, leave results in NotStarted state with no individual errors
+		// For other validation failures, update results to show validation failure
+		if !strings.Contains(err.Error(), "circular dependency") {
+			for id := range o.activityMap {
+				o.resultMap[id] = &Result{State: NotStarted, Error: fmt.Errorf("validation failed: %w", err)}
+			}
 		}
 		return fmt.Errorf("dependency analysis failed: %w", err)
 	}
@@ -256,6 +264,8 @@ func (o *Orchestrator) runActivity(ctx context.Context, id ActivityID, activity 
 			o.mu.Lock()
 			o.resultMap[id] = result
 			o.mu.Unlock()
+			// Signal completion for this activity since it's now skipped
+			close(o.completionChans[id])
 			errorChan <- fmt.Errorf("activity %s cancelled: %w", id.String(), ctx.Err())
 			return
 		case <-o.completionChans[depID]:
@@ -273,6 +283,8 @@ func (o *Orchestrator) runActivity(ctx context.Context, id ActivityID, activity 
 				o.mu.Lock()
 				o.resultMap[id] = result
 				o.mu.Unlock()
+				// Signal completion for this activity since it's now skipped
+				close(o.completionChans[id])
 				errorChan <- fmt.Errorf("activity %s: %w", id.String(), err)
 				return
 			}
@@ -284,7 +296,9 @@ func (o *Orchestrator) runActivity(ctx context.Context, id ActivityID, activity 
 				o.mu.Lock()
 				o.resultMap[id] = result
 				o.mu.Unlock()
-				errorChan <- fmt.Errorf("activity %s failed because dependency %s failed", id.String(), depID.String())
+				// Signal completion for this activity since it's now skipped
+				close(o.completionChans[id])
+				errorChan <- fmt.Errorf("activity %s skipped due to dependency failure: %s", id.String(), depID.String())
 				return
 			}
 		}
@@ -415,7 +429,8 @@ func (o *Orchestrator) buildDependencyGraph() error {
 	// Validate no circular dependencies
 	if err := o.validateNoCycles(); err != nil {
 		o.logger.Error("circular dependency detected", "error", err)
-		// For circular dependencies, leave results in NotStarted state
+		// For circular dependencies, leave results in NotStarted state with no individual errors
+		// (circular dependency is a structural issue, not an individual activity failure)
 		return fmt.Errorf("circular dependency detected: %w", err)
 	}
 
@@ -656,21 +671,32 @@ func (o *Orchestrator) getOrCacheActivityID(activity Activity) ActivityID {
 	return id
 }
 
-// GetResult returns the result of a completed activity by ActivityID (thread-safe)
+// GetResult returns the result for an activity by ActivityID (thread-safe).
+//
+// Use GetResultByActivity() instead when you have the activity reference.
+// Returns nil if the ActivityID was never registered via AddActivity().
 func (o *Orchestrator) GetResult(id ActivityID) *Result {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
 	return o.resultMap[id]
 }
 
-// GetResultByActivity returns the result of a completed activity by activity reference (thread-safe)
-// Optimized to use cached ActivityID lookup
+// GetResultByActivity returns the result for an activity by reference (thread-safe).
+//
+// AVAILABILITY: Results are available immediately after AddActivity() (NotStarted state)
+// and persist with final state after Execute() completes.
+//
+// PREFERRED METHOD: Use this over GetResult(ActivityID) when you have the activity reference.
+// Performance optimized with cached ActivityID lookups.
 func (o *Orchestrator) GetResultByActivity(activity Activity) *Result {
 	id := o.getOrCacheActivityID(activity)
 	return o.GetResult(id)
 }
 
-// GetAllResults returns all activity results (thread-safe)
+// GetAllResults returns a copy of all activity results (thread-safe).
+//
+// The returned map is a copy - modifications will not affect the orchestrator's internal state.
+// Keys are ActivityID structs that uniquely identify activities across packages.
 func (o *Orchestrator) GetAllResults() map[ActivityID]*Result {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
