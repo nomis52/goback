@@ -7,46 +7,57 @@ import (
 	"os"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// Test config structure
-type TestConfig struct {
-	Database struct {
-		Host string `yaml:"host"`
-		Port int    `yaml:"port"`
-	} `yaml:"database"`
-	Service struct {
-		Name    string `yaml:"name"`
-		Timeout int    `yaml:"timeout"`
-	} `yaml:"service"`
+// Test activities for circular dependency scenarios
+type FirstCircularActivity struct {
+	Second *SecondCircularActivity
 }
 
-// Mock types for testing service injection
-type MockLogger struct {
-	messages []string
-	mu       sync.Mutex
+func (f *FirstCircularActivity) Init() error { return nil }
+func (f *FirstCircularActivity) Execute(ctx context.Context) error {
+	return nil
 }
 
-func (m *MockLogger) Log(message string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.messages = append(m.messages, message)
+type SecondCircularActivity struct {
+	First *FirstCircularActivity
 }
 
-func (m *MockLogger) GetMessages() []string {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	// Return a copy to avoid race conditions when reading
-	result := make([]string, len(m.messages))
-	copy(result, m.messages)
-	return result
+func (s *SecondCircularActivity) Init() error { return nil }
+func (s *SecondCircularActivity) Execute(ctx context.Context) error {
+	return nil
 }
 
-// Test activities with various dependency patterns
+// BasicActivity - For testing failure scenarios
+type BasicActivity struct {
+	ShouldFail bool
+	Executed   bool
+}
+
+func (a *BasicActivity) Init() error { return nil }
+
+func (a *BasicActivity) Execute(ctx context.Context) error {
+	a.Executed = true
+	if a.ShouldFail {
+		return fmt.Errorf("intentional failure")
+	}
+	return nil
+}
+
+// Test activities for failure scenarios
+type DependentOnFailingActivity struct {
+	_        *BasicActivity // Unnamed dependency on failing activity
+	Executed bool
+}
+
+func (d *DependentOnFailingActivity) Init() error { return nil }
+func (d *DependentOnFailingActivity) Execute(ctx context.Context) error {
+	d.Executed = true
+	return nil
+}
 
 // DatabaseSetupActivity - Foundation activity with config injection
 type DatabaseSetupActivity struct {
@@ -67,10 +78,10 @@ func (a *DatabaseSetupActivity) Init() error {
 	return nil
 }
 
-func (a *DatabaseSetupActivity) Run(ctx context.Context) (Result, error) {
+func (a *DatabaseSetupActivity) Execute(ctx context.Context) error {
 	a.Logger.Log("Setting up database")
 	a.Executed = true
-	return NewSuccessResult(), nil
+	return nil
 }
 
 // DataMigrationActivity - Depends on DatabaseSetupActivity
@@ -89,13 +100,13 @@ func (a *DataMigrationActivity) Init() error {
 	return nil
 }
 
-func (a *DataMigrationActivity) Run(ctx context.Context) (Result, error) {
+func (a *DataMigrationActivity) Execute(ctx context.Context) error {
 	if !a.Setup.Executed {
-		return NewFailureResult(), fmt.Errorf("database setup not executed")
+		return fmt.Errorf("database setup not executed")
 	}
 	a.Logger.Log("Running data migration")
 	a.Executed = true
-	return NewSuccessResult(), nil
+	return nil
 }
 
 // BackupServiceActivity - Can run parallel to DataMigrationActivity
@@ -108,9 +119,9 @@ type BackupServiceActivity struct {
 
 func (a *BackupServiceActivity) Init() error { return nil }
 
-func (a *BackupServiceActivity) Run(ctx context.Context) (Result, error) {
+func (a *BackupServiceActivity) Execute(ctx context.Context) error {
 	a.Executed = true
-	return NewSuccessResult(), nil
+	return nil
 }
 
 // CleanupTaskActivity - Depends on both DataMigrationActivity and BackupServiceActivity
@@ -124,14 +135,14 @@ type CleanupTaskActivity struct {
 
 func (a *CleanupTaskActivity) Init() error { return nil }
 
-func (a *CleanupTaskActivity) Run(ctx context.Context) (Result, error) {
+func (a *CleanupTaskActivity) Execute(ctx context.Context) error {
 	// Can access Migration but not the BackupServiceActivity (unnamed dep)
 	// The unnamed dependency still ensures BackupServiceActivity runs first
 	if a.Migration != nil && !a.Migration.Executed {
-		return NewFailureResult(), fmt.Errorf("migration dependency not satisfied")
+		return fmt.Errorf("migration dependency not satisfied")
 	}
 	a.Executed = true
-	return NewSuccessResult(), nil
+	return nil
 }
 
 // AdvancedOrderingActivity - Demonstrates complex unnamed dependency pattern
@@ -140,39 +151,23 @@ type AdvancedOrderingActivity struct {
 	// Named dependency - we need to check its state
 	Database *DatabaseSetupActivity
 	// Unnamed dependencies - we just need them to run first for ordering
-	_        *DataMigrationActivity
-	_        *BackupServiceActivity
-	_        *CleanupTaskActivity
-	Executed bool
+	_              *DataMigrationActivity
+	_              *BackupServiceActivity
+	_              *CleanupTaskActivity
+	Executed       bool
 	ExecutionOrder int
 }
 
 func (a *AdvancedOrderingActivity) Init() error { return nil }
 
-func (a *AdvancedOrderingActivity) Run(ctx context.Context) (Result, error) {
+func (a *AdvancedOrderingActivity) Execute(ctx context.Context) error {
 	// We can access Database but not the unnamed dependencies
 	// This is perfect for "run after these complete" scenarios
 	if a.Database != nil && !a.Database.Executed {
-		return NewFailureResult(), fmt.Errorf("database not ready")
+		return fmt.Errorf("database not ready")
 	}
 	a.Executed = true
-	return NewSuccessResult(), nil
-}
-
-// FailingActivity - For testing failure scenarios
-type FailingActivity struct {
-	ShouldFail bool
-	Executed   bool
-}
-
-func (a *FailingActivity) Init() error { return nil }
-
-func (a *FailingActivity) Run(ctx context.Context) (Result, error) {
-	a.Executed = true
-	if a.ShouldFail {
-		return NewFailureResult(), fmt.Errorf("intentional failure")
-	}
-	return NewSuccessResult(), nil
+	return nil
 }
 
 // TestOrchestrator_ComprehensiveFeatures tests all major orchestrator features
@@ -206,18 +201,20 @@ func TestOrchestrator_ComprehensiveFeatures(t *testing.T) {
 
 	// Create orchestrator with custom logger
 	slogLogger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	orchestrator := NewOrchestrator(config, WithLogger(slogLogger))
+	orchestrator := NewOrchestrator(WithConfig(config), WithLogger(slogLogger))
 
 	// Test service injection
 	orchestrator.Inject(logger)
 
 	// Test activity registration in random order
-	orchestrator.AddActivity(cleanupTask, dataMigration)
-	orchestrator.AddActivity(dbSetup, backupService)
+	err := orchestrator.AddActivity(cleanupTask, dataMigration)
+	require.NoError(t, err, "Should add activities successfully")
+	err = orchestrator.AddActivity(dbSetup, backupService)
+	require.NoError(t, err, "Should add activities successfully")
 
 	// Execute
 	ctx := context.Background()
-	err := orchestrator.Execute(ctx)
+	err = orchestrator.Execute(ctx)
 
 	// Verify successful execution
 	require.NoError(t, err, "Expected no error during execution")
@@ -251,12 +248,12 @@ func TestOrchestrator_ComprehensiveFeatures(t *testing.T) {
 	// Test result access patterns
 	t.Run("ResultAccessPatterns", func(t *testing.T) {
 		// Pattern 1: Access by activity reference (recommended)
-		result, ok := orchestrator.GetResultByActivity(dbSetup)
-		require.True(t, ok, "Should find result for DatabaseSetupActivity")
+		result := orchestrator.GetResultByActivity(dbSetup)
+		require.NotNil(t, result, "Should find result for DatabaseSetupActivity")
 		assert.True(t, result.IsSuccess(), "DatabaseSetupActivity should have succeeded")
 
-		result, ok = orchestrator.GetResultByActivity(dataMigration)
-		require.True(t, ok, "Should find result for DataMigrationActivity")
+		result = orchestrator.GetResultByActivity(dataMigration)
+		require.NotNil(t, result, "Should find result for DataMigrationActivity")
 		assert.True(t, result.IsSuccess(), "DataMigrationActivity should have succeeded")
 
 		// Pattern 2: Access by ActivityID
@@ -264,8 +261,8 @@ func TestOrchestrator_ComprehensiveFeatures(t *testing.T) {
 			Module: "github.com/nomis52/goback/orchestrator", // This test package
 			Type:   "DatabaseSetupActivity",
 		}
-		result, ok = orchestrator.GetResult(dbSetupID)
-		require.True(t, ok, "Should find result by ActivityID")
+		result = orchestrator.GetResult(dbSetupID)
+		require.NotNil(t, result, "Should find result by ActivityID")
 		assert.True(t, result.IsSuccess(), "Result should indicate success")
 
 		// Pattern 3: Get all results
@@ -279,10 +276,6 @@ func TestOrchestrator_ComprehensiveFeatures(t *testing.T) {
 			}
 		}
 		assert.Equal(t, 4, successCount, "All activities should have succeeded")
-
-		// Pattern 4: Get results by module
-		moduleResults := orchestrator.GetResultsByModule("github.com/nomis52/goback/orchestrator")
-		assert.Len(t, moduleResults, 4, "Should have all results from this test module")
 	})
 
 	// Test mock services were used
@@ -310,14 +303,16 @@ func TestOrchestrator_UnnamedDependencies(t *testing.T) {
 	cleanupTask := &CleanupTaskActivity{}
 	advancedOrdering := &AdvancedOrderingActivity{}
 
-	orchestrator := NewOrchestrator(config)
+	orchestrator := NewOrchestrator(WithConfig(config))
 	orchestrator.Inject(logger)
 
 	// Add activities in random order to test dependency resolution
-	orchestrator.AddActivity(advancedOrdering, cleanupTask, backupService)
-	orchestrator.AddActivity(dataMigration, dbSetup)
+	err := orchestrator.AddActivity(advancedOrdering, cleanupTask, backupService)
+	require.NoError(t, err, "Should add activities successfully")
+	err = orchestrator.AddActivity(dataMigration, dbSetup)
+	require.NoError(t, err, "Should add activities successfully")
 
-	err := orchestrator.Execute(context.Background())
+	err = orchestrator.Execute(context.Background())
 	require.NoError(t, err, "Should execute with unnamed dependencies")
 
 	// Verify all activities executed
@@ -344,8 +339,6 @@ func TestOrchestrator_UnnamedDependencies(t *testing.T) {
 	t.Log("Successfully tested complex unnamed dependency patterns")
 }
 
-
-
 // TestOrchestrator_FailureHandling tests various failure scenarios
 func TestOrchestrator_FailureHandling(t *testing.T) {
 	config := &TestConfig{
@@ -358,29 +351,33 @@ func TestOrchestrator_FailureHandling(t *testing.T) {
 	}
 
 	t.Run("ActivityFailure", func(t *testing.T) {
-		failingActivity := &FailingActivity{ShouldFail: true}
+		failingActivity := &BasicActivity{ShouldFail: true}
 
-		orchestrator := NewOrchestrator(config)
-		orchestrator.AddActivity(failingActivity)
+		orchestrator := NewOrchestrator()
+		err := orchestrator.AddActivity(failingActivity)
+		require.NoError(t, err, "Should add activity successfully")
 
-		err := orchestrator.Execute(context.Background())
+		err = orchestrator.Execute(context.Background())
 		require.Error(t, err, "Should fail when activity fails")
 
 		// Check that failing activity result is available
-		result, ok := orchestrator.GetResultByActivity(failingActivity)
-		require.True(t, ok, "Should have result for failing activity")
+		result := orchestrator.GetResultByActivity(failingActivity)
+		require.NotNil(t, result, "Should have result for failing activity")
 		assert.False(t, result.IsSuccess(), "Failing activity should report failure")
 	})
 
 	t.Run("ConfigurationError", func(t *testing.T) {
 		// Empty config should cause validation error
 		emptyConfig := &TestConfig{}
+		logger := &MockLogger{}
 		dbSetup := &DatabaseSetupActivity{}
 
-		orchestrator := NewOrchestrator(emptyConfig)
-		orchestrator.AddActivity(dbSetup)
+		orchestrator := NewOrchestrator(WithConfig(emptyConfig))
+		orchestrator.Inject(logger)
+		err := orchestrator.AddActivity(dbSetup)
+		require.NoError(t, err, "Should add activity successfully")
 
-		err := orchestrator.Execute(context.Background())
+		err = orchestrator.Execute(context.Background())
 		require.Error(t, err, "Should fail with empty database host")
 		assert.Contains(t, err.Error(), "database host not configured")
 	})
@@ -389,11 +386,12 @@ func TestOrchestrator_FailureHandling(t *testing.T) {
 		// Activity without required service injection
 		dbSetup := &DatabaseSetupActivity{}
 
-		orchestrator := NewOrchestrator(config)
+		orchestrator := NewOrchestrator(WithConfig(config))
 		// Don't inject logger - should cause validation error
-		orchestrator.AddActivity(dbSetup)
+		err := orchestrator.AddActivity(dbSetup)
+		require.NoError(t, err, "Should add activity successfully")
 
-		err := orchestrator.Execute(context.Background())
+		err = orchestrator.Execute(context.Background())
 		require.Error(t, err, "Should fail with missing logger dependency")
 	})
 
@@ -401,79 +399,64 @@ func TestOrchestrator_FailureHandling(t *testing.T) {
 		dbSetup := &DatabaseSetupActivity{}
 		logger := &MockLogger{}
 
-		orchestrator := NewOrchestrator(config)
+		orchestrator := NewOrchestrator(WithConfig(config))
 		orchestrator.Inject(logger)
-		orchestrator.AddActivity(dbSetup)
+		err := orchestrator.AddActivity(dbSetup)
+		require.NoError(t, err, "Should add activity successfully")
 
 		// Cancel context immediately
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		err := orchestrator.Execute(ctx)
+		err = orchestrator.Execute(ctx)
 		require.Error(t, err, "Should fail with cancelled context")
 		assert.Contains(t, err.Error(), "cancelled", "Error should indicate cancellation")
 	})
 
 	t.Run("UnnamedDependencyFailure", func(t *testing.T) {
 		// Test that unnamed dependency failures properly prevent dependent activities
-		logger := &MockLogger{}
-		dbSetup := &DatabaseSetupActivity{}
-		failingDep := &FailingActivity{ShouldFail: true}
-		
-		// Activity that depends on the failing activity via unnamed dependency
-		type DependentActivity struct {
-			_ *FailingActivity // Unnamed dependency on failing activity
-			Executed bool
-		}
-		dependent := &struct{ DependentActivity }{}
-		dependent.Init = func() error { return nil }
-		dependent.Run = func(ctx context.Context) (Result, error) {
-			dependent.Executed = true
-			return NewSuccessResult(), nil
-		}
+		failingDep := &BasicActivity{ShouldFail: true}
+		dependent := &DependentOnFailingActivity{}
 
-		orchestrator := NewOrchestrator(config)
-		orchestrator.Inject(logger)
-		orchestrator.AddActivity(dbSetup, failingDep, dependent)
+		orchestrator := NewOrchestrator()
+		err := orchestrator.AddActivity(failingDep, dependent)
+		require.NoError(t, err, "Should add activities successfully")
 
-		err := orchestrator.Execute(context.Background())
+		err = orchestrator.Execute(context.Background())
 		require.Error(t, err, "Should fail due to failing dependency")
 
 		// Verify dependent activity didn't execute due to failed unnamed dependency
 		assert.False(t, dependent.Executed, "Dependent activity should not execute when unnamed dependency fails")
+		fmt.Println(orchestrator.GetResultByActivity((dependent)))
+		assert.False(t, orchestrator.GetResultByActivity(dependent).IsSuccess())
 	})
 }
 
 // TestOrchestrator_CircularDependencyDetection tests circular dependency detection
 func TestOrchestrator_CircularDependencyDetection(t *testing.T) {
 	// Create activities with circular dependency
-	type FirstCircularActivity struct {
-		Second *SecondCircularActivity
-	}
-	type SecondCircularActivity struct {
-		First *FirstCircularActivity
-	}
+	firstActivity := &FirstCircularActivity{}
+	secondActivity := &SecondCircularActivity{}
 
-	// Implement interfaces
-	firstActivity := &struct {
-		FirstCircularActivity
-	}{}
-	secondActivity := &struct {
-		SecondCircularActivity
-	}{}
+	orchestrator := NewOrchestrator()
+	err := orchestrator.AddActivity(firstActivity, secondActivity)
+	require.NoError(t, err, "Should add activities successfully")
 
-	firstActivity.Init = func() error { return nil }
-	firstActivity.Run = func(ctx context.Context) (Result, error) { return NewSuccessResult(), nil }
-	secondActivity.Init = func() error { return nil }
-	secondActivity.Run = func(ctx context.Context) (Result, error) { return NewSuccessResult(), nil }
-
-	config := &TestConfig{}
-	orchestrator := NewOrchestrator(config)
-	orchestrator.AddActivity(firstActivity, secondActivity)
-
-	err := orchestrator.Execute(context.Background())
+	err = orchestrator.Execute(context.Background())
 	require.Error(t, err, "Should detect circular dependency")
 	assert.Contains(t, err.Error(), "circular dependency", "Error should indicate circular dependency")
+
+	// Both activities should remain in NotStarted state with no individual errors
+	// (circular dependency is a structural issue, not an individual activity failure)
+	firstResult := orchestrator.GetResultByActivity(firstActivity)
+	require.NotNil(t, firstResult, "First activity result should not be nil")
+	assert.Equal(t, NotStarted, firstResult.State, "First activity should remain NotStarted")
+	assert.NoError(t, firstResult.Error, "First activity should have no individual error")
+
+	secondResult := orchestrator.GetResultByActivity(secondActivity)
+	require.NotNil(t, secondResult, "Second activity result should not be nil")
+	assert.Equal(t, NotStarted, secondResult.State, "Second activity should remain NotStarted")
+	assert.NoError(t, secondResult.Error, "Second activity should have no individual error")
 }
 
 // TestOrchestrator_AdvancedResultUsage demonstrates advanced result usage patterns
@@ -495,22 +478,28 @@ func TestOrchestrator_AdvancedResultUsage(t *testing.T) {
 
 	logger := &MockLogger{}
 	dbSetup := &DatabaseSetupActivity{}
-	successActivity := &FailingActivity{ShouldFail: false}
-	failActivity := &FailingActivity{ShouldFail: true}
+	successActivity := &BasicActivity{ShouldFail: false}
+	failActivity := &BasicActivity{ShouldFail: true}
 
-	orchestrator := NewOrchestrator(config)
+	orchestrator := NewOrchestrator(WithConfig(config))
 	orchestrator.Inject(logger)
-	orchestrator.AddActivity(dbSetup, successActivity, failActivity)
+	err := orchestrator.AddActivity(dbSetup, successActivity, failActivity)
+	require.NoError(t, err, "Should add activities successfully")
 
 	// Execute (will partially fail)
-	err := orchestrator.Execute(context.Background())
+	err = orchestrator.Execute(context.Background())
 	require.Error(t, err, "Should fail due to failing activity")
 
 	t.Run("ConditionalLogicBasedOnResults", func(t *testing.T) {
 		// Example: PBS automation logic
-		dbResult, _ := orchestrator.GetResultByActivity(dbSetup)
-		successResult, _ := orchestrator.GetResultByActivity(successActivity)
-		failResult, _ := orchestrator.GetResultByActivity(failActivity)
+		dbResult := orchestrator.GetResultByActivity(dbSetup)
+		successResult := orchestrator.GetResultByActivity(successActivity)
+		failResult := orchestrator.GetResultByActivity(failActivity)
+
+		// Check that we have valid results before using them
+		require.NotNil(t, dbResult, "Should have result for database setup activity")
+		require.NotNil(t, successResult, "Should have result for success activity")
+		require.NotNil(t, failResult, "Should have result for fail activity")
 
 		if dbResult.IsSuccess() && successResult.IsSuccess() {
 			t.Log("Database and success activity completed - could proceed with cleanup")
@@ -544,27 +533,11 @@ func TestOrchestrator_AdvancedResultUsage(t *testing.T) {
 		assert.Equal(t, 2, successCount, "Should have 2 successful activities")
 		assert.Equal(t, 1, failureCount, "Should have 1 failed activity")
 	})
-
-	t.Run("ModuleLevelAnalysis", func(t *testing.T) {
-		moduleResults := orchestrator.GetResultsByModule("github.com/nomis52/goback/orchestrator")
-		assert.Len(t, moduleResults, 3, "Should have 3 activities from test module")
-
-		// Check if all critical activities from this module succeeded
-		criticalActivitiesSucceeded := true
-		for id, result := range moduleResults {
-			if id.Type == "DatabaseSetupActivity" && !result.IsSuccess() {
-				criticalActivitiesSucceeded = false
-			}
-		}
-
-		assert.True(t, criticalActivitiesSucceeded, "Critical activities should succeed")
-	})
 }
 
 // TestOrchestrator_NoActivities tests orchestrator with no activities
 func TestOrchestrator_NoActivities(t *testing.T) {
-	config := &TestConfig{}
-	orchestrator := NewOrchestrator(config)
+	orchestrator := NewOrchestrator()
 
 	err := orchestrator.Execute(context.Background())
 	require.NoError(t, err, "Should handle no activities gracefully")
@@ -573,34 +546,108 @@ func TestOrchestrator_NoActivities(t *testing.T) {
 	assert.Empty(t, allResults, "Should have no results")
 }
 
-// TestOrchestrator_CustomLogger tests custom logger functionality
-func TestOrchestrator_CustomLogger(t *testing.T) {
-	config := &TestConfig{
-		Database: struct {
-			Host string `yaml:"host"`
-			Port int    `yaml:"port"`
-		}{
-			Host: "localhost",
-		},
-	}
-
-	// Create custom logger that captures output
-	customLogger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelDebug,
-	}))
-
-	dbSetup := &DatabaseSetupActivity{}
+// TestOrchestrator_DependencyInjection tests dependency injection behavior
+func TestOrchestrator_DependencyInjection(t *testing.T) {
+	orchestrator := NewOrchestrator()
 	logger := &MockLogger{}
 
-	orchestrator := NewOrchestrator(config, WithLogger(customLogger))
-	orchestrator.Inject(logger)
-	orchestrator.AddActivity(dbSetup)
+	// Test injecting the same dependency multiple times
+	err := orchestrator.Inject(logger)
+	require.NoError(t, err, "First injection should succeed")
 
-	err := orchestrator.Execute(context.Background())
-	require.NoError(t, err, "Should execute with custom logger")
+	err = orchestrator.Inject(logger)
+	require.Error(t, err, "Second injection of same type should succeed")
 
-	// Verify activity executed
-	assert.True(t, dbSetup.Executed, "Activity should have executed")
+	// Test injecting nil dependency
+	err = orchestrator.Inject(nil)
+	require.NoError(t, err, "Injecting nil should not return error")
+
+	// Test injecting multiple dependencies at once
+	anotherLogger := &MockLogger{}
+	err = orchestrator.Inject(logger, anotherLogger)
+	require.Error(t, err, "Injecting multiple dependencies should not succeed")
 }
 
+// TestOrchestrator_ImmediateResultAvailability tests that results are available immediately after AddActivity
+func TestOrchestrator_ImmediateResultAvailability(t *testing.T) {
+	activity := &BasicActivity{ShouldFail: false}
 
+	orchestrator := NewOrchestrator()
+
+	// Before adding activity - should return nil
+	result := orchestrator.GetResultByActivity(activity)
+	assert.Nil(t, result, "Result should be nil before activity is added")
+
+	// Add activity
+	err := orchestrator.AddActivity(activity)
+	require.NoError(t, err, "Should add activity successfully")
+
+	// Immediately after adding - should have NotStarted result
+	result = orchestrator.GetResultByActivity(activity)
+	require.NotNil(t, result, "Result should not be nil immediately after AddActivity")
+	assert.Equal(t, NotStarted, result.State, "Initial state should be NotStarted")
+	assert.NoError(t, result.Error, "Initial error should be nil")
+	assert.False(t, activity.Executed, "Activity should not have executed yet")
+
+	// Execute and verify state progression
+	err = orchestrator.Execute(context.Background())
+	require.NoError(t, err, "Execution should succeed")
+
+	// Result should now be Completed
+	result = orchestrator.GetResultByActivity(activity)
+	require.NotNil(t, result, "Result should still not be nil after execution")
+	assert.Equal(t, Completed, result.State, "Final state should be Completed")
+	assert.NoError(t, result.Error, "Final error should be nil for successful execution")
+	assert.True(t, activity.Executed, "Activity should have executed")
+}
+
+// TestOrchestrator_DuplicateActivityDetection tests that duplicate activities are rejected
+func TestOrchestrator_DuplicateActivityDetection(t *testing.T) {
+	orchestrator := NewOrchestrator()
+
+	// Add first activity
+	activity1 := &BasicActivity{ShouldFail: false}
+	err := orchestrator.AddActivity(activity1)
+	require.NoError(t, err, "First activity should be added successfully")
+
+	// Try to add another activity of the same type
+	activity2 := &BasicActivity{ShouldFail: true}
+	err = orchestrator.AddActivity(activity2)
+	require.Error(t, err, "Second activity of same type should be rejected")
+	assert.Contains(t, err.Error(), "already exists", "Error should indicate duplicate")
+}
+
+// Helper Types for the tests
+
+// Test config structure
+type TestConfig struct {
+	Database struct {
+		Host string `yaml:"host"`
+		Port int    `yaml:"port"`
+	} `yaml:"database"`
+	Service struct {
+		Name    string `yaml:"name"`
+		Timeout int    `yaml:"timeout"`
+	} `yaml:"service"`
+}
+
+// Mock type for testing service injection
+type MockLogger struct {
+	messages []string
+	mu       sync.Mutex
+}
+
+func (m *MockLogger) Log(message string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.messages = append(m.messages, message)
+}
+
+func (m *MockLogger) GetMessages() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	// Return a copy to avoid race conditions when reading
+	result := make([]string, len(m.messages))
+	copy(result, m.messages)
+	return result
+}
