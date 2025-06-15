@@ -55,7 +55,10 @@ func run() error {
 	logger.Info("goback started", "config_path", args.ConfigPath)
 
 	// Create orchestrator with config
-	o := orchestrator.NewOrchestratorWithLogger(&cfg, logger)
+	o := orchestrator.NewOrchestrator(
+		orchestrator.WithConfig(&cfg),
+		orchestrator.WithLogger(logger),
+	)
 
 	// Inject dependencies
 	if err := injectClients(o, cfg, logger); err != nil {
@@ -65,8 +68,7 @@ func run() error {
 	// Add activities
 	powerOnPBS := &activities.PowerOnPBS{}
 	runProxmoxBackup := &activities.RunProxmoxBackup{}
-	o.AddActivity(powerOnPBS)
-	o.AddActivity(runProxmoxBackup)
+	o.AddActivity(powerOnPBS, runProxmoxBackup)
 
 	// Execute orchestrator
 	ctx := context.Background()

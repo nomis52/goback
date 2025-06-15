@@ -66,9 +66,10 @@ type PBSConfig struct {
 
 // ProxmoxConfig holds Proxmox API connection settings
 type ProxmoxConfig struct {
-	Host     string `yaml:"host"`
-	Username string `yaml:"username"`
-	Password string `yaml:"password"`
+	Host          string        `yaml:"host"`
+	Username      string        `yaml:"username"`
+	Password      string        `yaml:"password"`
+	BackupTimeout time.Duration `yaml:"backup_timeout"`
 }
 
 // TimeoutsConfig defines various timeout durations
@@ -158,6 +159,9 @@ func (c *Config) SetDefaults() {
 	}
 	if c.Timeouts.ShutdownTimeout == 0 {
 		c.Timeouts.ShutdownTimeout = defaultShutdownTimeout
+	}
+	if c.Proxmox.BackupTimeout == 0 {
+		c.Proxmox.BackupTimeout = defaultBackupJobTimeout
 	}
 	if c.Backup.MaxConcurrent == 0 {
 		c.Backup.MaxConcurrent = defaultMaxConcurrent

@@ -14,6 +14,7 @@ type RunProxmoxBackup struct {
 	// Dependencies
 	ProxmoxClient *proxmoxclient.Client
 	Logger        *slog.Logger
+	PowerOnPBS    *PowerOnPBS
 
 	BackupTimeout time.Duration `config:"proxmox.backup_timeout"`
 }
@@ -22,7 +23,15 @@ func (a *RunProxmoxBackup) Init() error {
 	return nil
 }
 
-func (a *RunProxmoxBackup) Run(ctx context.Context) (orchestrator.Result, error) {
+func (a *RunProxmoxBackup) Execute(ctx context.Context) error {
+	// Get and log Proxmox version
+	version, err := a.ProxmoxClient.Version()
+	if err != nil {
+		a.Logger.Error("Failed to get Proxmox version", "error", err)
+		return err
+	}
+	a.Logger.Info("Proxmox version", "version", version)
+
 	// TODO: Implement backup logic
 	// This will need to:
 	// 1. Check if a backup is already running
@@ -30,5 +39,5 @@ func (a *RunProxmoxBackup) Run(ctx context.Context) (orchestrator.Result, error)
 	// 3. Monitor the backup progress
 	// 4. Return success when backup completes or failure if it fails
 
-	return orchestrator.NewSuccessResult(), nil
+	return nil // Success!
 }

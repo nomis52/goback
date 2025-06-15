@@ -29,11 +29,11 @@ func (a *PowerOnPBS) Init() error {
 	return nil
 }
 
-func (a *PowerOnPBS) Run(ctx context.Context) (orchestrator.Result, error) {
+func (a *PowerOnPBS) Execute(ctx context.Context) error {
 	// Check current power status
 	status, err := a.Controller.Status()
 	if err != nil {
-		return orchestrator.NewFailureResult(), fmt.Errorf("failed to get power status: %w", err)
+		return fmt.Errorf("failed to get power status: %w", err)
 	}
 	a.Logger.Debug("current power status", "status", status)
 
@@ -41,7 +41,7 @@ func (a *PowerOnPBS) Run(ctx context.Context) (orchestrator.Result, error) {
 	if status == ipmi.PowerStateOff {
 		if err := a.Controller.PowerOn(); err != nil {
 			a.Logger.Error("failed to power on PBS host", "error", err)
-			return orchestrator.NewFailureResult(), fmt.Errorf("failed to power on PBS host: %w", err)
+			return fmt.Errorf("failed to power on PBS host: %w", err)
 		}
 		a.Logger.Info("power on command sent successfully")
 	} else {
@@ -49,7 +49,7 @@ func (a *PowerOnPBS) Run(ctx context.Context) (orchestrator.Result, error) {
 		// Do an immediate ping check since we know it's powered on
 		if _, err := a.PBSClient.Ping(); err == nil {
 			a.Logger.Info("PBS is available")
-			return orchestrator.NewSuccessResult(), nil
+			return nil // Success!
 		}
 	}
 
@@ -63,15 +63,15 @@ func (a *PowerOnPBS) Run(ctx context.Context) (orchestrator.Result, error) {
 	for {
 		select {
 		case <-ctx.Done():
-			return orchestrator.NewFailureResult(), fmt.Errorf("context cancelled while waiting for PBS: %w", ctx.Err())
+			return fmt.Errorf("context cancelled while waiting for PBS: %w", ctx.Err())
 		case <-timeout:
-			return orchestrator.NewFailureResult(), fmt.Errorf("timed out waiting for PBS to become available after %v", a.BootTimeout)
+			return fmt.Errorf("timed out waiting for PBS to become available after %v", a.BootTimeout)
 		case <-ticker.C:
 			attempts++
 			_, err := a.PBSClient.Ping()
 			if err == nil {
 				a.Logger.Info("PBS is now available", "attempts", attempts)
-				return orchestrator.NewSuccessResult(), nil
+				return nil // Success!
 			}
 			a.Logger.Debug("PBS not yet available", "attempt", attempts, "error", err)
 		}

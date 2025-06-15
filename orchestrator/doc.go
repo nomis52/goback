@@ -24,20 +24,28 @@
 // Activities must implement the Activity interface:
 //
 //	type Activity interface {
-//	    Init() error                       // Validate configuration after injection
+//	    Init() error                       // Structural validation after injection
 //	    Execute(ctx context.Context) error // Perform the work
 //	}
 //
-// Init() is called after all dependency and configuration injection but before Execute().
-// Use Init() to validate that required dependencies and configuration are properly set.
-// Execute() performs the actual work - return nil for success, error for failure.
+// Init() is for "fail-fast" structural validation called after ALL injection is complete.
+// At Init() time, all dependencies are injected but NO activities have executed yet.
+//
+// Init() validates STRUCTURE AND CONFIGURATION:
+// - Required configuration fields are set and valid
+// - Required dependencies are injected (not nil)
+// - Static relationships between configuration values
+// - Configuration ranges, formats, and business rules
+//
+// Init() should NOT depend on runtime state of dependencies.
+// Execute() performs the actual work and handles runtime validation.
 //
 // # Dependency Patterns
 //
 // Named Dependencies (Access + Ordering):
 //
 //	type DataMigrationActivity struct {
-//	    Database *DatabaseSetupActivity // Can access in Init() and Execute()
+//	    Database *DatabaseSetupActivity // Available for nil-check in Init()
 //	}
 //
 // Unnamed Dependencies (Ordering Only):
@@ -51,10 +59,40 @@
 //
 // Use struct tags for configuration injection:
 //
-//	type DatabaseActivity struct {
-//	    Host     string `config:"database.host"`
-//	    Port     int    `config:"database.port"`
-//	    Logger   *Logger // Service injection via Inject()
+//	type DatabaseMigrationActivity struct {
+//	    DBHost   string `config:"database.host"`
+//	    DBPort   int    `config:"database.port"`
+//	    Logger   *Logger
+//	    Database *DatabaseSetupActivity
+//	}
+//
+//	func (a *DatabaseMigrationActivity) Init() error {
+//	    // GOOD: Validate configuration
+//	    if a.DBHost == "" {
+//	        return fmt.Errorf("database host required")
+//	    }
+//	    if a.DBPort < 1 || a.DBPort > 65535 {
+//	        return fmt.Errorf("invalid port: %d", a.DBPort)
+//	    }
+//	    // GOOD: Validate dependencies are injected
+//	    if a.Logger == nil {
+//	        return fmt.Errorf("logger required")
+//	    }
+//	    if a.Database == nil {
+//	        return fmt.Errorf("database dependency required")
+//	    }
+//	    // BAD: Don't check if Database executed - it hasn't yet!
+//	    // if !a.Database.Executed { return fmt.Errorf("...") }
+//	    return nil
+//	}
+//
+//	func (a *DatabaseMigrationActivity) Execute(ctx context.Context) error {
+//	    // GOOD: Runtime validation happens here
+//	    if !a.Database.IsReady() {
+//	        return fmt.Errorf("database not ready")
+//	    }
+//	    // Perform actual work...
+//	    return nil
 //	}
 //
 // Configuration supports dot notation for nested values and handles YAML tag matching.
@@ -126,8 +164,12 @@
 //
 // # Best Practices
 //
+// Init() vs Execute() Validation:
+// - Init(): Validate structure, configuration, and dependency injection (fail-fast)
+// - Execute(): Validate runtime state and perform the actual work
+//
 // Use named dependencies when you need to access the dependency in your activity.
 // Use unnamed dependencies (_) when you only need ordering constraints.
-// Validate in Init() to fail fast for configuration issues.
+// Validate early in Init() to fail fast for configuration issues.
 // Handle context cancellation gracefully in Execute().
 package orchestrator
