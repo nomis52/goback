@@ -117,6 +117,8 @@ func run() error {
 - **Documentation:**  
   - Document the package, `Client` type, constructor, and all exported methods using Go-style comments.
   - Include a brief example usage in the package comment.
+  - When writing documentation for methods, focus on what action is performed, rather than how the method is implemented.
+  - The documentation on each method & type should specify the contract, don't document the contract in separate markdown files.
 
 - **General Rule:**  
   - The directory name must always match the package name.
