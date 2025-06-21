@@ -7,7 +7,8 @@
 //		log.Fatal(err)
 //	}
 //	version, err := client.Version()
-//	vms, err := client.ListVMs(ctx)
+//	vms, err := client.ListComputeResources(ctx)
+//	backups, err := client.ListBackups(ctx, "pve2", "pbs")
 package proxmoxclient
 
 import (
@@ -18,30 +19,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
 )
-
-// Types
-
-// Resource represents a virtual machine or container in Proxmox.
-type Resource struct {
-	VMID     int     `json:"vmid"`
-	Name     string  `json:"name"`
-	Node     string  `json:"node"`
-	Status   string  `json:"status"`
-	Template int     `json:"template"`
-	Type     string  `json:"type"`
-	MaxMem   int64   `json:"maxmem"`
-	MaxDisk  int64   `json:"maxdisk"`
-	CPU      float64 `json:"cpu"`
-	Mem      int64   `json:"mem"`
-	Uptime   int64   `json:"uptime"`
-}
-
-// VM represents a virtual machine in Proxmox.
-type VM Resource
-
-// LXC represents an LXC container in Proxmox.
-type LXC Resource
 
 // Option is a function that configures a Client
 type Option func(*Client)
@@ -52,11 +31,6 @@ type Client struct {
 	baseURL *url.URL
 	token   string
 	logger  *slog.Logger
-}
-
-// clusterResourcesResponse represents the response from /api2/json/cluster/resources
-type clusterResourcesResponse struct {
-	Data []json.RawMessage `json:"data"`
 }
 
 // New and Options
@@ -96,6 +70,17 @@ func New(host string, opts ...Option) (*Client, error) {
 	return client, nil
 }
 
+// Host returns the host part of the URL the client is using.
+// This returns just the hostname (e.g., "pve2" from "https://pve2.d.ne4.org").
+func (c *Client) Host() string {
+	hostname := c.baseURL.Hostname()
+	// Extract just the first part before the first dot
+	if dotIndex := strings.Index(hostname, "."); dotIndex != -1 {
+		return hostname[:dotIndex]
+	}
+	return hostname
+}
+
 // Exported Methods
 
 // Version retrieves the Proxmox VE version information by calling the /api2/json/version endpoint.
@@ -132,7 +117,9 @@ func (c *Client) ListComputeResources(ctx context.Context) ([]Resource, error) {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	var response clusterResourcesResponse
+	var response struct {
+		Data []json.RawMessage `json:"data"`
+	}
 	if err := json.Unmarshal(body, &response); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
@@ -148,6 +135,86 @@ func (c *Client) ListComputeResources(ctx context.Context) ([]Resource, error) {
 	}
 
 	return resources, nil
+}
+
+// ListBackups retrieves all backups from a specific storage on a specific node.
+// It queries the /api2/json/nodes/{node}/storage/{storage}/content endpoint with content=backup filter.
+// The node parameter specifies which Proxmox node to query (e.g., "pve2").
+// The storage parameter specifies which storage to query (e.g., "pbs").
+func (c *Client) ListBackups(ctx context.Context, node, storage string) ([]Backup, error) {
+	path := fmt.Sprintf("/api2/json/nodes/%s/storage/%s/content?content=backup", node, storage)
+
+	resp, err := c.doRequest(ctx, http.MethodGet, path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	var response struct {
+		Data []Backup `json:"data"`
+	}
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	return response.Data, nil
+}
+
+// Backup creates a backup of a virtual machine and returns the task ID.
+// It calls the /api2/json/nodes/{node}/vzdump endpoint to initiate the backup process.
+// The VMID parameter specifies which VM to backup.
+// The storage parameter specifies the storage target for the backup.
+// The node parameter specifies which Proxmox node to use for the backup.
+func (c *Client) Backup(ctx context.Context, node string, vmid VMID, storage string) (TaskID, error) {
+	path := fmt.Sprintf("/api2/json/nodes/%s/vzdump", node)
+
+	// Build query parameters
+	params := url.Values{}
+	params.Set("vmid", fmt.Sprintf("%d", vmid))
+	params.Set("storage", storage)
+
+	// Add parameters to path
+	if len(params) > 0 {
+		path += "?" + params.Encode()
+	}
+
+	resp, err := c.doRequest(ctx, http.MethodPost, path)
+	if err != nil {
+		return "", fmt.Errorf("failed to execute backup request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Log the response
+	c.logger.Info("Proxmox backup response",
+		"vmid", vmid,
+		"storage", storage,
+		"node", node,
+		"response", string(body))
+
+	var response backupTaskResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		return "", fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	return TaskID(response.Data), nil
 }
 
 // Non-exported Methods

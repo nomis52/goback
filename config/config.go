@@ -17,7 +17,7 @@ const (
 	defaultShutdownTimeout     = 2 * time.Minute
 
 	// Default backup settings
-	defaultMaxConcurrent = 3
+	defaultMaxAge = 24 * time.Hour // 24 hours default
 
 	// Default monitoring settings
 	defaultMetricsPrefix = "pbs_automation"
@@ -68,6 +68,7 @@ type PBSConfig struct {
 type ProxmoxConfig struct {
 	Host          string        `yaml:"host"`
 	Token         string        `yaml:"token"`
+	Storage       string        `yaml:"storage"`
 	BackupTimeout time.Duration `yaml:"backup_timeout"`
 }
 
@@ -81,11 +82,7 @@ type TimeoutsConfig struct {
 
 // BackupConfig defines backup behavior settings
 type BackupConfig struct {
-	MaxConcurrent      int      `yaml:"max_concurrent"`
-	ExcludeTemplates   bool     `yaml:"exclude_templates"`
-	ExcludeStopped     bool     `yaml:"exclude_stopped"`
-	IncludeZFSDatasets bool     `yaml:"include_zfs_datasets"`
-	ZFSDatasets        []string `yaml:"zfs_datasets"`
+	MaxAge time.Duration `yaml:"max_age"`
 }
 
 // MonitoringConfig holds metrics and monitoring settings
@@ -118,6 +115,9 @@ func (c *Config) Validate() error {
 	if c.Proxmox.Host == "" {
 		return fmt.Errorf("Proxmox host is required")
 	}
+	if c.Proxmox.Storage == "" {
+		return fmt.Errorf("Proxmox storage is required")
+	}
 	if c.PBS.Host == "" {
 		return fmt.Errorf("PBS host is required")
 	}
@@ -135,9 +135,6 @@ func (c *Config) Validate() error {
 	}
 	if c.Timeouts.BackupJobTimeout <= 0 {
 		return fmt.Errorf("backup job timeout must be positive")
-	}
-	if c.Backup.MaxConcurrent < 1 {
-		return fmt.Errorf("max concurrent jobs must be at least 1")
 	}
 	return nil
 }
@@ -162,9 +159,6 @@ func (c *Config) SetDefaults() {
 	if c.Proxmox.BackupTimeout == 0 {
 		c.Proxmox.BackupTimeout = defaultBackupJobTimeout
 	}
-	if c.Backup.MaxConcurrent == 0 {
-		c.Backup.MaxConcurrent = defaultMaxConcurrent
-	}
 	if c.Monitoring.MetricsPrefix == "" {
 		c.Monitoring.MetricsPrefix = defaultMetricsPrefix
 	}
@@ -176,6 +170,9 @@ func (c *Config) SetDefaults() {
 	}
 	if c.Behavior.RetryDelay == 0 {
 		c.Behavior.RetryDelay = defaultRetryDelay
+	}
+	if c.Backup.MaxAge == 0 {
+		c.Backup.MaxAge = defaultMaxAge
 	}
 	// Set logging defaults
 	if c.Logging.Level == "" {
