@@ -120,6 +120,14 @@ func run() error {
 - **Constructor:**  
   Provide a `New()` function (e.g., `fooclient.New(...)`) that returns a pointer to `Client`.
 
+- **Type Organization:**  
+  When a client package contains return types (structs, interfaces, etc.), place them in a separate `types.go` file rather than in `client.go`. This keeps the client implementation focused on HTTP requests and business logic while separating type definitions for better organization.
+  
+  Within `types.go`, organize types as follows:
+  - Public/exported types first (e.g., `Resource`, `Backup`)
+  - Internal/unexported types at the end (e.g., `clusterResourcesResponse`, `storageContentResponse`)
+  - This makes the public API more discoverable while keeping implementation details at the bottom
+
 - **Test Files:**  
   - Place test files in the same directory as the implementation.
   - Test files must use the same package name as the code they test (e.g., `package pbsclient`).
