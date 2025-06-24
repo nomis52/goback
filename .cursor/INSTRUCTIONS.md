@@ -21,6 +21,14 @@
    - This applies to both default values and implementation details
    - The only exception is when the time value is purely configurable and has no default
 
+3. **Always pre-size maps when the number of elements is known or can be estimated**
+   - When creating a map and you know (or can estimate) the number of elements, use `make(map[KeyType]ValueType, size)`
+   - This optimizes memory allocation and performance by reducing the need for map resizing and rehashing
+   - Example:
+     ```go
+     resourceMap := make(map[proxmoxclient.VMID]proxmoxclient.Resource, len(resources))
+     ```
+
 ## Go Testing Style (Always Prefer Testify)
 
 - **Always use [testify](https://github.com/stretchr/testify) for assertions and requirements in all Go tests.**

@@ -2,7 +2,9 @@ package activities
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/nomis52/goback/proxmoxclient"
@@ -19,6 +21,8 @@ type RunProxmoxBackup struct {
 	BackupTimeout time.Duration `config:"proxmox.backup_timeout"`
 	Storage       string        `config:"proxmox.storage"`
 	MaxAge        time.Duration `config:"backup.max_age"`
+	Mode          string        `config:"backup.mode"`
+	Compress      string        `config:"backup.compress"`
 }
 
 func (a *RunProxmoxBackup) Init() error {
@@ -34,90 +38,178 @@ func (a *RunProxmoxBackup) Execute(ctx context.Context) error {
 	}
 	a.Logger.Info("Proxmox version", "version", version)
 
-	// Get list of Compute resources: VMs, LXCs
-	resources, err := a.ProxmoxClient.ListComputeResources(ctx)
+	// Determine which resources need to be backed up
+	resourcesToBackup, err := a.determineBackups(ctx)
 	if err != nil {
-		a.Logger.Error("Failed to get list of resources", "error", err)
+		a.Logger.Error("Failed to determine resources to backup", "error", err)
 		return err
 	}
-	a.Logger.Info("Found resources", "count", len(resources))
-	for _, resource := range resources {
-		a.Logger.Info("Resource details",
+	a.Logger.Info("Resources that need backup", "count", len(resourcesToBackup))
+
+	// Use wait group to track all backup operations
+	var wg sync.WaitGroup
+	errChan := make(chan error, len(resourcesToBackup))
+
+	// Launch backup operations concurrently
+	for _, resource := range resourcesToBackup {
+		wg.Add(1)
+		go func(r proxmoxclient.Resource) {
+			defer wg.Done()
+			if err := a.performBackup(ctx, r); err != nil {
+				a.Logger.Error("Failed to perform backup",
+					"vmid", r.VMID,
+					"name", r.Name,
+					"node", r.Node,
+					"error", err)
+				errChan <- fmt.Errorf("backup failed for VMID %d: %w", r.VMID, err)
+			}
+		}(resource)
+	}
+
+	// Wait for all backups to complete
+	wg.Wait()
+	close(errChan)
+
+	// Collect any errors that occurred
+	errors := make([]error, 0)
+	for err := range errChan {
+		errors = append(errors, err)
+	}
+
+	// If any errors occurred, return a combined error
+	if len(errors) > 0 {
+		errMsg := fmt.Sprintf("%d backup(s) failed:", len(errors))
+		for _, err := range errors {
+			errMsg += "\n  - " + err.Error()
+		}
+		return fmt.Errorf(errMsg)
+	}
+
+	return nil // All backups completed successfully!
+}
+
+// performBackup initiates a backup for a given resource and waits for it to complete.
+// It returns an error if the backup fails or times out.
+func (a *RunProxmoxBackup) performBackup(ctx context.Context, resource proxmoxclient.Resource) error {
+	// Build backup options based on configuration
+	var backupOpts []proxmoxclient.BackupOption
+	if a.Mode != "" {
+		backupOpts = append(backupOpts, proxmoxclient.WithMode(a.Mode))
+	}
+	if a.Compress != "" {
+		backupOpts = append(backupOpts, proxmoxclient.WithCompress(a.Compress))
+	}
+
+	// Start the backup
+	a.Logger.Info("Starting backup for resource",
+		"vmid", resource.VMID,
+		"name", resource.Name,
+		"node", resource.Node,
+		"storage", a.Storage,
+		"mode", a.Mode,
+		"compress", a.Compress)
+
+	taskID, err := a.ProxmoxClient.Backup(ctx, resource.Node, resource.VMID, a.Storage, backupOpts...)
+	if err != nil {
+		a.Logger.Error("Failed to start backup",
 			"vmid", resource.VMID,
 			"name", resource.Name,
 			"node", resource.Node,
-			"status", resource.Status,
-			"type", resource.Type)
+			"mode", a.Mode,
+			"compress", a.Compress,
+			"error", err)
+		return err
 	}
 
-	// Get list of backups from storage
-	a.Logger.Info("Querying backups", "node", "pve2", "storage", a.Storage)
+	// Poll for task completion
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	timeout := time.After(a.BackupTimeout)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timeout:
+			return fmt.Errorf("backup timed out after %v for VMID %d", a.BackupTimeout, resource.VMID)
+		case <-ticker.C:
+			status, err := a.ProxmoxClient.TaskStatus(ctx, resource.Node, taskID)
+			if err != nil {
+				a.Logger.Error("Failed to get task status",
+					"vmid", resource.VMID,
+					"name", resource.Name,
+					"node", resource.Node,
+					"task_id", taskID,
+					"error", err)
+				return err
+			}
+
+			a.Logger.Debug("Backup task status",
+				"vmid", resource.VMID,
+				"name", resource.Name,
+				"node", resource.Node,
+				"task_id", taskID,
+				"status", status.Status,
+				"exit_status", status.ExitStatus)
+
+			// Check if task is complete
+			if status.Status == "stopped" {
+				if status.ExitStatus != "OK" {
+					return fmt.Errorf("backup failed with exit status: %s", status.ExitStatus)
+				}
+				a.Logger.Info("Backup completed successfully",
+					"vmid", resource.VMID,
+					"name", resource.Name,
+					"node", resource.Node,
+					"task_id", taskID)
+				return nil
+			}
+		}
+	}
+}
+
+// determineBackups analyzes resources and their backup status to decide which ones need backing up.
+// It returns the resources that need to be backed up.
+func (a *RunProxmoxBackup) determineBackups(ctx context.Context) ([]proxmoxclient.Resource, error) {
+	resources, err := a.ProxmoxClient.ListComputeResources(ctx)
+	if err != nil {
+		a.Logger.Error("Failed to get list of resources", "error", err)
+		return nil, err
+	}
+
 	backups, err := a.ProxmoxClient.ListBackups(ctx, a.ProxmoxClient.Host(), a.Storage)
 	if err != nil {
 		a.Logger.Error("Failed to get list of backups", "error", err)
-		return err
+		return nil, err
 	}
-	a.Logger.Info("Found backups", "count", len(backups))
 
-	// getMostRecentBackupTimes returns a map of VMID to the most recent backup time
-	// If a resource has no backups, it returns the zero time (time.Time{})
-	mostRecentBackupTimes := getMostRecentBackupTimes(backups, resources)
+	resourceMap := make(map[proxmoxclient.VMID]proxmoxclient.Resource, len(resources))
+	for _, resource := range resources {
+		resourceMap[resource.VMID] = resource
+	}
 
-	// Log the backup status for each resource and check for old backups
-	a.Logger.Info("max age", "max_age", a.MaxAge)
-	for vmID, lastBackup := range mostRecentBackupTimes {
-		if lastBackup.IsZero() {
-			a.Logger.Warn("Resource has no backups", "vmid", vmID)
-		} else {
-			// Check if backup is older than MaxAge
-			if time.Since(lastBackup) > a.MaxAge {
-				a.Logger.Warn("Resource backup is older than MaxAge", "vmid", vmID, "age", time.Since(lastBackup))
+	var resourcesToBackup []proxmoxclient.Resource
+	for vmID, lastBackup := range getMostRecentBackupTimes(backups, resources) {
+		if lastBackup.IsZero() || time.Since(lastBackup) > a.MaxAge {
+			if resource, exists := resourceMap[vmID]; exists {
+				resourcesToBackup = append(resourcesToBackup, resource)
 			}
 		}
 	}
 
-	return nil
-
-	// Backup the first VMID if there are any resources
-	if len(resources) > 0 {
-		firstResource := resources[0]
-		a.Logger.Info("Starting backup for first resource",
-			"vmid", firstResource.VMID,
-			"name", firstResource.Name,
-			"node", firstResource.Node,
-			"storage", a.Storage)
-
-		taskID, err := a.ProxmoxClient.Backup(ctx, firstResource.Node, firstResource.VMID, a.Storage)
-		if err != nil {
-			a.Logger.Error("Failed to start backup",
-				"vmid", firstResource.VMID,
-				"name", firstResource.Name,
-				"node", firstResource.Node,
-				"error", err)
-			return err
-		}
-
-		a.Logger.Info("Backup started successfully",
-			"vmid", firstResource.VMID,
-			"name", firstResource.Name,
-			"node", firstResource.Node,
-			"task_id", taskID)
-	}
-
-	return nil // Success!
+	return resourcesToBackup, nil
 }
 
 // getMostRecentBackupTimes returns a map of VMID to the most recent backup time.
 // If a resource has no backups, it returns the zero time (time.Time{}).
 func getMostRecentBackupTimes(backups []proxmoxclient.Backup, resources []proxmoxclient.Resource) map[proxmoxclient.VMID]time.Time {
-	result := make(map[proxmoxclient.VMID]time.Time)
+	result := make(map[proxmoxclient.VMID]time.Time, len(resources))
 
-	// Initialize all resources with zero time
 	for _, r := range resources {
 		result[r.VMID] = time.Time{}
 	}
 
-	// Find the most recent backup for each VMID
 	for _, backup := range backups {
 		if current, exists := result[backup.VMID]; exists && (current.IsZero() || backup.CTime.After(current)) {
 			result[backup.VMID] = backup.CTime
