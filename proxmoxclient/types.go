@@ -79,3 +79,46 @@ func (b *Backup) UnmarshalJSON(data []byte) error {
 
 	return nil
 }
+
+// BackupOption is a function that configures backup parameters
+type BackupOption func(*backupParams)
+
+// backupParams holds all backup configuration
+// params is a map of key-value pairs for vzdump options
+// This struct is not exported
+type backupParams struct {
+	params map[string]string
+}
+
+// WithMode sets the backup mode (e.g., "snapshot", "suspend", "stop")
+func WithMode(mode string) BackupOption {
+	return func(p *backupParams) {
+		if p.params == nil {
+			p.params = make(map[string]string)
+		}
+		p.params["mode"] = mode
+	}
+}
+
+// WithCompress sets the compression method for the backup
+// Valid values: "0" (no compression), "1" (gzip), "gzip", "lzo", "zstd"
+func WithCompress(compress string) BackupOption {
+	return func(p *backupParams) {
+		if p.params == nil {
+			p.params = make(map[string]string)
+		}
+		p.params["compress"] = compress
+	}
+}
+
+// TaskStatusResponse represents the response from the task status endpoint
+// See: GET /api2/json/nodes/{node}/tasks/{upid}/status
+// Example fields: status, exitstatus, starttime, endtime, etc.
+type TaskStatus struct {
+	UPID       string `json:"upid"`
+	Status     string `json:"status"`
+	ExitStatus string `json:"exitstatus"`
+	StartTime  int64  `json:"starttime"`
+	EndTime    int64  `json:"endtime,omitempty"`
+	// Add more fields as needed from the API response
+}

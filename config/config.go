@@ -17,7 +17,9 @@ const (
 	defaultShutdownTimeout     = 2 * time.Minute
 
 	// Default backup settings
-	defaultMaxAge = 24 * time.Hour // 24 hours default
+	defaultMaxAge     = 24 * time.Hour // 24 hours default
+	defaultBackupMode = "snapshot"     // default backup mode
+	defaultCompress   = "1"            // default compression enabled (1 = gzip)
 
 	// Default monitoring settings
 	defaultMetricsPrefix = "pbs_automation"
@@ -82,7 +84,9 @@ type TimeoutsConfig struct {
 
 // BackupConfig defines backup behavior settings
 type BackupConfig struct {
-	MaxAge time.Duration `yaml:"max_age"`
+	MaxAge   time.Duration `yaml:"max_age"`
+	Mode     string        `yaml:"mode"`     // backup mode: snapshot, suspend, stop
+	Compress string        `yaml:"compress"` // compression: "0", "1", "gzip", "lzo", "zstd"
 }
 
 // MonitoringConfig holds metrics and monitoring settings
@@ -173,6 +177,12 @@ func (c *Config) SetDefaults() {
 	}
 	if c.Backup.MaxAge == 0 {
 		c.Backup.MaxAge = defaultMaxAge
+	}
+	if c.Backup.Mode == "" {
+		c.Backup.Mode = defaultBackupMode
+	}
+	if c.Backup.Compress == "" {
+		c.Backup.Compress = defaultCompress
 	}
 	// Set logging defaults
 	if c.Logging.Level == "" {

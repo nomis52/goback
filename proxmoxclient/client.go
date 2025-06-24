@@ -15,7 +15,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -92,7 +92,7 @@ func (c *Client) Version() (string, error) {
 	}
 	defer resp.Body.Close()
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", err
 	}
@@ -112,7 +112,7 @@ func (c *Client) ListComputeResources(ctx context.Context) ([]Resource, error) {
 		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
@@ -154,7 +154,7 @@ func (c *Client) ListBackups(ctx context.Context, node, storage string) ([]Backu
 		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
@@ -174,17 +174,30 @@ func (c *Client) ListBackups(ctx context.Context, node, storage string) ([]Backu
 // The VMID parameter specifies which VM to backup.
 // The storage parameter specifies the storage target for the backup.
 // The node parameter specifies which Proxmox node to use for the backup.
-func (c *Client) Backup(ctx context.Context, node string, vmid VMID, storage string) (TaskID, error) {
+// Optional parameters can be provided using BackupOption functions.
+func (c *Client) Backup(ctx context.Context, node string, vmid VMID, storage string, opts ...BackupOption) (TaskID, error) {
 	path := fmt.Sprintf("/api2/json/nodes/%s/vzdump", node)
 
-	// Build query parameters
-	params := url.Values{}
-	params.Set("vmid", fmt.Sprintf("%d", vmid))
-	params.Set("storage", storage)
+	// Initialize backup parameters with defaults
+	params := &backupParams{}
+
+	// Apply any provided options
+	for _, opt := range opts {
+		opt(params)
+	}
+
+	// Build query parameters from params map
+	queryParams := url.Values{}
+	for k, v := range params.params {
+		queryParams.Set(k, v)
+	}
+	// Always set/override vmid and storage from arguments
+	queryParams.Set("vmid", fmt.Sprintf("%d", vmid))
+	queryParams.Set("storage", storage)
 
 	// Add parameters to path
-	if len(params) > 0 {
-		path += "?" + params.Encode()
+	if len(queryParams) > 0 {
+		path += "?" + queryParams.Encode()
 	}
 
 	resp, err := c.doRequest(ctx, http.MethodPost, path)
@@ -197,7 +210,7 @@ func (c *Client) Backup(ctx context.Context, node string, vmid VMID, storage str
 		return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", fmt.Errorf("failed to read response body: %w", err)
 	}
@@ -207,6 +220,7 @@ func (c *Client) Backup(ctx context.Context, node string, vmid VMID, storage str
 		"vmid", vmid,
 		"storage", storage,
 		"node", node,
+		"params", params.params,
 		"response", string(body))
 
 	var response backupTaskResponse
@@ -215,6 +229,36 @@ func (c *Client) Backup(ctx context.Context, node string, vmid VMID, storage str
 	}
 
 	return TaskID(response.Data), nil
+}
+
+// TaskStatus retrieves the status of a task by its UPID (TaskID) on a given node.
+// It calls /api2/json/nodes/{node}/tasks/{upid}/status
+func (c *Client) TaskStatus(ctx context.Context, node string, taskID TaskID) (*TaskStatus, error) {
+	path := fmt.Sprintf("/api2/json/nodes/%s/tasks/%s/status", node, string(taskID))
+
+	resp, err := c.doRequest(ctx, http.MethodGet, path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute task status request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	var response struct {
+		Data TaskStatus `json:"data"`
+	}
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	return &response.Data, nil
 }
 
 // Non-exported Methods
@@ -250,8 +294,7 @@ func (c *Client) doRequest(ctx context.Context, method, path string) (*http.Resp
 	// Log the request details
 	c.logger.Info("Proxmox API request",
 		"method", method,
-		"url", url,
-		"path", path)
+		"url", url)
 
 	return http.DefaultClient.Do(req)
 }
