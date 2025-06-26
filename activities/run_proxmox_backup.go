@@ -7,7 +7,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nomis52/goback/metrics"
 	"github.com/nomis52/goback/proxmoxclient"
+)
+
+const (
+	metricLastBackup    = "last_backup"
+	metricBackupFailure = "backup_failure"
 )
 
 // RunProxmoxBackup manages the execution of Proxmox backups
@@ -16,6 +22,7 @@ type RunProxmoxBackup struct {
 	ProxmoxClient *proxmoxclient.Client
 	Logger        *slog.Logger
 	PowerOnPBS    *PowerOnPBS
+	MetricsClient *metrics.Client
 
 	// Configuration
 	BackupTimeout time.Duration `config:"proxmox.backup_timeout"`
@@ -55,7 +62,7 @@ func (a *RunProxmoxBackup) Execute(ctx context.Context) error {
 		wg.Add(1)
 		go func(r proxmoxclient.Resource) {
 			defer wg.Done()
-			if err := a.performBackup(ctx, r); err != nil {
+			if err := a.performBackupWithMetrics(ctx, r); err != nil {
 				a.Logger.Error("Failed to perform backup",
 					"vmid", r.VMID,
 					"name", r.Name,
@@ -86,6 +93,37 @@ func (a *RunProxmoxBackup) Execute(ctx context.Context) error {
 	}
 
 	return nil // All backups completed successfully!
+}
+
+// performBackupWithMetrics wraps performBackup and pushes metrics based on the result.
+func (a *RunProxmoxBackup) performBackupWithMetrics(ctx context.Context, resource proxmoxclient.Resource) error {
+	err := a.performBackup(ctx, resource)
+	if a.MetricsClient != nil {
+		labels := map[string]string{
+			"vmid": fmt.Sprintf("%d", resource.VMID),
+			"name": resource.Name,
+		}
+		var metric metrics.Metric
+		if err != nil {
+			metric = metrics.Metric{
+				Name:      metricBackupFailure,
+				Value:     1,
+				Labels:    labels,
+				Timestamp: time.Now(),
+			}
+		} else {
+			metric = metrics.Metric{
+				Name:      metricLastBackup,
+				Value:     float64(time.Now().Unix()),
+				Labels:    labels,
+				Timestamp: time.Now(),
+			}
+		}
+		if pushErr := a.MetricsClient.PushMetrics(ctx, metric); pushErr != nil {
+			a.Logger.Error("Failed to push backup metric", "error", pushErr)
+		}
+	}
+	return err
 }
 
 // performBackup initiates a backup for a given resource and waits for it to complete.
