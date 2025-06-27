@@ -37,15 +37,15 @@ const (
 
 // Config represents the complete application configuration
 type Config struct {
-	IPMI        IPMIConfig        `yaml:"ipmi"`
-	PBS         PBSConfig         `yaml:"pbs"`
-	Proxmox     ProxmoxConfig     `yaml:"proxmox"`
-	Timeouts    TimeoutsConfig    `yaml:"timeouts"`
-	Backup      BackupConfig      `yaml:"backup"`
-	Directories []DirectoryConfig `yaml:"directories"`
-	Monitoring  MonitoringConfig  `yaml:"monitoring"`
-	Behavior    BehaviorConfig    `yaml:"behavior"`
-	Logging     LoggingConfig     `yaml:"logging"`
+	IPMI       IPMIConfig       `yaml:"ipmi"`
+	PBS        PBSConfig        `yaml:"pbs"`
+	Proxmox    ProxmoxConfig    `yaml:"proxmox"`
+	Timeouts   TimeoutsConfig   `yaml:"timeouts"`
+	Backup     BackupConfig     `yaml:"backup"`
+	Directory  DirectoryConfig  `yaml:"directories"`
+	Monitoring MonitoringConfig `yaml:"monitoring"`
+	Behavior   BehaviorConfig   `yaml:"behavior"`
+	Logging    LoggingConfig    `yaml:"logging"`
 }
 
 // IPMIConfig holds IPMI connection settings
@@ -92,11 +92,12 @@ type BackupConfig struct {
 
 // DirectoryConfig defines a single SSH backup job for the directories stanza
 type DirectoryConfig struct {
-	Host    string   `yaml:"host"`
-	User    string   `yaml:"user"`
-	Token   string   `yaml:"token"`
-	Target  string   `yaml:"target"`
-	Sources []string `yaml:"sources"`
+	Host           string   `yaml:"host"`
+	User           string   `yaml:"user"`
+	PrivateKeyPath string   `yaml:"private_key_path"`
+	Token          string   `yaml:"token"`
+	Target         string   `yaml:"target"`
+	Sources        []string `yaml:"sources"`
 }
 
 // MonitoringConfig holds metrics and monitoring settings

@@ -373,14 +373,14 @@ func (o *Orchestrator) buildDependencyGraph() error {
 			field := activityType.Field(i)
 			fieldValue := activityValue.Field(i)
 
-			// Skip config fields
-			if field.Tag.Get("config") != "" {
+			// Only consider exported fields or blank identifier fields
+			if field.PkgPath != "" && field.Name != "_" {
+				o.logger.Debug("skipping unexported field", "activity_id", id.String(), "field_name", field.Name)
 				continue
 			}
 
-			// Skip unexported fields (but allow blank identifier fields for dependency ordering)
-			if !fieldValue.CanSet() && field.Name != "_" {
-				o.logger.Debug("skipping unexported field", "activity_id", id.String(), "field_name", field.Name)
+			// Skip config fields
+			if field.Tag.Get("config") != "" {
 				continue
 			}
 
@@ -467,8 +467,9 @@ func (o *Orchestrator) injectConfig(activity Activity, activityID ActivityID) er
 		field := activityType.Field(i)
 		fieldValue := activityValue.Field(i)
 
-		// Skip unexported fields
-		if !fieldValue.CanSet() {
+		// Only consider exported fields or blank identifier fields
+		if field.PkgPath != "" && field.Name != "_" {
+			o.logger.Debug("skipping unexported field", "activity_id", activityID.String(), "field_name", field.Name)
 			continue
 		}
 
@@ -582,6 +583,11 @@ func (o *Orchestrator) validateDependencies() error {
 		for i := 0; i < activityType.NumField(); i++ {
 			field := activityType.Field(i)
 			fieldValue := activityValue.Field(i)
+
+			// Only consider exported fields or blank identifier fields
+			if field.PkgPath != "" && field.Name != "_" {
+				continue
+			}
 
 			// Skip non-pointer fields and fields with config tags
 			if fieldValue.Kind() != reflect.Ptr || field.Tag.Get("config") != "" {

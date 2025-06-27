@@ -67,8 +67,9 @@ func run() error {
 
 	// Add activities
 	powerOnPBS := &activities.PowerOnPBS{}
+	backupDirs := &activities.BackupDirs{}
 	runProxmoxBackup := &activities.RunProxmoxBackup{}
-	o.AddActivity(powerOnPBS, runProxmoxBackup)
+	o.AddActivity(powerOnPBS, backupDirs, runProxmoxBackup)
 
 	// Execute orchestrator
 	ctx := context.Background()
