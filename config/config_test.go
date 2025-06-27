@@ -239,3 +239,45 @@ behavior:
 		})
 	}
 }
+
+func TestLoadConfig_Directories(t *testing.T) {
+	tmpfile, err := os.CreateTemp("", "goback_config_test.yaml")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpfile.Name())
+
+	content := `directories:
+  - host: pve2
+    token: mytoken
+    target: backup-client@pbs!token-name@10.6.0.10:tank
+    sources:
+      - home.pxar:/p1/home
+      - root.pxar:/p1/root
+`
+	if _, err := tmpfile.Write([]byte(content)); err != nil {
+		t.Fatalf("failed to write temp config: %v", err)
+	}
+	tmpfile.Close()
+
+	cfg, err := LoadConfig(tmpfile.Name())
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v, want nil", err)
+	}
+	if len(cfg.Directories) != 1 {
+		t.Fatalf("expected 1 directory, got %d", len(cfg.Directories))
+	}
+	b := cfg.Directories[0]
+	if b.Host != "pve2" {
+		t.Errorf("Host = %v, want %v", b.Host, "pve2")
+	}
+	if b.Token != "mytoken" {
+		t.Errorf("Token = %v, want %v", b.Token, "mytoken")
+	}
+	if b.Target != "backup-client@pbs!token-name@10.6.0.10:tank" {
+		t.Errorf("Target = %v, want %v", b.Target, "backup-client@pbs!token-name@10.6.0.10:tank")
+	}
+	if len(b.Sources) != 2 || b.Sources[0] != "home.pxar:/p1/home" || b.Sources[1] != "root.pxar:/p1/root" {
+		t.Errorf("Sources = %v, want [home.pxar:/p1/home root.pxar:/p1/root]", b.Sources)
+	}
+}

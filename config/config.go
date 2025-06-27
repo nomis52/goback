@@ -37,14 +37,15 @@ const (
 
 // Config represents the complete application configuration
 type Config struct {
-	IPMI       IPMIConfig       `yaml:"ipmi"`
-	PBS        PBSConfig        `yaml:"pbs"`
-	Proxmox    ProxmoxConfig    `yaml:"proxmox"`
-	Timeouts   TimeoutsConfig   `yaml:"timeouts"`
-	Backup     BackupConfig     `yaml:"backup"`
-	Monitoring MonitoringConfig `yaml:"monitoring"`
-	Behavior   BehaviorConfig   `yaml:"behavior"`
-	Logging    LoggingConfig    `yaml:"logging"`
+	IPMI        IPMIConfig        `yaml:"ipmi"`
+	PBS         PBSConfig         `yaml:"pbs"`
+	Proxmox     ProxmoxConfig     `yaml:"proxmox"`
+	Timeouts    TimeoutsConfig    `yaml:"timeouts"`
+	Backup      BackupConfig      `yaml:"backup"`
+	Directories []DirectoryConfig `yaml:"directories"`
+	Monitoring  MonitoringConfig  `yaml:"monitoring"`
+	Behavior    BehaviorConfig    `yaml:"behavior"`
+	Logging     LoggingConfig     `yaml:"logging"`
 }
 
 // IPMIConfig holds IPMI connection settings
@@ -87,6 +88,15 @@ type BackupConfig struct {
 	MaxAge   time.Duration `yaml:"max_age"`
 	Mode     string        `yaml:"mode"`     // backup mode: snapshot, suspend, stop
 	Compress string        `yaml:"compress"` // compression: "0", "1", "gzip", "lzo", "zstd"
+}
+
+// DirectoryConfig defines a single SSH backup job for the directories stanza
+type DirectoryConfig struct {
+	Host    string   `yaml:"host"`
+	User    string   `yaml:"user"`
+	Token   string   `yaml:"token"`
+	Target  string   `yaml:"target"`
+	Sources []string `yaml:"sources"`
 }
 
 // MonitoringConfig holds metrics and monitoring settings
