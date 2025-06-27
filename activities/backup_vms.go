@@ -16,8 +16,8 @@ const (
 	metricBackupFailure = "backup_failure"
 )
 
-// RunProxmoxBackup manages the execution of Proxmox backups
-type RunProxmoxBackup struct {
+// BackupVMs manages the execution of Proxmox backups
+type BackupVMs struct {
 	// Dependencies
 	ProxmoxClient *proxmoxclient.Client
 	Logger        *slog.Logger
@@ -32,11 +32,11 @@ type RunProxmoxBackup struct {
 	Compress      string        `config:"backup.compress"`
 }
 
-func (a *RunProxmoxBackup) Init() error {
+func (a *BackupVMs) Init() error {
 	return nil
 }
 
-func (a *RunProxmoxBackup) Execute(ctx context.Context) error {
+func (a *BackupVMs) Execute(ctx context.Context) error {
 	// Get and log Proxmox version
 	version, err := a.ProxmoxClient.Version()
 	if err != nil {
@@ -96,7 +96,7 @@ func (a *RunProxmoxBackup) Execute(ctx context.Context) error {
 }
 
 // performBackupWithMetrics wraps performBackup and pushes metrics based on the result.
-func (a *RunProxmoxBackup) performBackupWithMetrics(ctx context.Context, resource proxmoxclient.Resource) error {
+func (a *BackupVMs) performBackupWithMetrics(ctx context.Context, resource proxmoxclient.Resource) error {
 	err := a.performBackup(ctx, resource)
 	if a.MetricsClient != nil {
 		labels := map[string]string{
@@ -128,7 +128,7 @@ func (a *RunProxmoxBackup) performBackupWithMetrics(ctx context.Context, resourc
 
 // performBackup initiates a backup for a given resource and waits for it to complete.
 // It returns an error if the backup fails or times out.
-func (a *RunProxmoxBackup) performBackup(ctx context.Context, resource proxmoxclient.Resource) error {
+func (a *BackupVMs) performBackup(ctx context.Context, resource proxmoxclient.Resource) error {
 	// Build backup options based on configuration
 	var backupOpts []proxmoxclient.BackupOption
 	if a.Mode != "" {
@@ -209,7 +209,7 @@ func (a *RunProxmoxBackup) performBackup(ctx context.Context, resource proxmoxcl
 
 // determineBackups analyzes resources and their backup status to decide which ones need backing up.
 // It returns the resources that need to be backed up.
-func (a *RunProxmoxBackup) determineBackups(ctx context.Context) ([]proxmoxclient.Resource, error) {
+func (a *BackupVMs) determineBackups(ctx context.Context) ([]proxmoxclient.Resource, error) {
 	resources, err := a.ProxmoxClient.ListComputeResources(ctx)
 	if err != nil {
 		a.Logger.Error("Failed to get list of resources", "error", err)

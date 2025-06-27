@@ -78,9 +78,9 @@ func TestActivityID_CollisionPrevention(t *testing.T) {
 		Module: "github.com/user/app/activities",
 		Type:   "BackupTask",
 	}
-	
+
 	id2 := ActivityID{
-		Module: "github.com/vendor/lib/activities", 
+		Module: "github.com/vendor/lib/activities",
 		Type:   "BackupTask",
 	}
 
@@ -93,7 +93,7 @@ func TestActivityID_CollisionPrevention(t *testing.T) {
 	activityMap := make(map[string]bool)
 	activityMap[id1.Key()] = true
 	activityMap[id2.Key()] = true
-	
+
 	assert.Len(t, activityMap, 2, "Should have 2 unique keys in map")
 }
 
@@ -148,12 +148,12 @@ func TestActivityID_RealWorldScenarios(t *testing.T) {
 			Module: "github.com/nomis52/goback/activities",
 			Type:   "PowerOnPBSActivity",
 		}
-		
+
 		backupID := ActivityID{
-			Module: "github.com/nomis52/goback/activities", 
-			Type:   "RunProxmoxBackupActivity",
+			Module: "github.com/nomis52/goback/activities",
+			Type:   "BackupVMsActivity",
 		}
-		
+
 		// Vendor activity with same name
 		vendorPowerOnID := ActivityID{
 			Module: "github.com/vendor/pbs-tools/activities",
@@ -164,7 +164,7 @@ func TestActivityID_RealWorldScenarios(t *testing.T) {
 		assert.True(t, powerOnID.IsValid())
 		assert.True(t, backupID.IsValid())
 		assert.True(t, vendorPowerOnID.IsValid())
-		
+
 		assert.False(t, powerOnID.Equal(backupID))
 		assert.False(t, powerOnID.Equal(vendorPowerOnID))
 		assert.False(t, backupID.Equal(vendorPowerOnID))
@@ -174,7 +174,7 @@ func TestActivityID_RealWorldScenarios(t *testing.T) {
 		activityResults[powerOnID.Key()] = "success"
 		activityResults[backupID.Key()] = "success"
 		activityResults[vendorPowerOnID.Key()] = "failure"
-		
+
 		assert.Len(t, activityResults, 3, "Should have 3 unique activities")
 		assert.Equal(t, "success", activityResults[powerOnID.Key()])
 		assert.Equal(t, "failure", activityResults[vendorPowerOnID.Key()])
@@ -185,7 +185,7 @@ func TestActivityID_RealWorldScenarios(t *testing.T) {
 		commonNames := []string{"Task", "Job", "Activity", "Worker", "Service", "Manager"}
 		modules := []string{
 			"github.com/company1/app/tasks",
-			"github.com/company2/service/jobs", 
+			"github.com/company2/service/jobs",
 			"github.com/vendor/lib/workers",
 		}
 
@@ -201,7 +201,7 @@ func TestActivityID_RealWorldScenarios(t *testing.T) {
 		keySet := make(map[string]bool)
 		for _, id := range activityIDs {
 			assert.True(t, id.IsValid(), "Activity ID should be valid: %s", id.String())
-			
+
 			key := id.Key()
 			assert.False(t, keySet[key], "Key should be unique: %s", key)
 			keySet[key] = true
