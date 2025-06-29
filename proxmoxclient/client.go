@@ -160,13 +160,24 @@ func (c *Client) ListBackups(ctx context.Context, node, storage string) ([]Backu
 	}
 
 	var response struct {
-		Data []Backup `json:"data"`
+		Data []json.RawMessage `json:"data"`
 	}
 	if err := json.Unmarshal(body, &response); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 
-	return response.Data, nil
+	backups := make([]Backup, 0, len(response.Data))
+	for _, rawBackup := range response.Data {
+		var backup Backup
+		if err := json.Unmarshal(rawBackup, &backup); err != nil {
+			// Skip invalid entries rather than failing completely
+			c.logger.Warn("Failed to unmarshal backup entry", "error", err, "data", string(rawBackup))
+			continue
+		}
+		backups = append(backups, backup)
+	}
+
+	return backups, nil
 }
 
 // Backup creates a backup of a virtual machine and returns the task ID.

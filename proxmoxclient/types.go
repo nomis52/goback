@@ -47,16 +47,16 @@ type Storage struct {
 
 // Backup represents a backup in Proxmox storage.
 type Backup struct {
-	Content      string    `json:"content"`
-	Format       string    `json:"format"`
-	Size         int64     `json:"size"`
-	CTime        time.Time `json:"ctime"`
-	VolID        string    `json:"volid"`
-	VMID         VMID      `json:"vmid"`
-	Parent       string    `json:"parent,omitempty"`
-	Notes        string    `json:"notes,omitempty"`
-	Protected    bool      `json:"protected,omitempty"`
-	Verification string    `json:"verification,omitempty"`
+	Content   string    `json:"content"`
+	Format    string    `json:"format"`
+	Size      int64     `json:"size"`
+	CTime     time.Time `json:"ctime"`
+	VolID     string    `json:"volid"`
+	VMID      VMID      `json:"vmid"`
+	Parent    string    `json:"parent,omitempty"`
+	Notes     string    `json:"notes,omitempty"`
+	Protected bool      `json:"protected,omitempty"`
+	Subtype   string    `json:"subtype,omitempty"`
 }
 
 // UnmarshalJSON implements custom JSON unmarshaling for Backup to handle Unix timestamp conversion
