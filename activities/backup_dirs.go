@@ -3,6 +3,7 @@ package activities
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"log/slog"
 	"net"
@@ -70,49 +71,48 @@ func (a *BackupDirs) Execute(ctx context.Context) error {
 		return errors.New("SSH client not initialized")
 	}
 
-	token := a.Directories.Token
-	target := a.Directories.Target
-	sources := a.Directories.Sources
-
-	if token == "" || target == "" || len(sources) == 0 {
-		a.Logger.Error("Missing backup configuration", "token", token, "target", target, "sources", sources)
-		return errors.New("missing backup configuration: token, target, or sources")
+	if err := validateDirectoryConfig(a.Directories); err != nil {
+		return err
 	}
 
-	var firstErr error
-	for _, source := range sources {
-		stdout, stderr, err := a.backupDir(source)
-		if err != nil {
-			a.Logger.Error("Backup failed", "source", source, "error", err, "stderr", stderr)
-			if firstErr == nil {
-				firstErr = err
-			}
-			continue
-		}
-		a.Logger.Info("Backup succeeded", "source", source, "stdout", stdout)
-		if stderr != "" {
-			a.Logger.Warn("Backup stderr", "source", source, "stderr", stderr)
-		}
+	if len(a.Directories.Sources) == 0 {
+		return nil
 	}
 
-	return firstErr
+	stdout, stderr, err := a.backupAllDirs(a.Directories.Sources)
+	if err != nil {
+		a.Logger.Error("Backup failed", "sources", a.Directories.Sources, "error", err, "stderr", stderr)
+		return err
+	}
+	a.Logger.Info("Backup succeeded", "sources", a.Directories.Sources, "stdout", stdout)
+	if stderr != "" {
+		a.Logger.Warn("Backup stderr", "sources", a.Directories.Sources, "stderr", stderr)
+	}
+
+	return nil
 }
 
-func (a *BackupDirs) backupDir(source string) (string, string, error) {
+// backupAllDirs executes a single backup command with all sources combined
+// This enables PBS deduplication across all directories
+func (a *BackupDirs) backupAllDirs(sources []string) (string, string, error) {
 	token := a.Directories.Token
 	target := a.Directories.Target
 
-	cmd := "export PBS_PASSWORD='" + token + "' && proxmox-backup-client backup " + source + " --repository '" + target + "'"
-	a.Logger.Info("Running backup command", "command", cmd)
+	// Build the command with all sources in a single backup command
+	cmd := buildBackupCommand(token, target, sources)
+
+	a.Logger.Info("Running consolidated backup command", "command", cmd, "source_count", len(sources))
 
 	stdout, stderr, err := a.sshClient.Run(cmd)
 
 	// Push metrics if MetricsClient is set
 	if a.MetricsClient != nil {
-		labels := map[string]string{
-			"source": source,
-			"target": target,
-		}
+		// Create a consolidated metric for all sources
+		labels := make(map[string]string, len(sources)+1)
+		labels["target"] = target
+		// Add source count to labels
+		labels["source_count"] = fmt.Sprintf("%d", len(sources))
+
 		var metricName string
 		var metricValue float64
 		if err != nil {
@@ -134,4 +134,22 @@ func (a *BackupDirs) backupDir(source string) (string, string, error) {
 	}
 
 	return stdout, stderr, err
+}
+
+// buildBackupCommand constructs the PBS backup command with all sources
+func buildBackupCommand(token, target string, sources []string) string {
+	cmd := "export PBS_PASSWORD='" + token + "' && proxmox-backup-client backup"
+	for _, source := range sources {
+		cmd += " " + source
+	}
+	cmd += " --repository '" + target + "'"
+	return cmd
+}
+
+// validateDirectoryConfig validates the directory backup configuration
+func validateDirectoryConfig(config config.DirectoryConfig) error {
+	if config.Token == "" || config.Target == "" {
+		return errors.New("missing backup configuration: token or target")
+	}
+	return nil
 }
