@@ -30,7 +30,7 @@ type Args struct {
 	Validate    bool
 }
 
-const jobName = "goback"
+
 
 func main() {
 	if err := run(); err != nil {
@@ -141,7 +141,7 @@ func injectClients(o *orchestrator.Orchestrator, cfg config.Config, logger *slog
 	metricsClient := metrics.NewClient(
 		cfg.Monitoring.VictoriaMetricsURL,
 		metrics.WithPrefix(cfg.Monitoring.MetricsPrefix),
-		metrics.WithJob(jobName),
+		metrics.WithJob(cfg.Monitoring.JobName),
 		metrics.WithInstance(hostname),
 	)
 

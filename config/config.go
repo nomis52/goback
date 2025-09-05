@@ -10,11 +10,9 @@ import (
 
 const (
 	// Default timeouts
-	defaultBootTimeout         = 5 * time.Minute
-	defaultPBSBootTimeout      = 10 * time.Minute
-	defaultBackupJobTimeout    = 2 * time.Hour
-	defaultTotalRuntimeTimeout = 8 * time.Hour
-	defaultShutdownTimeout     = 2 * time.Minute
+	defaultPBSBootTimeout   = 10 * time.Minute
+	defaultShutdownTimeout  = 2 * time.Minute
+	defaultBackupJobTimeout = 2 * time.Hour
 
 	// Default backup settings
 	defaultMaxAge     = 24 * time.Hour // 24 hours default
@@ -24,10 +22,6 @@ const (
 	// Default monitoring settings
 	defaultMetricsPrefix = "pbs_automation"
 	defaultJobName       = "goback"
-
-	// Default behavior settings
-	defaultMaxRetries = 2
-	defaultRetryDelay = 30 * time.Second
 
 	// Default logging settings
 	defaultLogLevel  = "info"
@@ -44,7 +38,6 @@ type Config struct {
 	Backup     BackupConfig     `yaml:"backup"`
 	Directory  DirectoryConfig  `yaml:"directories"`
 	Monitoring MonitoringConfig `yaml:"monitoring"`
-	Behavior   BehaviorConfig   `yaml:"behavior"`
 	Logging    LoggingConfig    `yaml:"logging"`
 }
 
@@ -60,9 +53,6 @@ type PBSConfig struct {
 	// Host is the address of the Proxmox Backup Server
 	Host string `yaml:"host"`
 
-	// Datastore is the name of the backup datastore to use
-	Datastore string `yaml:"datastore"`
-
 	// BootTimeout is the maximum time to wait for the PBS server to become available after boot
 	BootTimeout time.Duration `yaml:"boot_timeout"`
 }
@@ -77,10 +67,7 @@ type ProxmoxConfig struct {
 
 // TimeoutsConfig defines various timeout durations
 type TimeoutsConfig struct {
-	BootTimeout         time.Duration `yaml:"boot_timeout"`
-	BackupJobTimeout    time.Duration `yaml:"backup_job_timeout"`
-	TotalRuntimeTimeout time.Duration `yaml:"total_runtime_timeout"`
-	ShutdownTimeout     time.Duration `yaml:"shutdown_timeout"`
+	ShutdownTimeout time.Duration `yaml:"shutdown_timeout"`
 }
 
 // BackupConfig defines backup behavior settings
@@ -107,12 +94,7 @@ type MonitoringConfig struct {
 	JobName            string `yaml:"jobname"`
 }
 
-// BehaviorConfig defines application behavior settings
-type BehaviorConfig struct {
-	ShutdownOnPartialFailure bool          `yaml:"shutdown_on_partial_failure"`
-	MaxRetries               int           `yaml:"max_retries"`
-	RetryDelay               time.Duration `yaml:"retry_delay"`
-}
+
 
 // LoggingConfig defines logging behavior settings
 type LoggingConfig struct {
@@ -136,37 +118,25 @@ func (c *Config) Validate() error {
 	if c.PBS.Host == "" {
 		return fmt.Errorf("PBS host is required")
 	}
-	if c.PBS.Datastore == "" {
-		return fmt.Errorf("PBS datastore is required")
-	}
 	if c.PBS.BootTimeout <= 0 {
 		return fmt.Errorf("PBS boot timeout must be positive")
 	}
 	if c.Monitoring.VictoriaMetricsURL == "" {
 		return fmt.Errorf("VictoriaMetrics URL is required")
 	}
-	if c.Timeouts.BootTimeout <= 0 {
-		return fmt.Errorf("boot timeout must be positive")
+	if c.Timeouts.ShutdownTimeout <= 0 {
+		return fmt.Errorf("shutdown timeout must be positive")
 	}
-	if c.Timeouts.BackupJobTimeout <= 0 {
-		return fmt.Errorf("backup job timeout must be positive")
+	if c.Proxmox.BackupTimeout <= 0 {
+		return fmt.Errorf("proxmox backup timeout must be positive")
 	}
 	return nil
 }
 
 // SetDefaults sets reasonable default values for optional fields
 func (c *Config) SetDefaults() {
-	if c.Timeouts.BootTimeout == 0 {
-		c.Timeouts.BootTimeout = defaultBootTimeout
-	}
 	if c.PBS.BootTimeout == 0 {
 		c.PBS.BootTimeout = defaultPBSBootTimeout
-	}
-	if c.Timeouts.BackupJobTimeout == 0 {
-		c.Timeouts.BackupJobTimeout = defaultBackupJobTimeout
-	}
-	if c.Timeouts.TotalRuntimeTimeout == 0 {
-		c.Timeouts.TotalRuntimeTimeout = defaultTotalRuntimeTimeout
 	}
 	if c.Timeouts.ShutdownTimeout == 0 {
 		c.Timeouts.ShutdownTimeout = defaultShutdownTimeout
@@ -179,12 +149,6 @@ func (c *Config) SetDefaults() {
 	}
 	if c.Monitoring.JobName == "" {
 		c.Monitoring.JobName = defaultJobName
-	}
-	if c.Behavior.MaxRetries == 0 {
-		c.Behavior.MaxRetries = defaultMaxRetries
-	}
-	if c.Behavior.RetryDelay == 0 {
-		c.Behavior.RetryDelay = defaultRetryDelay
 	}
 	if c.Backup.MaxAge == 0 {
 		c.Backup.MaxAge = defaultMaxAge
