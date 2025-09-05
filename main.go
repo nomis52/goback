@@ -17,8 +17,17 @@ import (
 	"github.com/nomis52/goback/proxmoxclient"
 )
 
+// Version information (set via ldflags during build)
+var (
+	Version   = "dev"
+	BuildTime = "unknown"
+	GitCommit = "unknown"
+)
+
 type Args struct {
-	ConfigPath string
+	ConfigPath  string
+	ShowVersion bool
+	Validate    bool
 }
 
 const jobName = "goback"
@@ -32,6 +41,14 @@ func main() {
 
 func run() error {
 	args := parseArgs()
+
+	// Handle version request
+	if args.ShowVersion {
+		showVersion()
+		return nil
+	}
+
+	// Validate required config path
 	if args.ConfigPath == "" {
 		return fmt.Errorf("config flag (-c or --config) is required")
 	}
@@ -39,6 +56,12 @@ func run() error {
 	cfg, err := config.LoadConfig(args.ConfigPath)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// Handle validation-only request
+	if args.Validate {
+		fmt.Printf("Configuration validation successful: %s\n", args.ConfigPath)
+		return nil
 	}
 
 	loggerConfig := logging.Config{
@@ -52,7 +75,12 @@ func run() error {
 		return fmt.Errorf("failed to initialize logger: %w", err)
 	}
 
-	logger.Info("goback started", "config_path", args.ConfigPath)
+	logger.Info("goback started",
+		"version", Version,
+		"build_time", BuildTime,
+		"git_commit", GitCommit,
+		"config_path", args.ConfigPath,
+	)
 
 	// Create orchestrator with config
 	o := orchestrator.NewOrchestrator(
@@ -79,6 +107,12 @@ func run() error {
 	}
 
 	return nil
+}
+
+func showVersion() {
+	fmt.Printf("goback version %s\n", Version)
+	fmt.Printf("Built: %s\n", BuildTime)
+	fmt.Printf("Commit: %s\n", GitCommit)
 }
 
 func injectClients(o *orchestrator.Orchestrator, cfg config.Config, logger *slog.Logger) error {
@@ -118,11 +152,33 @@ func injectClients(o *orchestrator.Orchestrator, cfg config.Config, logger *slog
 func parseArgs() Args {
 	configPath := flag.String("config", "", "Path to config file")
 	configPathShort := flag.String("c", "", "Path to config file (shorthand)")
+	showVersion := flag.Bool("version", false, "Show version information")
+	versionShort := flag.Bool("v", false, "Show version information (shorthand)")
+	validate := flag.Bool("validate", false, "Validate configuration and exit")
+
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: %s [options]\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "\nPBS Backup Automation Tool\n\n")
+		fmt.Fprintf(os.Stderr, "Options:\n")
+		flag.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "\nExamples:\n")
+		fmt.Fprintf(os.Stderr, "  %s --config /etc/goback/config.yaml\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s --version\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s --config config.yaml --validate\n", os.Args[0])
+	}
+
 	flag.Parse()
 
 	path := *configPath
 	if path == "" && *configPathShort != "" {
 		path = *configPathShort
 	}
-	return Args{ConfigPath: path}
+
+	version := *showVersion || *versionShort
+
+	return Args{
+		ConfigPath:  path,
+		ShowVersion: version,
+		Validate:    *validate,
+	}
 }
