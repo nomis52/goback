@@ -31,10 +31,8 @@ const (
 
 // Config represents the complete application configuration
 type Config struct {
-	IPMI       IPMIConfig       `yaml:"ipmi"`
 	PBS        PBSConfig        `yaml:"pbs"`
 	Proxmox    ProxmoxConfig    `yaml:"proxmox"`
-	Timeouts   TimeoutsConfig   `yaml:"timeouts"`
 	Backup     BackupConfig     `yaml:"backup"`
 	Directory  DirectoryConfig  `yaml:"directories"`
 	Monitoring MonitoringConfig `yaml:"monitoring"`
@@ -53,8 +51,14 @@ type PBSConfig struct {
 	// Host is the address of the Proxmox Backup Server
 	Host string `yaml:"host"`
 
+	// IPMI holds BMC connection settings for the PBS server
+	IPMI IPMIConfig `yaml:"ipmi"`
+
 	// BootTimeout is the maximum time to wait for the PBS server to become available after boot
 	BootTimeout time.Duration `yaml:"boot_timeout"`
+
+	// ShutdownTimeout is the maximum time to wait for graceful shutdown
+	ShutdownTimeout time.Duration `yaml:"shutdown_timeout"`
 }
 
 // ProxmoxConfig holds Proxmox API connection settings
@@ -65,10 +69,7 @@ type ProxmoxConfig struct {
 	BackupTimeout time.Duration `yaml:"backup_timeout"`
 }
 
-// TimeoutsConfig defines various timeout durations
-type TimeoutsConfig struct {
-	ShutdownTimeout time.Duration `yaml:"shutdown_timeout"`
-}
+
 
 // BackupConfig defines backup behavior settings
 type BackupConfig struct {
@@ -106,8 +107,14 @@ type LoggingConfig struct {
 
 // Validate performs basic validation on the configuration
 func (c *Config) Validate() error {
-	if c.IPMI.Host == "" {
-		return fmt.Errorf("IPMI host is required")
+	if c.PBS.IPMI.Host == "" {
+		return fmt.Errorf("PBS IPMI host is required")
+	}
+	if c.PBS.IPMI.Username == "" {
+		return fmt.Errorf("PBS IPMI username is required")
+	}
+	if c.PBS.IPMI.Password == "" {
+		return fmt.Errorf("PBS IPMI password is required")
 	}
 	if c.Proxmox.Host == "" {
 		return fmt.Errorf("Proxmox host is required")
@@ -124,8 +131,8 @@ func (c *Config) Validate() error {
 	if c.Monitoring.VictoriaMetricsURL == "" {
 		return fmt.Errorf("VictoriaMetrics URL is required")
 	}
-	if c.Timeouts.ShutdownTimeout <= 0 {
-		return fmt.Errorf("shutdown timeout must be positive")
+	if c.PBS.ShutdownTimeout <= 0 {
+		return fmt.Errorf("PBS shutdown timeout must be positive")
 	}
 	if c.Proxmox.BackupTimeout <= 0 {
 		return fmt.Errorf("proxmox backup timeout must be positive")
@@ -138,8 +145,8 @@ func (c *Config) SetDefaults() {
 	if c.PBS.BootTimeout == 0 {
 		c.PBS.BootTimeout = defaultPBSBootTimeout
 	}
-	if c.Timeouts.ShutdownTimeout == 0 {
-		c.Timeouts.ShutdownTimeout = defaultShutdownTimeout
+	if c.PBS.ShutdownTimeout == 0 {
+		c.PBS.ShutdownTimeout = defaultShutdownTimeout
 	}
 	if c.Proxmox.BackupTimeout == 0 {
 		c.Proxmox.BackupTimeout = defaultBackupJobTimeout

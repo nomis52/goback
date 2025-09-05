@@ -75,7 +75,7 @@ type PowerOffPBS struct {
 	_ *BackupVMs
 
 	// Configuration
-	ShutdownTimeout time.Duration `config:"timeouts.shutdown_timeout"`
+	ShutdownTimeout time.Duration `config:"pbs.shutdown_timeout"`
 }
 
 // Init initializes the PowerOffPBS activity.

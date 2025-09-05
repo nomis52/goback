@@ -122,9 +122,9 @@ func injectClients(o *orchestrator.Orchestrator, cfg config.Config, logger *slog
 	}
 
 	ctrl := ipmi.NewIPMIController(
-		cfg.IPMI.Host,
-		ipmi.WithUsername(cfg.IPMI.Username),
-		ipmi.WithPassword(cfg.IPMI.Password),
+		cfg.PBS.IPMI.Host,
+		ipmi.WithUsername(cfg.PBS.IPMI.Username),
+		ipmi.WithPassword(cfg.PBS.IPMI.Password),
 		ipmi.WithLogger(logger),
 	)
 
