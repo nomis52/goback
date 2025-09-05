@@ -15,7 +15,7 @@ import (
 // INIT() PURPOSE - STRUCTURAL VALIDATION ONLY:
 // Init() is for "fail-fast" validation of static structure and configuration.
 // At Init() time, all dependencies are injected but NO activities have executed yet.
-// 
+//
 // Init() SHOULD validate:
 // - Required configuration fields are set and valid
 // - Required dependencies are injected (not nil)
@@ -33,7 +33,7 @@ type Activity interface {
 	// DO NOT check execution state of dependencies - they haven't run yet.
 	// Return an error if the activity is misconfigured or dependencies are missing.
 	Init() error
-	
+
 	// Execute performs the activity's actual work.
 	// Called after all dependencies have completed successfully.
 	// This is where runtime validation and dependency execution checks belong.
@@ -52,7 +52,7 @@ type Result struct {
 	// State indicates the current execution state
 	// See ActivityState constants and package documentation for state progression details
 	State ActivityState
-	
+
 	// Error contains only errors returned by the activity's Execute() method
 	// nil indicates Execute() returned nil (success) or Execute() was never called
 	// Validation errors, dependency failures, and cancellations are reflected in State only
