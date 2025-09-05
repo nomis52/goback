@@ -69,7 +69,8 @@ func run() error {
 	powerOnPBS := &activities.PowerOnPBS{}
 	backupDirs := &activities.BackupDirs{}
 	backupVMs := &activities.BackupVMs{}
-	o.AddActivity(powerOnPBS, backupDirs, backupVMs)
+	powerOffPBS := &activities.PowerOffPBS{}
+	o.AddActivity(powerOnPBS, backupDirs, backupVMs, powerOffPBS)
 
 	// Execute orchestrator
 	ctx := context.Background()

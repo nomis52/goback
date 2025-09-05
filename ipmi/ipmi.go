@@ -85,11 +85,20 @@ func (c *IPMIController) PowerOn() error {
 	return nil
 }
 
-// PowerOff turns off the remote system
+// PowerOff performs a graceful shutdown via IPMI ACPI signal
 func (c *IPMIController) PowerOff() error {
 	_, err := c.runIPMICommand("chassis", "power", "soft")
 	if err != nil {
-		return fmt.Errorf("failed to power off system: %v", err)
+		return fmt.Errorf("failed to gracefully power off system: %v", err)
+	}
+	return nil
+}
+
+// PowerOffHard performs an immediate hard power off via IPMI
+func (c *IPMIController) PowerOffHard() error {
+	_, err := c.runIPMICommand("chassis", "power", "off")
+	if err != nil {
+		return fmt.Errorf("failed to hard power off system: %v", err)
 	}
 	return nil
 }
