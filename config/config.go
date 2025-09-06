@@ -34,7 +34,7 @@ type Config struct {
 	PBS        PBSConfig        `yaml:"pbs"`
 	Proxmox    ProxmoxConfig    `yaml:"proxmox"`
 	Compute    ComputeConfig    `yaml:"compute"`
-	Directory  DirectoryConfig  `yaml:"directories"`
+	Files      FilesConfig      `yaml:"files"`
 	Monitoring MonitoringConfig `yaml:"monitoring"`
 	Logging    LoggingConfig    `yaml:"logging"`
 }
@@ -78,8 +78,8 @@ type ComputeConfig struct {
 	Compress     string        `yaml:"compress"`       // compression: "0", "1", "gzip", "lzo", "zstd"
 }
 
-// DirectoryConfig defines a single SSH backup job for the directories stanza
-type DirectoryConfig struct {
+// FilesConfig defines a single SSH backup job for file-based backups
+type FilesConfig struct {
 	Host           string   `yaml:"host"`
 	User           string   `yaml:"user"`
 	PrivateKeyPath string   `yaml:"private_key_path"`

@@ -29,8 +29,8 @@ type BackupDirs struct {
 	PowerOnPBS *PowerOnPBS
 
 	// Configuration
-	Directories    config.DirectoryConfig `config:"directories"`
-	PrivateKeyPath string                 `config:"directories.private_key_path"`
+	Files          config.FilesConfig `config:"files"`
+	PrivateKeyPath string             `config:"files.private_key_path"`
 
 	// SSH client for remote operations
 	sshClient *sshclient.SSHClient
@@ -40,8 +40,8 @@ type BackupDirs struct {
 }
 
 func (a *BackupDirs) Init() error {
-	host := a.Directories.Host
-	user := a.Directories.User
+	host := a.Files.Host
+	user := a.Files.User
 	privateKeyPath := a.PrivateKeyPath
 
 	if host == "" || user == "" || privateKeyPath == "" {
@@ -71,22 +71,22 @@ func (a *BackupDirs) Execute(ctx context.Context) error {
 		return errors.New("SSH client not initialized")
 	}
 
-	if err := validateDirectoryConfig(a.Directories); err != nil {
+	if err := validateFilesConfig(a.Files); err != nil {
 		return err
 	}
 
-	if len(a.Directories.Sources) == 0 {
+	if len(a.Files.Sources) == 0 {
 		return nil
 	}
 
-	stdout, stderr, err := a.backupAllDirs(a.Directories.Sources)
+	stdout, stderr, err := a.backupAllDirs(a.Files.Sources)
 	if err != nil {
-		a.Logger.Error("Backup failed", "sources", a.Directories.Sources, "error", err, "stderr", stderr)
+		a.Logger.Error("Backup failed", "sources", a.Files.Sources, "error", err, "stderr", stderr)
 		return err
 	}
-	a.Logger.Info("Backup succeeded", "sources", a.Directories.Sources, "stdout", stdout)
+	a.Logger.Info("Backup succeeded", "sources", a.Files.Sources, "stdout", stdout)
 	if stderr != "" {
-		a.Logger.Warn("Backup stderr", "sources", a.Directories.Sources, "stderr", stderr)
+		a.Logger.Warn("Backup stderr", "sources", a.Files.Sources, "stderr", stderr)
 	}
 
 	return nil
@@ -95,8 +95,8 @@ func (a *BackupDirs) Execute(ctx context.Context) error {
 // backupAllDirs executes a single backup command with all sources combined
 // This enables PBS deduplication across all directories
 func (a *BackupDirs) backupAllDirs(sources []string) (string, string, error) {
-	token := a.Directories.Token
-	target := a.Directories.Target
+	token := a.Files.Token
+	target := a.Files.Target
 
 	// Build the command with all sources in a single backup command
 	cmd := buildBackupCommand(token, target, sources)
@@ -146,8 +146,8 @@ func buildBackupCommand(token, target string, sources []string) string {
 	return cmd
 }
 
-// validateDirectoryConfig validates the directory backup configuration
-func validateDirectoryConfig(config config.DirectoryConfig) error {
+// validateFilesConfig validates the file backup configuration
+func validateFilesConfig(config config.FilesConfig) error {
 	if config.Token == "" || config.Target == "" {
 		return errors.New("missing backup configuration: token or target")
 	}

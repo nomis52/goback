@@ -211,7 +211,7 @@ monitoring:
 	}
 }
 
-func TestLoadConfig_Directories(t *testing.T) {
+func TestLoadConfig_Files(t *testing.T) {
 	tmpfile, err := os.CreateTemp("", "goback_config_test.yaml")
 	if err != nil {
 		t.Fatalf("failed to create temp file: %v", err)
@@ -235,7 +235,7 @@ compute:
   max_backup_age: 24h
 monitoring:
   victoriametrics_url: http://vm
-directories:
+files:
   host: pve2
   token: mytoken
   target: backup-client@pbs!token-name@10.6.0.10:tank
@@ -252,7 +252,7 @@ directories:
 	if err != nil {
 		t.Fatalf("LoadConfig() error = %v, want nil", err)
 	}
-	b := cfg.Directory
+	b := cfg.Files
 	if b.Host != "pve2" {
 		t.Errorf("Host = %v, want %v", b.Host, "pve2")
 	}
