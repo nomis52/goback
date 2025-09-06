@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	metricLastBackup    = "last_backup"
-	metricBackupFailure = "backup_failure"
+	backupStatusCheckInterval = 10 * time.Second
+	metricLastBackup          = "last_backup"
+	metricBackupFailure       = "backup_failure"
 )
 
 // BackupVMs manages the execution of Proxmox backups
@@ -160,7 +161,7 @@ func (a *BackupVMs) performBackup(ctx context.Context, resource proxmoxclient.Re
 	}
 
 	// Poll for task completion
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(backupStatusCheckInterval)
 	defer ticker.Stop()
 
 	timeout := time.After(a.BackupTimeout)
