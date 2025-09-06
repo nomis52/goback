@@ -27,9 +27,9 @@ type BackupVMs struct {
 	// Configuration
 	BackupTimeout time.Duration `config:"proxmox.backup_timeout"`
 	Storage       string        `config:"proxmox.storage"`
-	MaxAge        time.Duration `config:"backup.max_age"`
-	Mode          string        `config:"backup.mode"`
-	Compress      string        `config:"backup.compress"`
+	MaxBackupAge  time.Duration `config:"compute.max_backup_age"`
+	Mode          string        `config:"compute.mode"`
+	Compress      string        `config:"compute.compress"`
 }
 
 func (a *BackupVMs) Init() error {
@@ -229,7 +229,7 @@ func (a *BackupVMs) determineBackups(ctx context.Context) ([]proxmoxclient.Resou
 
 	var resourcesToBackup []proxmoxclient.Resource
 	for vmID, lastBackup := range getMostRecentBackupTimes(backups, resources) {
-		if lastBackup.IsZero() || time.Since(lastBackup) > a.MaxAge {
+		if lastBackup.IsZero() || time.Since(lastBackup) > a.MaxBackupAge {
 			if resource, exists := resourceMap[vmID]; exists {
 				resourcesToBackup = append(resourcesToBackup, resource)
 			}

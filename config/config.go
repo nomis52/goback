@@ -33,7 +33,7 @@ const (
 type Config struct {
 	PBS        PBSConfig        `yaml:"pbs"`
 	Proxmox    ProxmoxConfig    `yaml:"proxmox"`
-	Backup     BackupConfig     `yaml:"backup"`
+	Compute    ComputeConfig    `yaml:"compute"`
 	Directory  DirectoryConfig  `yaml:"directories"`
 	Monitoring MonitoringConfig `yaml:"monitoring"`
 	Logging    LoggingConfig    `yaml:"logging"`
@@ -71,11 +71,11 @@ type ProxmoxConfig struct {
 
 
 
-// BackupConfig defines backup behavior settings
-type BackupConfig struct {
-	MaxAge   time.Duration `yaml:"max_age"`
-	Mode     string        `yaml:"mode"`     // backup mode: snapshot, suspend, stop
-	Compress string        `yaml:"compress"` // compression: "0", "1", "gzip", "lzo", "zstd"
+// ComputeConfig defines backup behavior settings for VMs and LXCs
+type ComputeConfig struct {
+	MaxBackupAge time.Duration `yaml:"max_backup_age"`
+	Mode         string        `yaml:"mode"`           // backup mode: snapshot, suspend, stop
+	Compress     string        `yaml:"compress"`       // compression: "0", "1", "gzip", "lzo", "zstd"
 }
 
 // DirectoryConfig defines a single SSH backup job for the directories stanza
@@ -157,14 +157,14 @@ func (c *Config) SetDefaults() {
 	if c.Monitoring.JobName == "" {
 		c.Monitoring.JobName = defaultJobName
 	}
-	if c.Backup.MaxAge == 0 {
-		c.Backup.MaxAge = defaultMaxAge
+	if c.Compute.MaxBackupAge == 0 {
+		c.Compute.MaxBackupAge = defaultMaxAge
 	}
-	if c.Backup.Mode == "" {
-		c.Backup.Mode = defaultBackupMode
+	if c.Compute.Mode == "" {
+		c.Compute.Mode = defaultBackupMode
 	}
-	if c.Backup.Compress == "" {
-		c.Backup.Compress = defaultCompress
+	if c.Compute.Compress == "" {
+		c.Compute.Compress = defaultCompress
 	}
 	// Set logging defaults
 	if c.Logging.Level == "" {

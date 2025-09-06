@@ -18,53 +18,51 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "valid config",
 			cfg: Config{
-				IPMI:    IPMIConfig{Host: "1.2.3.4", Username: "u", Password: "p"},
-				Proxmox: ProxmoxConfig{Host: "1.2.3.5", Token: "t", Storage: "s"},
-				PBS:     PBSConfig{Host: "1.2.3.6", Datastore: "ds", BootTimeout: 10 * time.Minute},
-				Timeouts: TimeoutsConfig{
-					BootTimeout:         time.Minute,
-					BackupJobTimeout:    time.Minute,
-					TotalRuntimeTimeout: time.Minute,
-					ShutdownTimeout:     time.Minute,
+				PBS: PBSConfig{
+					Host: "1.2.3.6",
+					IPMI: IPMIConfig{Host: "1.2.3.4", Username: "u", Password: "p"},
+					BootTimeout:     10 * time.Minute,
+					ShutdownTimeout: time.Minute,
 				},
-				Backup:     BackupConfig{MaxAge: 24 * time.Hour},
+				Proxmox: ProxmoxConfig{
+					Host:          "1.2.3.5",
+					Token:         "t",
+					Storage:       "s",
+					BackupTimeout: time.Minute,
+				},
+				Compute:    ComputeConfig{MaxBackupAge: 24 * time.Hour},
 				Monitoring: MonitoringConfig{VictoriaMetricsURL: "http://vm"},
 			},
 			wantErr: false,
 		},
 		{
 			name:    "missing IPMI host",
-			cfg:     Config{Proxmox: ProxmoxConfig{Host: "h", Token: "t", Storage: "s"}, PBS: PBSConfig{Host: "h", Datastore: "d"}, Timeouts: TimeoutsConfig{BootTimeout: time.Second, BackupJobTimeout: time.Second}, Backup: BackupConfig{MaxAge: 24 * time.Hour}, Monitoring: MonitoringConfig{VictoriaMetricsURL: "u"}},
+			cfg:     Config{Proxmox: ProxmoxConfig{Host: "h", Token: "t", Storage: "s"}, PBS: PBSConfig{Host: "h"}, Compute: ComputeConfig{MaxBackupAge: 24 * time.Hour}, Monitoring: MonitoringConfig{VictoriaMetricsURL: "u"}},
 			wantErr: true,
 		},
 		{
 			name:    "missing Proxmox host",
-			cfg:     Config{IPMI: IPMIConfig{Host: "h"}, PBS: PBSConfig{Host: "h", Datastore: "d"}, Timeouts: TimeoutsConfig{BootTimeout: time.Second, BackupJobTimeout: time.Second}, Backup: BackupConfig{MaxAge: 24 * time.Hour}, Monitoring: MonitoringConfig{VictoriaMetricsURL: "u"}},
+			cfg:     Config{PBS: PBSConfig{Host: "h", IPMI: IPMIConfig{Host: "h", Username: "u", Password: "p"}, BootTimeout: time.Second, ShutdownTimeout: time.Second}, Proxmox: ProxmoxConfig{Token: "t", Storage: "s", BackupTimeout: time.Second}, Compute: ComputeConfig{MaxBackupAge: 24 * time.Hour}, Monitoring: MonitoringConfig{VictoriaMetricsURL: "u"}},
 			wantErr: true,
 		},
 		{
 			name:    "missing PBS host",
-			cfg:     Config{IPMI: IPMIConfig{Host: "h"}, Proxmox: ProxmoxConfig{Host: "h", Token: "t", Storage: "s"}, PBS: PBSConfig{Datastore: "d"}, Timeouts: TimeoutsConfig{BootTimeout: time.Second, BackupJobTimeout: time.Second}, Backup: BackupConfig{MaxAge: 24 * time.Hour}, Monitoring: MonitoringConfig{VictoriaMetricsURL: "u"}},
-			wantErr: true,
-		},
-		{
-			name:    "missing PBS datastore",
-			cfg:     Config{IPMI: IPMIConfig{Host: "h"}, Proxmox: ProxmoxConfig{Host: "h", Token: "t", Storage: "s"}, PBS: PBSConfig{Host: "h"}, Timeouts: TimeoutsConfig{BootTimeout: time.Second, BackupJobTimeout: time.Second}, Backup: BackupConfig{MaxAge: 24 * time.Hour}, Monitoring: MonitoringConfig{VictoriaMetricsURL: "u"}},
+			cfg:     Config{PBS: PBSConfig{IPMI: IPMIConfig{Host: "h", Username: "u", Password: "p"}, BootTimeout: time.Second, ShutdownTimeout: time.Second}, Proxmox: ProxmoxConfig{Host: "h", Token: "t", Storage: "s", BackupTimeout: time.Second}, Compute: ComputeConfig{MaxBackupAge: 24 * time.Hour}, Monitoring: MonitoringConfig{VictoriaMetricsURL: "u"}},
 			wantErr: true,
 		},
 		{
 			name:    "missing VictoriaMetrics URL",
-			cfg:     Config{IPMI: IPMIConfig{Host: "h"}, Proxmox: ProxmoxConfig{Host: "h", Token: "t", Storage: "s"}, PBS: PBSConfig{Host: "h", Datastore: "d"}, Timeouts: TimeoutsConfig{BootTimeout: time.Second, BackupJobTimeout: time.Second}, Backup: BackupConfig{MaxAge: 24 * time.Hour}},
+			cfg:     Config{PBS: PBSConfig{Host: "h", IPMI: IPMIConfig{Host: "h", Username: "u", Password: "p"}, BootTimeout: time.Second, ShutdownTimeout: time.Second}, Proxmox: ProxmoxConfig{Host: "h", Token: "t", Storage: "s", BackupTimeout: time.Second}, Compute: ComputeConfig{MaxBackupAge: 24 * time.Hour}},
 			wantErr: true,
 		},
 		{
 			name:    "non-positive boot timeout",
-			cfg:     Config{IPMI: IPMIConfig{Host: "h"}, Proxmox: ProxmoxConfig{Host: "h", Token: "t", Storage: "s"}, PBS: PBSConfig{Host: "h", Datastore: "d"}, Timeouts: TimeoutsConfig{BootTimeout: 0, BackupJobTimeout: time.Second}, Backup: BackupConfig{MaxAge: 24 * time.Hour}, Monitoring: MonitoringConfig{VictoriaMetricsURL: "u"}},
+			cfg:     Config{PBS: PBSConfig{Host: "h", IPMI: IPMIConfig{Host: "h", Username: "u", Password: "p"}, BootTimeout: 0, ShutdownTimeout: time.Second}, Proxmox: ProxmoxConfig{Host: "h", Token: "t", Storage: "s", BackupTimeout: time.Second}, Compute: ComputeConfig{MaxBackupAge: 24 * time.Hour}, Monitoring: MonitoringConfig{VictoriaMetricsURL: "u"}},
 			wantErr: true,
 		},
 		{
 			name:    "non-positive backup job timeout",
-			cfg:     Config{IPMI: IPMIConfig{Host: "h"}, Proxmox: ProxmoxConfig{Host: "h", Token: "t", Storage: "s"}, PBS: PBSConfig{Host: "h", Datastore: "d"}, Timeouts: TimeoutsConfig{BootTimeout: time.Second, BackupJobTimeout: 0}, Backup: BackupConfig{MaxAge: 24 * time.Hour}, Monitoring: MonitoringConfig{VictoriaMetricsURL: "u"}},
+			cfg:     Config{PBS: PBSConfig{Host: "h", IPMI: IPMIConfig{Host: "h", Username: "u", Password: "p"}, BootTimeout: time.Second, ShutdownTimeout: time.Second}, Proxmox: ProxmoxConfig{Host: "h", Token: "t", Storage: "s", BackupTimeout: 0}, Compute: ComputeConfig{MaxBackupAge: 24 * time.Hour}, Monitoring: MonitoringConfig{VictoriaMetricsURL: "u"}},
 			wantErr: true,
 		},
 	}
@@ -84,20 +82,17 @@ func TestConfig_Validate(t *testing.T) {
 func TestConfig_SetDefaults(t *testing.T) {
 	cfg := Config{}
 	cfg.SetDefaults()
-	if cfg.Timeouts.BootTimeout != 5*time.Minute {
-		t.Errorf("BootTimeout default = %v, want %v", cfg.Timeouts.BootTimeout, 5*time.Minute)
+	if cfg.PBS.BootTimeout != 10*time.Minute {
+		t.Errorf("BootTimeout default = %v, want %v", cfg.PBS.BootTimeout, 10*time.Minute)
 	}
-	if cfg.Timeouts.BackupJobTimeout != 2*time.Hour {
-		t.Errorf("BackupJobTimeout default = %v, want %v", cfg.Timeouts.BackupJobTimeout, 2*time.Hour)
+	if cfg.Proxmox.BackupTimeout != 2*time.Hour {
+		t.Errorf("BackupTimeout default = %v, want %v", cfg.Proxmox.BackupTimeout, 2*time.Hour)
 	}
-	if cfg.Timeouts.TotalRuntimeTimeout != 8*time.Hour {
-		t.Errorf("TotalRuntimeTimeout default = %v, want %v", cfg.Timeouts.TotalRuntimeTimeout, 8*time.Hour)
+	if cfg.PBS.ShutdownTimeout != 2*time.Minute {
+		t.Errorf("ShutdownTimeout default = %v, want %v", cfg.PBS.ShutdownTimeout, 2*time.Minute)
 	}
-	if cfg.Timeouts.ShutdownTimeout != 2*time.Minute {
-		t.Errorf("ShutdownTimeout default = %v, want %v", cfg.Timeouts.ShutdownTimeout, 2*time.Minute)
-	}
-	if cfg.Backup.MaxAge != 24*time.Hour {
-		t.Errorf("MaxAge default = %v, want %v", cfg.Backup.MaxAge, 24*time.Hour)
+	if cfg.Compute.MaxBackupAge != 24*time.Hour {
+		t.Errorf("MaxBackupAge default = %v, want %v", cfg.Compute.MaxBackupAge, 24*time.Hour)
 	}
 	if cfg.Monitoring.MetricsPrefix != "pbs_automation" {
 		t.Errorf("MetricsPrefix default = %v, want %v", cfg.Monitoring.MetricsPrefix, "pbs_automation")
@@ -105,12 +100,7 @@ func TestConfig_SetDefaults(t *testing.T) {
 	if cfg.Monitoring.JobName != "goback" {
 		t.Errorf("JobName default = %v, want %v", cfg.Monitoring.JobName, "goback")
 	}
-	if cfg.Behavior.MaxRetries != 2 {
-		t.Errorf("MaxRetries default = %v, want %v", cfg.Behavior.MaxRetries, 2)
-	}
-	if cfg.Behavior.RetryDelay != 30*time.Second {
-		t.Errorf("RetryDelay default = %v, want %v", cfg.Behavior.RetryDelay, 30*time.Second)
-	}
+
 }
 
 func TestLoadConfig(t *testing.T) {
@@ -120,29 +110,23 @@ func TestLoadConfig(t *testing.T) {
 	}
 	defer os.Remove(tmpfile.Name())
 
-	content := `ipmi:
-  host: 1.2.3.4
-  username: user
-  password: pass
+	content := `pbs:
+  host: 1.2.3.6
+  ipmi:
+    host: 1.2.3.4
+    username: user
+    password: pass
+  boot_timeout: 60s
+  shutdown_timeout: 60s
 proxmox:
   host: 1.2.3.5
   token: token123
   storage: storage1
-pbs:
-  host: 1.2.3.6
-  datastore: ds
-timeouts:
-  boot_timeout: 60s
-  backup_job_timeout: 60s
-  total_runtime_timeout: 60s
-  shutdown_timeout: 60s
-backup:
-  max_age: 24h
+  backup_timeout: 60s
+compute:
+  max_backup_age: 24h
 monitoring:
   victoriametrics_url: http://vm
-behavior:
-  max_retries: 1
-  retry_delay: 10s
 `
 	if _, err := tmpfile.Write([]byte(content)); err != nil {
 		t.Fatalf("failed to write temp config: %v", err)
@@ -153,8 +137,8 @@ behavior:
 	if err != nil {
 		t.Fatalf("LoadConfig() error = %v, want nil", err)
 	}
-	if cfg.IPMI.Host != "1.2.3.4" {
-		t.Errorf("IPMI.Host = %v, want %v", cfg.IPMI.Host, "1.2.3.4")
+	if cfg.PBS.IPMI.Host != "1.2.3.4" {
+		t.Errorf("PBS.IPMI.Host = %v, want %v", cfg.PBS.IPMI.Host, "1.2.3.4")
 	}
 	if cfg.Proxmox.Host != "1.2.3.5" {
 		t.Errorf("Proxmox.Host = %v, want %v", cfg.Proxmox.Host, "1.2.3.5")
@@ -162,21 +146,14 @@ behavior:
 	if cfg.PBS.Host != "1.2.3.6" {
 		t.Errorf("PBS.Host = %v, want %v", cfg.PBS.Host, "1.2.3.6")
 	}
-	if cfg.PBS.Datastore != "ds" {
-		t.Errorf("PBS.Datastore = %v, want %v", cfg.PBS.Datastore, "ds")
-	}
-	if cfg.Backup.MaxAge != 24*time.Hour {
-		t.Errorf("Backup.MaxAge = %v, want %v", cfg.Backup.MaxAge, 24*time.Hour)
+
+	if cfg.Compute.MaxBackupAge != 24*time.Hour {
+		t.Errorf("Compute.MaxBackupAge = %v, want %v", cfg.Compute.MaxBackupAge, 24*time.Hour)
 	}
 	if cfg.Monitoring.VictoriaMetricsURL != "http://vm" {
 		t.Errorf("VictoriaMetricsURL = %v, want %v", cfg.Monitoring.VictoriaMetricsURL, "http://vm")
 	}
-	if cfg.Behavior.MaxRetries != 1 {
-		t.Errorf("Behavior.MaxRetries = %v, want %v", cfg.Behavior.MaxRetries, 1)
-	}
-	if cfg.Behavior.RetryDelay != 10*time.Second {
-		t.Errorf("Behavior.RetryDelay = %v, want %v", cfg.Behavior.RetryDelay, 10*time.Second)
-	}
+
 }
 
 func TestLoadConfig_TimeStrings(t *testing.T) {
@@ -198,29 +175,23 @@ func TestLoadConfig_TimeStrings(t *testing.T) {
 			}
 			defer os.Remove(tmpfile.Name())
 
-			content := fmt.Sprintf(`ipmi:
-  host: 1.2.3.4
-  username: user
-  password: pass
+			content := fmt.Sprintf(`pbs:
+  host: 1.2.3.6
+  ipmi:
+    host: 1.2.3.4
+    username: user
+    password: pass
+  boot_timeout: 60s
+  shutdown_timeout: 60s
 proxmox:
   host: 1.2.3.5
   token: token123
   storage: storage1
-pbs:
-  host: 1.2.3.6
-  datastore: ds
-timeouts:
-  boot_timeout: 60s
-  backup_job_timeout: 60s
-  total_runtime_timeout: 60s
-  shutdown_timeout: 60s
-backup:
-  max_age: %s
+  backup_timeout: 60s
+compute:
+  max_backup_age: %s
 monitoring:
   victoriametrics_url: http://vm
-behavior:
-  max_retries: 1
-  retry_delay: 10s
 `, tt.maxAge)
 
 			if _, err := tmpfile.Write([]byte(content)); err != nil {
@@ -233,8 +204,8 @@ behavior:
 				t.Fatalf("LoadConfig() error = %v, want nil", err)
 			}
 
-			if cfg.Backup.MaxAge != tt.expected {
-				t.Errorf("Backup.MaxAge = %v, want %v", cfg.Backup.MaxAge, tt.expected)
+			if cfg.Compute.MaxBackupAge != tt.expected {
+				t.Errorf("Compute.MaxBackupAge = %v, want %v", cfg.Compute.MaxBackupAge, tt.expected)
 			}
 		})
 	}
@@ -247,13 +218,30 @@ func TestLoadConfig_Directories(t *testing.T) {
 	}
 	defer os.Remove(tmpfile.Name())
 
-	content := `directories:
-  - host: pve2
-    token: mytoken
-    target: backup-client@pbs!token-name@10.6.0.10:tank
-    sources:
-      - home.pxar:/p1/home
-      - root.pxar:/p1/root
+	content := `pbs:
+  host: localhost
+  ipmi:
+    host: localhost
+    username: user
+    password: pass
+  boot_timeout: 60s
+  shutdown_timeout: 60s
+proxmox:
+  host: localhost
+  token: token123
+  storage: storage1
+  backup_timeout: 60s
+compute:
+  max_backup_age: 24h
+monitoring:
+  victoriametrics_url: http://vm
+directories:
+  host: pve2
+  token: mytoken
+  target: backup-client@pbs!token-name@10.6.0.10:tank
+  sources:
+    - home.pxar:/p1/home
+    - root.pxar:/p1/root
 `
 	if _, err := tmpfile.Write([]byte(content)); err != nil {
 		t.Fatalf("failed to write temp config: %v", err)
@@ -264,10 +252,7 @@ func TestLoadConfig_Directories(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig() error = %v, want nil", err)
 	}
-	if len(cfg.Directories) != 1 {
-		t.Fatalf("expected 1 directory, got %d", len(cfg.Directories))
-	}
-	b := cfg.Directories[0]
+	b := cfg.Directory
 	if b.Host != "pve2" {
 		t.Errorf("Host = %v, want %v", b.Host, "pve2")
 	}
