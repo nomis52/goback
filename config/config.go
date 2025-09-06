@@ -107,6 +107,7 @@ type LoggingConfig struct {
 
 // Validate performs basic validation on the configuration
 func (c *Config) Validate() error {
+	// PBS validation
 	if c.PBS.IPMI.Host == "" {
 		return fmt.Errorf("PBS IPMI host is required")
 	}
@@ -116,27 +117,94 @@ func (c *Config) Validate() error {
 	if c.PBS.IPMI.Password == "" {
 		return fmt.Errorf("PBS IPMI password is required")
 	}
-	if c.Proxmox.Host == "" {
-		return fmt.Errorf("Proxmox host is required")
-	}
-	if c.Proxmox.Storage == "" {
-		return fmt.Errorf("Proxmox storage is required")
-	}
 	if c.PBS.Host == "" {
 		return fmt.Errorf("PBS host is required")
 	}
 	if c.PBS.BootTimeout <= 0 {
 		return fmt.Errorf("PBS boot timeout must be positive")
 	}
-	if c.Monitoring.VictoriaMetricsURL == "" {
-		return fmt.Errorf("VictoriaMetrics URL is required")
-	}
 	if c.PBS.ShutdownTimeout <= 0 {
 		return fmt.Errorf("PBS shutdown timeout must be positive")
+	}
+
+	// Proxmox validation
+	if c.Proxmox.Host == "" {
+		return fmt.Errorf("Proxmox host is required")
+	}
+	if c.Proxmox.Storage == "" {
+		return fmt.Errorf("Proxmox storage is required")
 	}
 	if c.Proxmox.BackupTimeout <= 0 {
 		return fmt.Errorf("proxmox backup timeout must be positive")
 	}
+
+	// Monitoring validation
+	if c.Monitoring.VictoriaMetricsURL == "" {
+		return fmt.Errorf("VictoriaMetrics URL is required")
+	}
+
+	// Files validation (if files backup is configured)
+	if c.Files.Host != "" {
+		if c.Files.User == "" {
+			return fmt.Errorf("files user is required when host is set")
+		}
+		if c.Files.PrivateKeyPath == "" {
+			return fmt.Errorf("files private_key_path is required when host is set")
+		}
+		if c.Files.Token == "" {
+			return fmt.Errorf("files token is required when host is set")
+		}
+		if c.Files.Target == "" {
+			return fmt.Errorf("files target is required when host is set")
+		}
+		if len(c.Files.Sources) == 0 {
+			return fmt.Errorf("files sources cannot be empty when host is set")
+		}
+
+		// Validate SSH private key file exists and is readable
+		if _, err := os.Stat(c.Files.PrivateKeyPath); err != nil {
+			if os.IsNotExist(err) {
+				return fmt.Errorf("files private key file not found: %s", c.Files.PrivateKeyPath)
+			}
+			return fmt.Errorf("files private key file not accessible: %s (%w)", c.Files.PrivateKeyPath, err)
+		}
+	}
+
+	// Compute validation
+	if c.Compute.MaxBackupAge < 0 {
+		return fmt.Errorf("compute max_backup_age cannot be negative")
+	}
+
+	// Validate compute mode if specified
+	if c.Compute.Mode != "" {
+		validModes := []string{"snapshot", "suspend", "stop"}
+		found := false
+		for _, mode := range validModes {
+			if c.Compute.Mode == mode {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("compute mode must be one of: %v", validModes)
+		}
+	}
+
+	// Validate compute compression if specified
+	if c.Compute.Compress != "" {
+		validCompress := []string{"0", "1", "gzip", "lzo", "zstd"}
+		found := false
+		for _, comp := range validCompress {
+			if c.Compute.Compress == comp {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("compute compress must be one of: %v", validCompress)
+		}
+	}
+
 	return nil
 }
 
@@ -176,6 +244,12 @@ func (c *Config) SetDefaults() {
 	if c.Logging.Output == "" {
 		c.Logging.Output = defaultLogOutput
 	}
+
+	// Set files defaults (if files backup is configured but user not specified)
+	if c.Files.Host != "" && c.Files.User == "" {
+		c.Files.User = "root" // Default SSH user
+	}
+
 	// Defaults for boolean fields are already false, which is appropriate
 }
 

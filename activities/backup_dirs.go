@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log/slog"
 	"net"
+	"os"
 	"time"
 
 	"github.com/nomis52/goback/config"
@@ -14,9 +14,14 @@ import (
 	"github.com/nomis52/goback/sshclient"
 )
 
-var ErrMissingSSHConfig = errors.New("missing SSH config: host, user, or private key is not set")
+var (
+	ErrMissingSSHConfig = errors.New("missing SSH config: host, user, or private key is not set")
+	ErrSSHClientNotInit = errors.New("SSH client not initialized")
+	ErrMissingBackupConfig = errors.New("missing backup configuration: token or target")
+)
 
 const (
+	defaultSSHPort               = ":22"
 	metricDirectoryLastBackup    = "directory_last_backup"
 	metricDirectoryBackupFailure = "directory_backup_failure"
 )
@@ -50,17 +55,17 @@ func (a *BackupDirs) Init() error {
 
 	// Default to port 22 if not specified
 	if _, _, err := net.SplitHostPort(host); err != nil {
-		host = host + ":22"
+		host = host + defaultSSHPort
 	}
 
-	privateKeyPEM, err := ioutil.ReadFile(privateKeyPath)
+	privateKeyPEM, err := os.ReadFile(privateKeyPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to read private key file %s: %w", privateKeyPath, err)
 	}
 
 	client, err := sshclient.New(host, user, string(privateKeyPEM))
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create SSH client: %w", err)
 	}
 	a.sshClient = client
 	return nil
@@ -68,7 +73,7 @@ func (a *BackupDirs) Init() error {
 
 func (a *BackupDirs) Execute(ctx context.Context) error {
 	if a.sshClient == nil {
-		return errors.New("SSH client not initialized")
+		return ErrSSHClientNotInit
 	}
 
 	if err := validateFilesConfig(a.Files); err != nil {
@@ -149,7 +154,7 @@ func buildBackupCommand(token, target string, sources []string) string {
 // validateFilesConfig validates the file backup configuration
 func validateFilesConfig(config config.FilesConfig) error {
 	if config.Token == "" || config.Target == "" {
-		return errors.New("missing backup configuration: token or target")
+		return ErrMissingBackupConfig
 	}
 	return nil
 }
