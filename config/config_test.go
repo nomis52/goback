@@ -218,7 +218,16 @@ func TestLoadConfig_Files(t *testing.T) {
 	}
 	defer os.Remove(tmpfile.Name())
 
-	content := `pbs:
+	// Create a temporary private key file for testing
+	tmpKeyFile, err := os.CreateTemp("", "test_key")
+	if err != nil {
+		t.Fatalf("failed to create temp key file: %v", err)
+	}
+	defer os.Remove(tmpKeyFile.Name())
+	tmpKeyFile.WriteString("dummy key content")
+	tmpKeyFile.Close()
+
+	content := fmt.Sprintf(`pbs:
   host: localhost
   ipmi:
     host: localhost
@@ -237,12 +246,14 @@ monitoring:
   victoriametrics_url: http://vm
 files:
   host: pve2
+  user: root
+  private_key_path: %s
   token: mytoken
   target: backup-client@pbs!token-name@10.6.0.10:tank
   sources:
     - home.pxar:/p1/home
     - root.pxar:/p1/root
-`
+`, tmpKeyFile.Name())
 	if _, err := tmpfile.Write([]byte(content)); err != nil {
 		t.Fatalf("failed to write temp config: %v", err)
 	}
@@ -255,6 +266,12 @@ files:
 	b := cfg.Files
 	if b.Host != "pve2" {
 		t.Errorf("Host = %v, want %v", b.Host, "pve2")
+	}
+	if b.User != "root" {
+		t.Errorf("User = %v, want %v", b.User, "root")
+	}
+	if b.PrivateKeyPath != tmpKeyFile.Name() {
+		t.Errorf("PrivateKeyPath = %v, want %v", b.PrivateKeyPath, tmpKeyFile.Name())
 	}
 	if b.Token != "mytoken" {
 		t.Errorf("Token = %v, want %v", b.Token, "mytoken")

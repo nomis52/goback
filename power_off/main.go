@@ -62,9 +62,9 @@ func run() error {
 
 	// Create IPMI controller
 	controller := ipmi.NewIPMIController(
-		cfg.IPMI.Host,
-		ipmi.WithUsername(cfg.IPMI.Username),
-		ipmi.WithPassword(cfg.IPMI.Password),
+		cfg.PBS.IPMI.Host,
+		ipmi.WithUsername(cfg.PBS.IPMI.Username),
+		ipmi.WithPassword(cfg.PBS.IPMI.Password),
 		ipmi.WithLogger(logger),
 	)
 
@@ -72,7 +72,7 @@ func run() error {
 	powerOffActivity := &activities.PowerOffPBS{
 		Controller:      controller,
 		Logger:          logger,
-		ShutdownTimeout: cfg.Timeouts.ShutdownTimeout,
+		ShutdownTimeout: cfg.PBS.ShutdownTimeout,
 		// Note: We don't set BackupDirs and BackupVMs dependencies since we're testing standalone
 	}
 
