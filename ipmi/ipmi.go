@@ -59,7 +59,7 @@ func NewIPMIController(host string, opts ...Option) *IPMIController {
 func (c *IPMIController) Status() (PowerState, error) {
 	output, err := c.runIPMICommand("chassis", "status")
 	if err != nil {
-		return PowerStateUnknown, fmt.Errorf("failed to get chassis status: %v", err)
+		return PowerStateUnknown, fmt.Errorf("failed to get chassis status: %w", err)
 	}
 
 	lines := strings.Split(string(output), "\n")
@@ -80,7 +80,7 @@ func (c *IPMIController) Status() (PowerState, error) {
 func (c *IPMIController) PowerOn() error {
 	_, err := c.runIPMICommand("chassis", "power", "on")
 	if err != nil {
-		return fmt.Errorf("failed to power on system: %v", err)
+		return fmt.Errorf("failed to power on system: %w", err)
 	}
 	return nil
 }
@@ -89,7 +89,7 @@ func (c *IPMIController) PowerOn() error {
 func (c *IPMIController) PowerOff() error {
 	_, err := c.runIPMICommand("chassis", "power", "soft")
 	if err != nil {
-		return fmt.Errorf("failed to gracefully power off system: %v", err)
+		return fmt.Errorf("failed to gracefully power off system: %w", err)
 	}
 	return nil
 }
@@ -98,7 +98,7 @@ func (c *IPMIController) PowerOff() error {
 func (c *IPMIController) PowerOffHard() error {
 	_, err := c.runIPMICommand("chassis", "power", "off")
 	if err != nil {
-		return fmt.Errorf("failed to hard power off system: %v", err)
+		return fmt.Errorf("failed to hard power off system: %w", err)
 	}
 	return nil
 }
@@ -107,7 +107,7 @@ func (c *IPMIController) PowerOffHard() error {
 func (c *IPMIController) Reset() error {
 	_, err := c.runIPMICommand("chassis", "power", "reset")
 	if err != nil {
-		return fmt.Errorf("failed to reset system: %v", err)
+		return fmt.Errorf("failed to reset system: %w", err)
 	}
 	return nil
 }

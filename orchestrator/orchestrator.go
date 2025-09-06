@@ -345,7 +345,7 @@ func (o *Orchestrator) buildDependencyGraph() error {
 	o.logger.Debug("building dependency graph")
 
 	// Create reverse lookup map: activity type -> ActivityID (for dependency resolution)
-	activityTypeMap := make(map[reflect.Type]ActivityID)
+	activityTypeMap := make(map[reflect.Type]ActivityID, len(o.activityMap))
 
 	// First pass: build activity type map and inject config
 	// Use map iteration which is more efficient
@@ -516,7 +516,7 @@ func (o *Orchestrator) injectConfig(activity Activity, activityID ActivityID) er
 // Uses optimized map operations but same algorithm
 func (o *Orchestrator) validateNoCycles() error {
 	// Use Kahn's algorithm for topological sorting
-	inDegree := make(map[ActivityID]int)
+	inDegree := make(map[ActivityID]int, len(o.activityMap))
 
 	// Initialize in-degree counts using map iteration
 	for id := range o.activityMap {

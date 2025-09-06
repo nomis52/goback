@@ -258,16 +258,16 @@ func LoadConfig(path string) (Config, error) {
 	var cfg Config
 	f, err := os.Open(path)
 	if err != nil {
-		return cfg, err
+		return cfg, fmt.Errorf("failed to open config file %s: %w", path, err)
 	}
 	defer f.Close()
 	dec := yaml.NewDecoder(f)
 	if err := dec.Decode(&cfg); err != nil {
-		return cfg, err
+		return cfg, fmt.Errorf("failed to decode YAML config: %w", err)
 	}
 	cfg.SetDefaults()
 	if err := cfg.Validate(); err != nil {
-		return cfg, err
+		return cfg, fmt.Errorf("config validation failed: %w", err)
 	}
 	return cfg, nil
 }
