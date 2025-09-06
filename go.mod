@@ -1,8 +1,6 @@
 module github.com/nomis52/goback
 
-go 1.23.0
-
-toolchain go1.23.2
+go 1.19
 
 require (
 	github.com/golang/protobuf v1.5.4
