@@ -18,6 +18,11 @@ import (
 	"time"
 )
 
+const (
+	// defaultHTTPTimeout is the default timeout for HTTP requests to PBS
+	defaultHTTPTimeout = 10 * time.Second
+)
+
 // Client represents a Proxmox Backup Server API client.
 // Use New() to create a new client for a given PBS host.
 type Client struct {
@@ -44,7 +49,7 @@ func New(host string, logger *slog.Logger) (*Client, error) {
 		Host:   host,
 		Logger: logger.With("component", "pbsclient"),
 		client: &http.Client{
-			Timeout: 10 * time.Second,
+			Timeout: defaultHTTPTimeout,
 		},
 	}, nil
 }
