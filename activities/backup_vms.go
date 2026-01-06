@@ -13,6 +13,8 @@ import (
 
 const (
 	backupStatusCheckInterval = 10 * time.Second
+	pbsStorageRetryInterval   = 5 * time.Second
+	pbsStorageMaxRetries      = 6 // 30 seconds total
 	metricLastBackup          = "last_backup"
 	metricBackupFailure       = "backup_failure"
 )
@@ -217,9 +219,28 @@ func (a *BackupVMs) determineBackups(ctx context.Context) ([]proxmoxclient.Resou
 		return nil, err
 	}
 
-	backups, err := a.ProxmoxClient.ListBackups(ctx, a.ProxmoxClient.Host(), a.Storage)
+	// Retry PBS storage access with backoff since it may not be ready immediately
+	var backups []proxmoxclient.Backup
+	for attempt := 1; attempt <= pbsStorageMaxRetries; attempt++ {
+		backups, err = a.ProxmoxClient.ListBackups(ctx, a.ProxmoxClient.Host(), a.Storage)
+		if err == nil {
+			break // Success!
+		}
+		
+		a.Logger.Warn("Failed to get list of backups, retrying", "attempt", attempt, "max_retries", pbsStorageMaxRetries, "error", err)
+		
+		if attempt < pbsStorageMaxRetries {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(pbsStorageRetryInterval):
+				// Continue to next attempt
+			}
+		}
+	}
+	
 	if err != nil {
-		a.Logger.Error("Failed to get list of backups", "error", err)
+		a.Logger.Error("Failed to get list of backups after retries", "error", err)
 		return nil, err
 	}
 

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/nomis52/goback/config"
@@ -22,6 +23,8 @@ var (
 
 const (
 	defaultSSHPort               = ":22"
+	pbsConnectivityCheckInterval = 5 * time.Second
+	pbsConnectivityMaxRetries    = 6 // 30 seconds total
 	metricDirectoryLastBackup    = "directory_last_backup"
 	metricDirectoryBackupFailure = "directory_backup_failure"
 )
@@ -82,6 +85,12 @@ func (a *BackupDirs) Execute(ctx context.Context) error {
 
 	if len(a.Files.Sources) == 0 {
 		return nil
+	}
+
+	// Test PBS connectivity before attempting backup
+	if err := a.waitForPBSConnectivity(ctx); err != nil {
+		a.Logger.Error("PBS not accessible for backup", "error", err)
+		return err
 	}
 
 	stdout, stderr, err := a.backupAllDirs(a.Files.Sources)
@@ -157,4 +166,57 @@ func validateFilesConfig(config config.FilesConfig) error {
 		return ErrMissingBackupConfig
 	}
 	return nil
+}
+
+// waitForPBSConnectivity tests if PBS is reachable from the remote host before starting backup
+func (a *BackupDirs) waitForPBSConnectivity(ctx context.Context) error {
+	// Extract hostname from target (format: user@host!datastore@hostname:port)
+	target := a.Files.Target
+	pbsHost := extractPBSHostFromTarget(target)
+	if pbsHost == "" {
+		return fmt.Errorf("could not extract PBS host from target: %s", target)
+	}
+
+	a.Logger.Info("Testing PBS connectivity", "pbs_host", pbsHost, "max_retries", pbsConnectivityMaxRetries)
+
+	for attempt := 1; attempt <= pbsConnectivityMaxRetries; attempt++ {
+		// Test connectivity using a simple nc (netcat) command
+		cmd := fmt.Sprintf("nc -z -w5 %s 8007 2>/dev/null", pbsHost)
+		_, _, err := a.sshClient.Run(cmd)
+		if err == nil {
+			a.Logger.Info("PBS connectivity test successful", "pbs_host", pbsHost, "attempts", attempt)
+			return nil
+		}
+
+		a.Logger.Warn("PBS connectivity test failed, retrying", "pbs_host", pbsHost, "attempt", attempt, "max_retries", pbsConnectivityMaxRetries, "error", err)
+
+		if attempt < pbsConnectivityMaxRetries {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(pbsConnectivityCheckInterval):
+				// Continue to next attempt
+			}
+		}
+	}
+
+	return fmt.Errorf("PBS not reachable after %d attempts", pbsConnectivityMaxRetries)
+}
+
+// extractPBSHostFromTarget extracts the PBS hostname from a target string
+// Format: user@host!datastore@hostname:port -> hostname
+func extractPBSHostFromTarget(target string) string {
+	// Find the @ after the !
+	if exclamationIdx := strings.Index(target, "!"); exclamationIdx != -1 {
+		afterExclamation := target[exclamationIdx+1:]
+		if atIdx := strings.Index(afterExclamation, "@"); atIdx != -1 {
+			hostPart := afterExclamation[atIdx+1:]
+			// Remove port if present
+			if colonIdx := strings.Index(hostPart, ":"); colonIdx != -1 {
+				return hostPart[:colonIdx]
+			}
+			return hostPart
+		}
+	}
+	return ""
 }

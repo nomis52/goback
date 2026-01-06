@@ -11,6 +11,7 @@ import (
 const (
 	// Default timeouts
 	defaultPBSBootTimeout   = 10 * time.Minute
+	defaultServiceWaitTime  = 30 * time.Second
 	defaultShutdownTimeout  = 2 * time.Minute
 	defaultBackupJobTimeout = 2 * time.Hour
 
@@ -56,6 +57,9 @@ type PBSConfig struct {
 
 	// BootTimeout is the maximum time to wait for the PBS server to become available after boot
 	BootTimeout time.Duration `yaml:"boot_timeout"`
+
+	// ServiceWaitTime is the additional time to wait for PBS services to stabilize after ping succeeds
+	ServiceWaitTime time.Duration `yaml:"service_wait_time"`
 
 	// ShutdownTimeout is the maximum time to wait for graceful shutdown
 	ShutdownTimeout time.Duration `yaml:"shutdown_timeout"`
@@ -212,6 +216,9 @@ func (c *Config) Validate() error {
 func (c *Config) SetDefaults() {
 	if c.PBS.BootTimeout == 0 {
 		c.PBS.BootTimeout = defaultPBSBootTimeout
+	}
+	if c.PBS.ServiceWaitTime == 0 {
+		c.PBS.ServiceWaitTime = defaultServiceWaitTime
 	}
 	if c.PBS.ShutdownTimeout == 0 {
 		c.PBS.ShutdownTimeout = defaultShutdownTimeout

@@ -21,7 +21,8 @@ type PowerOnPBS struct {
 	PBSClient  *pbsclient.Client
 	Logger     *slog.Logger
 
-	BootTimeout time.Duration `config:"pbs.boot_timeout"`
+	BootTimeout     time.Duration `config:"pbs.boot_timeout"`
+	ServiceWaitTime time.Duration `config:"pbs.service_wait_time"`
 }
 
 func (a *PowerOnPBS) Init() error {
@@ -69,8 +70,16 @@ func (a *PowerOnPBS) Execute(ctx context.Context) error {
 			attempts++
 			_, err := a.PBSClient.Ping()
 			if err == nil {
-				a.Logger.Info("PBS is now available", "attempts", attempts)
-				return nil // Success!
+				a.Logger.Info("PBS ping successful, waiting for services to stabilize", "attempts", attempts, "wait_time", a.ServiceWaitTime)
+				
+				// Give PBS additional time for all services to fully start
+				select {
+				case <-ctx.Done():
+					return fmt.Errorf("context cancelled while waiting for PBS services: %w", ctx.Err())
+				case <-time.After(a.ServiceWaitTime):
+					a.Logger.Info("PBS is now fully available", "total_attempts", attempts)
+					return nil // Success!
+				}
 			}
 			a.Logger.Debug("PBS not yet available", "attempt", attempts, "error", err)
 		}
