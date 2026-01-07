@@ -143,14 +143,17 @@ The config package (config/config.go:1) provides validation, defaults, and loadi
 
 - `GET /` - Web UI dashboard
 - `GET /health` - Health check
-- `GET /ipmi` - PBS power state via IPMI
+- `GET /api/status` - **Consolidated status endpoint** (PBS state, run status, next run, results) - used by the web UI
+- `GET /ipmi` - PBS power state via IPMI (legacy, prefer /api/status)
 - `GET /config` - Current configuration as YAML
 - `POST /reload` - Reload configuration from disk
 - `POST /run` - Trigger a backup run
-- `GET /status` - Current/last run status
+- `GET /status` - Current/last run status (legacy, prefer /api/status)
 - `GET /history` - Completed run history
-- `GET /results` - Activity results from current/last run
-- `GET /next-run` - Next scheduled run time (if cron configured)
+- `GET /results` - Activity results from current/last run (legacy, prefer /api/status)
+- `GET /next-run` - Next scheduled run time (legacy, prefer /api/status)
+
+The web UI uses `/api/status` for efficient polling (single request instead of 4) and `/history` separately. Individual endpoints are kept for API flexibility.
 
 See server/README.md for more details.
 

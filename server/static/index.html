@@ -460,59 +460,53 @@
             return `<span class="badge ${badge.class}">${badge.text}</span>`;
         }
 
-        async function updateIPMI() {
+        async function updateAPIStatus() {
             try {
-                const data = await fetchJSON('/ipmi');
-                const state = data.pbs.power_state.toLowerCase();
-                const dot = document.getElementById('pbsDot');
-                const status = document.getElementById('pbsStatus');
-                const detail = document.getElementById('pbsDetail');
+                const data = await fetchJSON('/api/status');
 
-                dot.className = 'status-dot ' + (state === 'on' ? 'on' : state === 'off' ? 'off' : 'unknown');
-                status.textContent = state.charAt(0).toUpperCase() + state.slice(1);
-                status.className = 'status-value ' + (state === 'on' ? 'on' : state === 'off' ? 'off' : '');
-                detail.textContent = state === 'on' ? 'Server is powered on and ready' : 
-                                    state === 'off' ? 'Server is powered off' : 'Unable to determine state';
-            } catch (err) {
-                document.getElementById('pbsStatus').textContent = 'Error';
-                document.getElementById('pbsDetail').textContent = err.message;
-                document.getElementById('pbsDot').className = 'status-dot unknown';
-            }
-        }
+                // Update PBS status
+                const pbsState = data.pbs.power_state.toLowerCase();
+                const pbsDot = document.getElementById('pbsDot');
+                const pbsStatus = document.getElementById('pbsStatus');
+                const pbsDetail = document.getElementById('pbsDetail');
 
-        async function updateStatus() {
-            try {
-                const data = await fetchJSON('/status');
-                const dot = document.getElementById('runDot');
-                const status = document.getElementById('runStatus');
-                const detail = document.getElementById('runDetail');
+                pbsDot.className = 'status-dot ' + (pbsState === 'on' ? 'on' : pbsState === 'off' ? 'off' : 'unknown');
+                pbsStatus.textContent = pbsState.charAt(0).toUpperCase() + pbsState.slice(1);
+                pbsStatus.className = 'status-value ' + (pbsState === 'on' ? 'on' : pbsState === 'off' ? 'off' : '');
+                pbsDetail.textContent = pbsState === 'on' ? 'Server is powered on and ready' :
+                                        pbsState === 'off' ? 'Server is powered off' : 'Unable to determine state';
+
+                // Update run status
+                const runDot = document.getElementById('runDot');
+                const runStatus = document.getElementById('runStatus');
+                const runDetail = document.getElementById('runDetail');
                 const btn = document.getElementById('runBtn');
 
                 const wasRunning = isRunning;
-                isRunning = data.state === 'running';
-                
+                isRunning = data.run.state === 'running';
+
                 // Adjust poll interval when state changes
                 if (wasRunning !== isRunning) {
                     clearInterval(pollInterval);
                     pollInterval = setInterval(updateAll, isRunning ? POLL_INTERVAL_RUNNING : POLL_INTERVAL_IDLE);
                 }
-                
-                dot.className = 'status-dot ' + (isRunning ? 'running' : 'idle');
-                status.textContent = isRunning ? 'Running' : 'Idle';
-                status.className = 'status-value ' + (isRunning ? 'running' : '');
-                
-                if (isRunning && data.started_at) {
-                    detail.textContent = `Started ${formatTime(data.started_at)} (${formatDuration(data.started_at, null)})`;
-                } else if (data.ended_at) {
-                    detail.textContent = data.error ? 
-                        `Last run failed: ${data.error}` : 
-                        `Last run completed ${formatTime(data.ended_at)}`;
+
+                runDot.className = 'status-dot ' + (isRunning ? 'running' : 'idle');
+                runStatus.textContent = isRunning ? 'Running' : 'Idle';
+                runStatus.className = 'status-value ' + (isRunning ? 'running' : '');
+
+                if (isRunning && data.run.started_at) {
+                    runDetail.textContent = `Started ${formatTime(data.run.started_at)} (${formatDuration(data.run.started_at, null)})`;
+                } else if (data.run.ended_at) {
+                    runDetail.textContent = data.run.error ?
+                        `Last run failed: ${data.run.error}` :
+                        `Last run completed ${formatTime(data.run.ended_at)}`;
                 } else {
-                    detail.textContent = 'No backup runs yet';
+                    runDetail.textContent = 'No backup runs yet';
                 }
 
                 btn.disabled = isRunning;
-                btn.innerHTML = isRunning ? 
+                btn.innerHTML = isRunning ?
                     `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="12" cy="12" r="10"></circle>
                         <polyline points="12 6 12 12 16 14"></polyline>
@@ -520,89 +514,72 @@
                     `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <polygon points="5 3 19 12 5 21 5 3"></polygon>
                     </svg> Start Backup`;
+
+                // Update next run
+                const nextRunDot = document.getElementById('nextRunDot');
+                const nextRunStatus = document.getElementById('nextRunStatus');
+                const nextRunDetail = document.getElementById('nextRunDetail');
+
+                if (data.next_run.scheduled && data.next_run.next_run) {
+                    nextRunDot.className = 'status-dot scheduled';
+                    nextRunStatus.textContent = formatRelativeTime(data.next_run.next_run);
+                    nextRunDetail.textContent = formatTime(data.next_run.next_run);
+                } else {
+                    nextRunDot.className = 'status-dot not-scheduled';
+                    nextRunStatus.textContent = 'Not scheduled';
+                    nextRunDetail.textContent = 'No cron schedule configured';
+                }
+
+                // Update results (if running)
+                const section = document.getElementById('currentRunSection');
+                const tbody = document.getElementById('activitiesBody');
+                const count = document.getElementById('activityCount');
+
+                if (!isRunning || !data.results || data.results.length === 0) {
+                    section.classList.add('hidden');
+                } else {
+                    const activities = data.results;
+
+                    // Sort: running first, then by start time, then pending
+                    activities.sort((a, b) => {
+                        if (a.state === 'running' && b.state !== 'running') return -1;
+                        if (b.state === 'running' && a.state !== 'running') return 1;
+                        if (a.start_time && b.start_time) {
+                            return new Date(a.start_time) - new Date(b.start_time);
+                        }
+                        if (a.start_time && !b.start_time) return -1;
+                        if (!a.start_time && b.start_time) return 1;
+                        return 0;
+                    });
+
+                    section.classList.remove('hidden');
+                    count.textContent = `${activities.length} activit${activities.length !== 1 ? 'ies' : 'y'}`;
+
+                    tbody.innerHTML = activities.map(activity => {
+                        const displayName = activity.type || 'Unknown';
+                        const startTime = activity.start_time && activity.start_time !== '0001-01-01T00:00:00Z'
+                            ? activity.start_time : null;
+                        const endTime = activity.end_time && activity.end_time !== '0001-01-01T00:00:00Z'
+                            ? activity.end_time : null;
+                        const errorMsg = activity.error ? activity.error : null;
+
+                        return `<tr>
+                            <td><span class="activity-name">${displayName}</span></td>
+                            <td>${getStateBadge(activity.state, errorMsg)}</td>
+                            <td>${formatTimeShort(startTime)}</td>
+                            <td class="hide-mobile">${formatTimeShort(endTime)}</td>
+                            <td><span class="duration">${formatDuration(startTime, endTime)}</span></td>
+                        </tr>`;
+                    }).join('');
+                }
             } catch (err) {
+                document.getElementById('pbsStatus').textContent = 'Error';
+                document.getElementById('pbsDetail').textContent = err.message;
+                document.getElementById('pbsDot').className = 'status-dot unknown';
                 document.getElementById('runStatus').textContent = 'Error';
                 document.getElementById('runDetail').textContent = err.message;
-            }
-        }
-
-        async function updateNextRun() {
-            try {
-                const data = await fetchJSON('/next-run');
-                const dot = document.getElementById('nextRunDot');
-                const status = document.getElementById('nextRunStatus');
-                const detail = document.getElementById('nextRunDetail');
-
-                if (data.scheduled && data.next_run) {
-                    dot.className = 'status-dot scheduled';
-                    status.textContent = formatRelativeTime(data.next_run);
-                    detail.textContent = formatTime(data.next_run);
-                } else {
-                    dot.className = 'status-dot not-scheduled';
-                    status.textContent = 'Not scheduled';
-                    detail.textContent = 'No cron schedule configured';
-                }
-            } catch (err) {
                 document.getElementById('nextRunStatus').textContent = 'Error';
                 document.getElementById('nextRunDetail').textContent = err.message;
-                document.getElementById('nextRunDot').className = 'status-dot unknown';
-            }
-        }
-
-        async function updateResults() {
-            const section = document.getElementById('currentRunSection');
-            const tbody = document.getElementById('activitiesBody');
-            const count = document.getElementById('activityCount');
-
-            if (!isRunning) {
-                section.classList.add('hidden');
-                return;
-            }
-
-            try {
-                const data = await fetchJSON('/results');
-
-                // data is already an array
-                const activities = data;
-
-                if (activities.length === 0) {
-                    section.classList.add('hidden');
-                    return;
-                }
-
-                // Sort: running first, then by start time, then pending
-                activities.sort((a, b) => {
-                    if (a.state === 'running' && b.state !== 'running') return -1;
-                    if (b.state === 'running' && a.state !== 'running') return 1;
-                    if (a.start_time && b.start_time) {
-                        return new Date(a.start_time) - new Date(b.start_time);
-                    }
-                    if (a.start_time && !b.start_time) return -1;
-                    if (!a.start_time && b.start_time) return 1;
-                    return 0;
-                });
-
-                section.classList.remove('hidden');
-                count.textContent = `${activities.length} activit${activities.length !== 1 ? 'ies' : 'y'}`;
-
-                tbody.innerHTML = activities.map(activity => {
-                    const displayName = activity.type || 'Unknown';
-                    const startTime = activity.start_time && activity.start_time !== '0001-01-01T00:00:00Z'
-                        ? activity.start_time : null;
-                    const endTime = activity.end_time && activity.end_time !== '0001-01-01T00:00:00Z'
-                        ? activity.end_time : null;
-                    const errorMsg = activity.error ? activity.error : null;
-
-                    return `<tr>
-                        <td><span class="activity-name">${displayName}</span></td>
-                        <td>${getStateBadge(activity.state, errorMsg)}</td>
-                        <td>${formatTimeShort(startTime)}</td>
-                        <td class="hide-mobile">${formatTimeShort(endTime)}</td>
-                        <td><span class="duration">${formatDuration(startTime, endTime)}</span></td>
-                    </tr>`;
-                }).join('');
-            } catch (err) {
-                section.classList.add('hidden');
             }
         }
 
@@ -682,7 +659,7 @@
         }
 
         async function updateAll() {
-            await Promise.all([updateIPMI(), updateStatus(), updateNextRun(), updateResults(), updateHistory()]);
+            await Promise.all([updateAPIStatus(), updateHistory()]);
             updateLastUpdated();
         }
 

@@ -8,6 +8,7 @@
 //
 //   - GET / - Web UI dashboard
 //   - GET /health - Simple health check, returns "ok"
+//   - GET /api/status - Consolidated status endpoint (PBS state, run status, next run, results)
 //   - GET /ipmi - Returns PBS power state via IPMI
 //   - GET /config - Returns current configuration as YAML
 //   - POST /reload - Reloads configuration from disk
@@ -52,6 +53,7 @@ import (
 
 	"github.com/nomis52/goback/config"
 	"github.com/nomis52/goback/ipmi"
+	"github.com/nomis52/goback/orchestrator"
 	"github.com/nomis52/goback/server/cron"
 	"github.com/nomis52/goback/server/handlers"
 	"github.com/nomis52/goback/server/runner"
@@ -196,6 +198,16 @@ func (s *Server) NextRun() *time.Time {
 	return &next
 }
 
+// Status returns the current run status by delegating to the runner.
+func (s *Server) Status() runner.RunStatus {
+	return s.runner.Status()
+}
+
+// GetResults returns the activity results by delegating to the runner.
+func (s *Server) GetResults() map[orchestrator.ActivityID]*orchestrator.Result {
+	return s.runner.GetResults()
+}
+
 // Run starts the HTTP server and blocks until the context is cancelled.
 // It performs a graceful shutdown when the context is done.
 // If a cron trigger is configured, it will be started automatically.
@@ -252,9 +264,11 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	historyHandler := handlers.NewHistoryHandler(s.runner)
 	resultsHandler := handlers.NewResultsHandler(s.runner)
 	nextRunHandler := handlers.NewNextRunHandler(s)
+	apiStatusHandler := handlers.NewAPIStatusHandler(s.logger, s)
 
 	// API endpoints
 	mux.HandleFunc("GET /health", handlers.HandleHealth)
+	mux.Handle("GET /api/status", apiStatusHandler)
 	mux.Handle("GET /ipmi", ipmiHandler)
 	mux.Handle("GET /config", configHandler)
 	mux.Handle("POST /reload", reloadHandler)
