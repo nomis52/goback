@@ -15,6 +15,7 @@
 //   - GET /status - Returns status of current/last run
 //   - GET /history - Returns history of completed runs
 //   - GET /results - Returns activity results from current/last run
+//   - GET /next-run - Returns next scheduled run time (if cron configured)
 //
 // # Architecture
 //
@@ -41,6 +42,7 @@ package server
 import (
 	"context"
 	"embed"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -50,6 +52,7 @@ import (
 
 	"github.com/nomis52/goback/config"
 	"github.com/nomis52/goback/ipmi"
+	"github.com/nomis52/goback/server/cron"
 	"github.com/nomis52/goback/server/handlers"
 	"github.com/nomis52/goback/server/runner"
 )
@@ -61,6 +64,7 @@ const (
 	defaultReadTimeout     = 10 * time.Second
 	defaultWriteTimeout    = 10 * time.Second
 	defaultShutdownTimeout = 5 * time.Second
+	defaultListenAddr      = ":8080"
 )
 
 // serverDeps holds config-derived dependencies that are swapped atomically on reload.
@@ -71,18 +75,44 @@ type serverDeps struct {
 
 // Server is the HTTP server for the goback web interface.
 type Server struct {
-	addr       string
-	configPath string
-	logger     *slog.Logger
-	logLevel   *slog.LevelVar
-	deps       atomic.Pointer[serverDeps]
-	httpServer *http.Server
-	runner     *runner.Runner
+	addr        string
+	configPath  string
+	logger      *slog.Logger
+	logLevel    *slog.LevelVar
+	deps        atomic.Pointer[serverDeps]
+	httpServer  *http.Server
+	runner      *runner.Runner
+	cronTrigger *cron.CronTrigger
 }
 
-// New creates a new Server with the given address and config path.
+// Option configures a Server.
+type Option func(*Server) error
+
+// WithCron configures the server to run backups on a cron schedule.
+// The spec follows standard cron format (5 fields: minute, hour, day, month, weekday).
+func WithCron(spec string) Option {
+	return func(s *Server) error {
+		trigger, err := cron.NewCronTrigger(spec, s.runner, s.logger)
+		if err != nil {
+			return fmt.Errorf("creating cron trigger: %w", err)
+		}
+		s.cronTrigger = trigger
+		return nil
+	}
+}
+
+// WithListenAddr configures the address the server listens on.
+// Default is ":8080".
+func WithListenAddr(addr string) Option {
+	return func(s *Server) error {
+		s.addr = addr
+		return nil
+	}
+}
+
+// New creates a new Server with the given config path and options.
 // It loads the configuration and initializes all dependencies.
-func New(addr, configPath string) (*Server, error) {
+func New(configPath string, opts ...Option) (*Server, error) {
 	logLevel := &slog.LevelVar{}
 	logLevel.Set(slog.LevelInfo)
 
@@ -92,7 +122,7 @@ func New(addr, configPath string) (*Server, error) {
 	logger := slog.New(handler)
 
 	s := &Server{
-		addr:       addr,
+		addr:       defaultListenAddr,
 		configPath: configPath,
 		logger:     logger,
 		logLevel:   logLevel,
@@ -103,6 +133,13 @@ func New(addr, configPath string) (*Server, error) {
 	}
 
 	s.runner = runner.New(logger, s)
+
+	for _, opt := range opts {
+		if err := opt(s); err != nil {
+			return nil, err
+		}
+	}
+
 	return s, nil
 }
 
@@ -150,8 +187,18 @@ func (s *Server) IPMIController() *ipmi.IPMIController {
 	return s.deps.Load().ipmiController
 }
 
+// NextRun returns the next scheduled run time, or nil if no cron is configured.
+func (s *Server) NextRun() *time.Time {
+	if s.cronTrigger == nil {
+		return nil
+	}
+	next := s.cronTrigger.NextRun()
+	return &next
+}
+
 // Run starts the HTTP server and blocks until the context is cancelled.
 // It performs a graceful shutdown when the context is done.
+// If a cron trigger is configured, it will be started automatically.
 func (s *Server) Run(ctx context.Context) error {
 	mux := http.NewServeMux()
 	s.registerRoutes(mux)
@@ -161,6 +208,14 @@ func (s *Server) Run(ctx context.Context) error {
 		Handler:      mux,
 		ReadTimeout:  defaultReadTimeout,
 		WriteTimeout: defaultWriteTimeout,
+	}
+
+	// Start cron trigger if configured
+	if s.cronTrigger != nil {
+		s.logger.Info("starting cron trigger",
+			"next_run", s.cronTrigger.NextRun(),
+		)
+		s.cronTrigger.Start(ctx)
 	}
 
 	// Start server in goroutine
@@ -196,6 +251,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	statusHandler := handlers.NewRunStatusHandler(s.runner)
 	historyHandler := handlers.NewHistoryHandler(s.runner)
 	resultsHandler := handlers.NewResultsHandler(s.runner)
+	nextRunHandler := handlers.NewNextRunHandler(s)
 
 	// API endpoints
 	mux.HandleFunc("GET /health", handlers.HandleHealth)
@@ -206,6 +262,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /status", statusHandler)
 	mux.Handle("GET /history", historyHandler)
 	mux.Handle("GET /results", resultsHandler)
+	mux.Handle("GET /next-run", nextRunHandler)
 
 	// Static files (web UI)
 	staticFS, err := fs.Sub(staticFiles, "static")

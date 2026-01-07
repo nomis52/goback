@@ -6,6 +6,8 @@
 package handlers
 
 import (
+	"time"
+
 	"github.com/nomis52/goback/config"
 	"github.com/nomis52/goback/orchestrator"
 	"github.com/nomis52/goback/server/runner"
@@ -39,4 +41,9 @@ type HistoryProvider interface {
 // ResultsProvider provides access to activity results.
 type ResultsProvider interface {
 	GetResults() map[orchestrator.ActivityID]*orchestrator.Result
+}
+
+// NextRunProvider provides access to the next scheduled run time.
+type NextRunProvider interface {
+	NextRun() *time.Time
 }
