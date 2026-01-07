@@ -6,6 +6,7 @@
 //
 // # Endpoints
 //
+//   - GET / - Web UI dashboard
 //   - GET /health - Simple health check, returns "ok"
 //   - GET /ipmi - Returns PBS power state via IPMI
 //   - GET /config - Returns current configuration as YAML
@@ -38,6 +39,8 @@ package server
 
 import (
 	"context"
+	"embed"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
@@ -49,6 +52,9 @@ import (
 	"github.com/nomis52/goback/server/handlers"
 	"github.com/nomis52/goback/server/runner"
 )
+
+//go:embed static
+var staticFiles embed.FS
 
 const (
 	defaultReadTimeout     = 10 * time.Second
@@ -189,6 +195,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	statusHandler := handlers.NewRunStatusHandler(s.runner)
 	historyHandler := handlers.NewHistoryHandler(s.runner)
 
+	// API endpoints
 	mux.HandleFunc("GET /health", handlers.HandleHealth)
 	mux.Handle("GET /ipmi", ipmiHandler)
 	mux.Handle("GET /config", configHandler)
@@ -196,4 +203,12 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.Handle("POST /run", runHandler)
 	mux.Handle("GET /status", statusHandler)
 	mux.Handle("GET /history", historyHandler)
+
+	// Static files (web UI)
+	staticFS, err := fs.Sub(staticFiles, "static")
+	if err != nil {
+		s.logger.Error("failed to create static file system", "error", err)
+		return
+	}
+	mux.Handle("GET /", http.FileServer(http.FS(staticFS)))
 }

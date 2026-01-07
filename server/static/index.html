@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Goback - PBS Backup Automation</title>
+    <style>
+        :root {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-card: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --accent-blue: #3b82f6;
+            --accent-green: #22c55e;
+            --accent-yellow: #eab308;
+            --accent-red: #ef4444;
+            --border-color: #475569;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        h1 {
+            font-size: 1.75rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        h1 span {
+            color: var(--accent-blue);
+        }
+
+        .last-updated {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .card {
+            background-color: var(--bg-secondary);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            border: 1px solid var(--border-color);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .card-title {
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.on { background-color: var(--accent-green); }
+        .status-dot.off { background-color: var(--accent-red); }
+        .status-dot.unknown { background-color: var(--text-secondary); }
+        .status-dot.running { background-color: var(--accent-blue); }
+        .status-dot.idle { background-color: var(--accent-green); }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .status-value {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .status-value.on { color: var(--accent-green); }
+        .status-value.off { color: var(--accent-red); }
+        .status-value.running { color: var(--accent-blue); }
+
+        .status-detail {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin-top: 0.5rem;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.625rem 1.25rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            border: none;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background-color: var(--accent-blue);
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background-color: #2563eb;
+        }
+
+        .btn-primary:disabled {
+            background-color: var(--bg-card);
+            color: var(--text-secondary);
+            cursor: not-allowed;
+        }
+
+        .history-section {
+            background-color: var(--bg-secondary);
+            border-radius: 0.75rem;
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+        }
+
+        .history-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .history-title {
+            font-size: 1rem;
+            font-weight: 600;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            text-align: left;
+            padding: 0.75rem 1.5rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            background-color: var(--bg-card);
+        }
+
+        td {
+            padding: 1rem 1.5rem;
+            border-top: 1px solid var(--border-color);
+            font-size: 0.875rem;
+        }
+
+        tr:hover {
+            background-color: var(--bg-card);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+            border-radius: 9999px;
+        }
+
+        .badge-success {
+            background-color: rgba(34, 197, 94, 0.2);
+            color: var(--accent-green);
+        }
+
+        .badge-error {
+            background-color: rgba(239, 68, 68, 0.2);
+            color: var(--accent-red);
+        }
+
+        .badge-running {
+            background-color: rgba(59, 130, 246, 0.2);
+            color: var(--accent-blue);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-secondary);
+        }
+
+        .error-message {
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: var(--accent-red);
+            font-size: 0.75rem;
+        }
+
+        .duration {
+            font-family: 'SF Mono', Monaco, monospace;
+            color: var(--text-secondary);
+        }
+
+        .loading {
+            opacity: 0.5;
+        }
+
+        @media (max-width: 640px) {
+            .container {
+                padding: 1rem;
+            }
+            
+            th, td {
+                padding: 0.75rem 1rem;
+            }
+            
+            .hide-mobile {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><span>Goback</span> PBS Backup</h1>
+            <div class="last-updated">Last updated: <span id="lastUpdated">-</span></div>
+        </header>
+
+        <div class="grid">
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">PBS Server</span>
+                    <div class="status-indicator">
+                        <div id="pbsDot" class="status-dot unknown"></div>
+                    </div>
+                </div>
+                <div id="pbsStatus" class="status-value">-</div>
+                <div id="pbsDetail" class="status-detail">Checking IPMI status...</div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">Backup Status</span>
+                    <div class="status-indicator">
+                        <div id="runDot" class="status-dot unknown"></div>
+                    </div>
+                </div>
+                <div id="runStatus" class="status-value">-</div>
+                <div id="runDetail" class="status-detail">Checking status...</div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">Actions</span>
+                </div>
+                <button id="runBtn" class="btn btn-primary" onclick="triggerBackup()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                    </svg>
+                    Start Backup
+                </button>
+                <div id="actionDetail" class="status-detail" style="margin-top: 0.75rem;"></div>
+            </div>
+        </div>
+
+        <div class="history-section">
+            <div class="history-header">
+                <span class="history-title">Run History</span>
+                <span id="historyCount" class="card-title">0 runs</span>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Status</th>
+                        <th>Started</th>
+                        <th class="hide-mobile">Ended</th>
+                        <th>Duration</th>
+                        <th class="hide-mobile">Error</th>
+                    </tr>
+                </thead>
+                <tbody id="historyBody">
+                    <tr>
+                        <td colspan="5" class="empty-state">Loading history...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const POLL_INTERVAL = 5000;
+        let isRunning = false;
+
+        async function fetchJSON(url) {
+            const resp = await fetch(url);
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            return resp.json();
+        }
+
+        function formatTime(isoString) {
+            if (!isoString) return '-';
+            const date = new Date(isoString);
+            return date.toLocaleString();
+        }
+
+        function formatDuration(startStr, endStr) {
+            if (!startStr) return '-';
+            const start = new Date(startStr);
+            const end = endStr ? new Date(endStr) : new Date();
+            const diffMs = end - start;
+            
+            const seconds = Math.floor(diffMs / 1000) % 60;
+            const minutes = Math.floor(diffMs / 60000) % 60;
+            const hours = Math.floor(diffMs / 3600000);
+            
+            if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+            if (minutes > 0) return `${minutes}m ${seconds}s`;
+            return `${seconds}s`;
+        }
+
+        function updateLastUpdated() {
+            document.getElementById('lastUpdated').textContent = new Date().toLocaleTimeString();
+        }
+
+        async function updateIPMI() {
+            try {
+                const data = await fetchJSON('/ipmi');
+                const state = data.pbs.power_state.toLowerCase();
+                const dot = document.getElementById('pbsDot');
+                const status = document.getElementById('pbsStatus');
+                const detail = document.getElementById('pbsDetail');
+
+                dot.className = 'status-dot ' + (state === 'on' ? 'on' : state === 'off' ? 'off' : 'unknown');
+                status.textContent = state.charAt(0).toUpperCase() + state.slice(1);
+                status.className = 'status-value ' + (state === 'on' ? 'on' : state === 'off' ? 'off' : '');
+                detail.textContent = state === 'on' ? 'Server is powered on and ready' : 
+                                    state === 'off' ? 'Server is powered off' : 'Unable to determine state';
+            } catch (err) {
+                document.getElementById('pbsStatus').textContent = 'Error';
+                document.getElementById('pbsDetail').textContent = err.message;
+                document.getElementById('pbsDot').className = 'status-dot unknown';
+            }
+        }
+
+        async function updateStatus() {
+            try {
+                const data = await fetchJSON('/status');
+                const dot = document.getElementById('runDot');
+                const status = document.getElementById('runStatus');
+                const detail = document.getElementById('runDetail');
+                const btn = document.getElementById('runBtn');
+
+                isRunning = data.state === 'running';
+                
+                dot.className = 'status-dot ' + (isRunning ? 'running' : 'idle');
+                status.textContent = isRunning ? 'Running' : 'Idle';
+                status.className = 'status-value ' + (isRunning ? 'running' : '');
+                
+                if (isRunning && data.started_at) {
+                    detail.textContent = `Started ${formatTime(data.started_at)} (${formatDuration(data.started_at, null)})`;
+                } else if (data.ended_at) {
+                    detail.textContent = data.error ? 
+                        `Last run failed: ${data.error}` : 
+                        `Last run completed ${formatTime(data.ended_at)}`;
+                } else {
+                    detail.textContent = 'No backup runs yet';
+                }
+
+                btn.disabled = isRunning;
+                btn.innerHTML = isRunning ? 
+                    `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <polyline points="12 6 12 12 16 14"></polyline>
+                    </svg> Running...` :
+                    `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                    </svg> Start Backup`;
+            } catch (err) {
+                document.getElementById('runStatus').textContent = 'Error';
+                document.getElementById('runDetail').textContent = err.message;
+            }
+        }
+
+        async function updateHistory() {
+            try {
+                const data = await fetchJSON('/history');
+                const tbody = document.getElementById('historyBody');
+                const count = document.getElementById('historyCount');
+
+                count.textContent = `${data.length} run${data.length !== 1 ? 's' : ''}`;
+
+                if (data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No backup runs yet</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = data.map(run => {
+                    const isSuccess = run.state !== 'running' && !run.error;
+                    const isError = run.state !== 'running' && run.error;
+                    const isRunning = run.state === 'running';
+                    
+                    let badgeClass = 'badge-success';
+                    let badgeText = 'Success';
+                    
+                    if (isRunning) {
+                        badgeClass = 'badge-running';
+                        badgeText = 'Running';
+                    } else if (isError) {
+                        badgeClass = 'badge-error';
+                        badgeText = 'Failed';
+                    }
+
+                    return `<tr>
+                        <td><span class="badge ${badgeClass}">${badgeText}</span></td>
+                        <td>${formatTime(run.started_at)}</td>
+                        <td class="hide-mobile">${formatTime(run.ended_at)}</td>
+                        <td><span class="duration">${formatDuration(run.started_at, run.ended_at)}</span></td>
+                        <td class="hide-mobile">${run.error ? `<span class="error-message" title="${run.error}">${run.error}</span>` : '-'}</td>
+                    </tr>`;
+                }).join('');
+            } catch (err) {
+                document.getElementById('historyBody').innerHTML = 
+                    `<tr><td colspan="5" class="empty-state">Failed to load history: ${err.message}</td></tr>`;
+            }
+        }
+
+        async function triggerBackup() {
+            const btn = document.getElementById('runBtn');
+            const detail = document.getElementById('actionDetail');
+            
+            btn.disabled = true;
+            detail.textContent = 'Starting backup...';
+
+            try {
+                const resp = await fetch('/run', { method: 'POST' });
+                if (resp.status === 202) {
+                    detail.textContent = 'Backup started successfully';
+                    detail.style.color = 'var(--accent-green)';
+                    await updateAll();
+                } else if (resp.status === 409) {
+                    detail.textContent = 'A backup is already running';
+                    detail.style.color = 'var(--accent-yellow)';
+                } else {
+                    const data = await resp.json();
+                    detail.textContent = data.error || 'Failed to start backup';
+                    detail.style.color = 'var(--accent-red)';
+                }
+            } catch (err) {
+                detail.textContent = err.message;
+                detail.style.color = 'var(--accent-red)';
+            }
+
+            setTimeout(() => {
+                detail.textContent = '';
+                detail.style.color = '';
+            }, 5000);
+        }
+
+        async function updateAll() {
+            await Promise.all([updateIPMI(), updateStatus(), updateHistory()]);
+            updateLastUpdated();
+        }
+
+        // Initial load
+        updateAll();
+
+        // Poll for updates
+        setInterval(updateAll, POLL_INTERVAL);
+    </script>
+</body>
+</html>

@@ -4,17 +4,30 @@ HTTP server for the goback backup automation system.
 
 ## Overview
 
-The server provides a REST API to monitor and control PBS backup operations. It manages:
+The server provides a REST API and web UI to monitor and control PBS backup operations. It manages:
 
 - PBS power state via IPMI
 - Backup run triggering and status
 - Configuration management
 - Run history
 
+## Web UI
+
+Access the dashboard at `http://localhost:8080/` (or your configured address).
+
+The dashboard shows:
+- **PBS Server status** - Current power state via IPMI (on/off)
+- **Backup status** - Whether a backup is running or idle, with timing info
+- **Actions** - Button to trigger a new backup run
+- **Run history** - Table of past backup runs with status, timing, and errors
+
+The UI auto-refreshes every 5 seconds.
+
 ## Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
+| `/` | GET | Web UI dashboard |
 | `/health` | GET | Simple health check, returns `ok` |
 | `/ipmi` | GET | Returns PBS power state via IPMI |
 | `/config` | GET | Returns current configuration as YAML |
@@ -39,6 +52,8 @@ server/
 ├── runner/            # Backup run execution
 │   ├── runner.go      # Runner implementation
 │   └── types.go       # RunState, RunStatus
+├── static/            # Embedded static files
+│   └── index.html     # Web UI
 └── server.go          # Server setup and routing
 ```
 
@@ -90,3 +105,7 @@ The runner manages backup execution:
 - Tracks current run status
 - Maintains history of completed runs (default: last 100)
 - Creates fresh dependencies for each run from current config
+
+### Static Files
+
+Static files are embedded into the binary using Go's `embed` package. The web UI is a single-page application with no external dependencies - all CSS and JavaScript are inline in `index.html`.
