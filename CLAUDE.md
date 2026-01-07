@@ -144,12 +144,12 @@ The config package (config/config.go:1) provides validation, defaults, and loadi
 - `GET /` - Web UI dashboard
 - `GET /health` - Health check
 - `GET /api/status` - **Consolidated status endpoint** (PBS state, run status, next run, results) - used by the web UI
+- `GET /api/history` - Completed run history
 - `GET /config` - Current configuration as YAML
 - `POST /reload` - Reload configuration from disk
 - `POST /run` - Trigger a backup run
-- `GET /history` - Completed run history
 
-The web UI uses `/api/status` for efficient polling (single request) and `/history` separately for historical data.
+The web UI uses `/api/status` for efficient polling (single request) and `/api/history` separately for historical data.
 
 See server/README.md for more details.
 

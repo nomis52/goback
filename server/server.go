@@ -9,10 +9,10 @@
 //   - GET / - Web UI dashboard
 //   - GET /health - Simple health check, returns "ok"
 //   - GET /api/status - Consolidated status endpoint (PBS state, run status, next run, results)
+//   - GET /api/history - Returns history of completed runs
 //   - GET /config - Returns current configuration as YAML
 //   - POST /reload - Reloads configuration from disk
 //   - POST /run - Triggers a backup run
-//   - GET /history - Returns history of completed runs
 //
 // # Architecture
 //
@@ -261,10 +261,10 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	// API endpoints
 	mux.HandleFunc("GET /health", handlers.HandleHealth)
 	mux.Handle("GET /api/status", apiStatusHandler)
+	mux.Handle("GET /api/history", historyHandler)
 	mux.Handle("GET /config", configHandler)
 	mux.Handle("POST /reload", reloadHandler)
 	mux.Handle("POST /run", runHandler)
-	mux.Handle("GET /history", historyHandler)
 
 	// Static files (web UI)
 	staticFS, err := fs.Sub(staticFiles, "static")

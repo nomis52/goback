@@ -30,10 +30,10 @@ The UI auto-refreshes every 5 seconds.
 | `/` | GET | Web UI dashboard |
 | `/health` | GET | Simple health check, returns `ok` |
 | `/api/status` | GET | Consolidated status endpoint (PBS state, run status, next run, results) |
+| `/api/history` | GET | Returns history of completed runs |
 | `/config` | GET | Returns current configuration as YAML |
 | `/reload` | POST | Reloads configuration from disk |
 | `/run` | POST | Triggers a backup run |
-| `/history` | GET | Returns history of completed runs |
 
 ## Package Structure
 

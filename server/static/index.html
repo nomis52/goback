@@ -270,6 +270,91 @@
             display: none;
         }
 
+        .collapsible-section {
+            background-color: var(--bg-secondary);
+            border-radius: 0.75rem;
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+        }
+
+        .collapsible-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 1.5rem;
+            cursor: pointer;
+            user-select: none;
+            transition: background-color 0.2s;
+        }
+
+        .collapsible-header:hover {
+            background-color: var(--bg-card);
+        }
+
+        .collapsible-title {
+            font-size: 1rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .chevron {
+            transition: transform 0.3s;
+        }
+
+        .chevron.expanded {
+            transform: rotate(180deg);
+        }
+
+        .collapsible-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+        }
+
+        .collapsible-content.expanded {
+            max-height: 600px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .config-container {
+            padding: 1.5rem;
+        }
+
+        .config-actions {
+            display: flex;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+
+        .btn-secondary {
+            background-color: var(--bg-card);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background-color: var(--border-color);
+        }
+
+        pre {
+            background-color: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 0.5rem;
+            padding: 1rem;
+            overflow-x: auto;
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+            font-size: 0.875rem;
+            line-height: 1.5;
+            color: var(--text-primary);
+        }
+
+        .config-status {
+            font-size: 0.875rem;
+            margin-top: 0.75rem;
+        }
+
         @media (max-width: 640px) {
             .container {
                 padding: 1rem;
@@ -375,6 +460,33 @@
                     </tr>
                 </tbody>
             </table>
+        </div>
+
+        <div class="collapsible-section">
+            <div class="collapsible-header" onclick="toggleConfig()">
+                <div class="collapsible-title">
+                    <svg class="chevron" id="configChevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                    Configuration
+                </div>
+            </div>
+            <div class="collapsible-content" id="configContent">
+                <div class="config-container">
+                    <div class="config-actions">
+                        <button class="btn btn-primary" onclick="reloadConfig()">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="23 4 23 10 17 10"></polyline>
+                                <polyline points="1 20 1 14 7 14"></polyline>
+                                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                            </svg>
+                            Reload Config
+                        </button>
+                    </div>
+                    <pre id="configYaml">Loading configuration...</pre>
+                    <div id="configStatus" class="config-status"></div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -568,7 +680,7 @@
 
         async function updateHistory() {
             try {
-                const data = await fetchJSON('/history');
+                const data = await fetchJSON('/api/history');
                 const tbody = document.getElementById('historyBody');
                 const count = document.getElementById('historyCount');
 
@@ -644,6 +756,83 @@
         async function updateAll() {
             await Promise.all([updateAPIStatus(), updateHistory()]);
             updateLastUpdated();
+        }
+
+        let configExpanded = false;
+        let configLoaded = false;
+
+        async function toggleConfig() {
+            const content = document.getElementById('configContent');
+            const chevron = document.getElementById('configChevron');
+
+            configExpanded = !configExpanded;
+
+            if (configExpanded) {
+                content.classList.add('expanded');
+                chevron.classList.add('expanded');
+
+                // Fetch config if not already loaded
+                if (!configLoaded) {
+                    await fetchConfig();
+                }
+            } else {
+                content.classList.remove('expanded');
+                chevron.classList.remove('expanded');
+            }
+        }
+
+        async function fetchConfig() {
+            const configYaml = document.getElementById('configYaml');
+            const configStatus = document.getElementById('configStatus');
+
+            try {
+                configYaml.textContent = 'Loading configuration...';
+                configStatus.textContent = '';
+
+                const resp = await fetch('/config');
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+                const yamlText = await resp.text();
+                configYaml.textContent = yamlText;
+                configLoaded = true;
+            } catch (err) {
+                configYaml.textContent = 'Failed to load configuration';
+                configStatus.textContent = `Error: ${err.message}`;
+                configStatus.style.color = 'var(--accent-red)';
+            }
+        }
+
+        async function reloadConfig() {
+            const configStatus = document.getElementById('configStatus');
+
+            try {
+                configStatus.textContent = 'Reloading configuration...';
+                configStatus.style.color = 'var(--text-secondary)';
+
+                const resp = await fetch('/reload', { method: 'POST' });
+
+                if (resp.status === 204) {
+                    configStatus.textContent = 'Configuration reloaded successfully';
+                    configStatus.style.color = 'var(--accent-green)';
+
+                    // Refresh the config display
+                    configLoaded = false;
+                    await fetchConfig();
+                } else {
+                    const data = await resp.json();
+                    configStatus.textContent = `Failed to reload: ${data.error || 'Unknown error'}`;
+                    configStatus.style.color = 'var(--accent-red)';
+                }
+            } catch (err) {
+                configStatus.textContent = `Error: ${err.message}`;
+                configStatus.style.color = 'var(--accent-red)';
+            }
+
+            // Clear status after 5 seconds
+            setTimeout(() => {
+                configStatus.textContent = '';
+                configStatus.style.color = '';
+            }, 5000);
         }
 
         // Initial load
