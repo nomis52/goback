@@ -62,6 +62,7 @@ type Runner struct {
 	maxHistorySize int
 	runStatus      RunStatus
 	history        []RunStatus
+	orchestrator   *orchestrator.Orchestrator // Current or last run's orchestrator
 }
 
 // ConfigProvider provides access to the current configuration.
@@ -119,6 +120,18 @@ func (r *Runner) History() []RunStatus {
 	result := make([]RunStatus, len(r.history))
 	copy(result, r.history)
 	return result
+}
+
+// GetResults returns the activity results from the current or last run.
+// Returns nil if no run has been executed yet.
+func (r *Runner) GetResults() map[orchestrator.ActivityID]*orchestrator.Result {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.orchestrator == nil {
+		return nil
+	}
+	return r.orchestrator.GetAllResults()
 }
 
 // tryStart attempts to transition from idle to running.
@@ -180,6 +193,11 @@ func (r *Runner) executeRun(ctx context.Context) error {
 		orchestrator.WithConfig(cfg),
 		orchestrator.WithLogger(r.logger),
 	)
+
+	// Store orchestrator reference for result access
+	r.mu.Lock()
+	r.orchestrator = o
+	r.mu.Unlock()
 
 	if err := o.Inject(r.logger, deps.metricsClient, deps.ipmiController, deps.pbsClient, deps.proxmoxClient); err != nil {
 		return fmt.Errorf("failed to inject dependencies: %w", err)

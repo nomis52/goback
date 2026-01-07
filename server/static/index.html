@@ -159,14 +159,15 @@
             cursor: not-allowed;
         }
 
-        .history-section {
+        .section {
             background-color: var(--bg-secondary);
             border-radius: 0.75rem;
             border: 1px solid var(--border-color);
             overflow: hidden;
+            margin-bottom: 1.5rem;
         }
 
-        .history-header {
+        .section-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -174,7 +175,7 @@
             border-bottom: 1px solid var(--border-color);
         }
 
-        .history-title {
+        .section-title {
             font-size: 1rem;
             font-weight: 600;
         }
@@ -228,6 +229,16 @@
             color: var(--accent-blue);
         }
 
+        .badge-pending {
+            background-color: rgba(148, 163, 184, 0.2);
+            color: var(--text-secondary);
+        }
+
+        .badge-skipped {
+            background-color: rgba(234, 179, 8, 0.2);
+            color: var(--accent-yellow);
+        }
+
         .empty-state {
             text-align: center;
             padding: 3rem;
@@ -248,8 +259,13 @@
             color: var(--text-secondary);
         }
 
-        .loading {
-            opacity: 0.5;
+        .activity-name {
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 0.875rem;
+        }
+
+        .hidden {
+            display: none;
         }
 
         @media (max-width: 640px) {
@@ -311,9 +327,29 @@
             </div>
         </div>
 
-        <div class="history-section">
-            <div class="history-header">
-                <span class="history-title">Run History</span>
+        <div id="currentRunSection" class="section hidden">
+            <div class="section-header">
+                <span class="section-title">Current Run Activities</span>
+                <span id="activityCount" class="card-title">0 activities</span>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Activity</th>
+                        <th>Status</th>
+                        <th>Started</th>
+                        <th class="hide-mobile">Ended</th>
+                        <th>Duration</th>
+                    </tr>
+                </thead>
+                <tbody id="activitiesBody">
+                </tbody>
+            </table>
+        </div>
+
+        <div class="section">
+            <div class="section-header">
+                <span class="section-title">Run History</span>
                 <span id="historyCount" class="card-title">0 runs</span>
             </div>
             <table>
@@ -336,8 +372,10 @@
     </div>
 
     <script>
-        const POLL_INTERVAL = 5000;
+        const POLL_INTERVAL_IDLE = 5000;
+        const POLL_INTERVAL_RUNNING = 2000;
         let isRunning = false;
+        let pollInterval = null;
 
         async function fetchJSON(url) {
             const resp = await fetch(url);
@@ -351,11 +389,19 @@
             return date.toLocaleString();
         }
 
+        function formatTimeShort(isoString) {
+            if (!isoString) return '-';
+            const date = new Date(isoString);
+            return date.toLocaleTimeString();
+        }
+
         function formatDuration(startStr, endStr) {
             if (!startStr) return '-';
             const start = new Date(startStr);
             const end = endStr ? new Date(endStr) : new Date();
             const diffMs = end - start;
+            
+            if (diffMs < 0) return '-';
             
             const seconds = Math.floor(diffMs / 1000) % 60;
             const minutes = Math.floor(diffMs / 60000) % 60;
@@ -368,6 +414,25 @@
 
         function updateLastUpdated() {
             document.getElementById('lastUpdated').textContent = new Date().toLocaleTimeString();
+        }
+
+        function getActivityDisplayName(fullName) {
+            // Extract just the activity type from the full path
+            // e.g., "github.com/nomis52/goback/activities.PowerOnPBS" -> "PowerOnPBS"
+            const lastDot = fullName.lastIndexOf('.');
+            return lastDot >= 0 ? fullName.substring(lastDot + 1) : fullName;
+        }
+
+        function getStateBadge(state, error) {
+            const stateMap = {
+                'not_started': { class: 'badge-pending', text: 'Pending' },
+                'pending': { class: 'badge-pending', text: 'Pending' },
+                'running': { class: 'badge-running', text: 'Running' },
+                'skipped': { class: 'badge-skipped', text: 'Skipped' },
+                'completed': error ? { class: 'badge-error', text: 'Failed' } : { class: 'badge-success', text: 'Success' }
+            };
+            const badge = stateMap[state] || { class: 'badge-pending', text: state };
+            return `<span class="badge ${badge.class}">${badge.text}</span>`;
         }
 
         async function updateIPMI() {
@@ -398,7 +463,14 @@
                 const detail = document.getElementById('runDetail');
                 const btn = document.getElementById('runBtn');
 
+                const wasRunning = isRunning;
                 isRunning = data.state === 'running';
+                
+                // Adjust poll interval when state changes
+                if (wasRunning !== isRunning) {
+                    clearInterval(pollInterval);
+                    pollInterval = setInterval(updateAll, isRunning ? POLL_INTERVAL_RUNNING : POLL_INTERVAL_IDLE);
+                }
                 
                 dot.className = 'status-dot ' + (isRunning ? 'running' : 'idle');
                 status.textContent = isRunning ? 'Running' : 'Idle';
@@ -429,6 +501,66 @@
             }
         }
 
+        async function updateResults() {
+            const section = document.getElementById('currentRunSection');
+            const tbody = document.getElementById('activitiesBody');
+            const count = document.getElementById('activityCount');
+
+            if (!isRunning) {
+                section.classList.add('hidden');
+                return;
+            }
+
+            try {
+                const data = await fetchJSON('/results');
+                
+                // Convert object to array and sort by start time
+                const activities = Object.entries(data).map(([key, result]) => ({
+                    name: key,
+                    ...result
+                }));
+
+                if (activities.length === 0) {
+                    section.classList.add('hidden');
+                    return;
+                }
+
+                // Sort: running first, then by start time, then pending
+                activities.sort((a, b) => {
+                    if (a.State === 'running' && b.State !== 'running') return -1;
+                    if (b.State === 'running' && a.State !== 'running') return 1;
+                    if (a.StartTime && b.StartTime) {
+                        return new Date(a.StartTime) - new Date(b.StartTime);
+                    }
+                    if (a.StartTime && !b.StartTime) return -1;
+                    if (!a.StartTime && b.StartTime) return 1;
+                    return 0;
+                });
+
+                section.classList.remove('hidden');
+                count.textContent = `${activities.length} activit${activities.length !== 1 ? 'ies' : 'y'}`;
+
+                tbody.innerHTML = activities.map(activity => {
+                    const displayName = getActivityDisplayName(activity.name);
+                    const startTime = activity.StartTime && activity.StartTime !== '0001-01-01T00:00:00Z' 
+                        ? activity.StartTime : null;
+                    const endTime = activity.EndTime && activity.EndTime !== '0001-01-01T00:00:00Z' 
+                        ? activity.EndTime : null;
+                    const errorMsg = activity.Error ? activity.Error : null;
+
+                    return `<tr>
+                        <td><span class="activity-name">${displayName}</span></td>
+                        <td>${getStateBadge(activity.State, errorMsg)}</td>
+                        <td>${formatTimeShort(startTime)}</td>
+                        <td class="hide-mobile">${formatTimeShort(endTime)}</td>
+                        <td><span class="duration">${formatDuration(startTime, endTime)}</span></td>
+                    </tr>`;
+                }).join('');
+            } catch (err) {
+                section.classList.add('hidden');
+            }
+        }
+
         async function updateHistory() {
             try {
                 const data = await fetchJSON('/history');
@@ -445,12 +577,12 @@
                 tbody.innerHTML = data.map(run => {
                     const isSuccess = run.state !== 'running' && !run.error;
                     const isError = run.state !== 'running' && run.error;
-                    const isRunning = run.state === 'running';
+                    const runIsRunning = run.state === 'running';
                     
                     let badgeClass = 'badge-success';
                     let badgeText = 'Success';
                     
-                    if (isRunning) {
+                    if (runIsRunning) {
                         badgeClass = 'badge-running';
                         badgeText = 'Running';
                     } else if (isError) {
@@ -505,15 +637,15 @@
         }
 
         async function updateAll() {
-            await Promise.all([updateIPMI(), updateStatus(), updateHistory()]);
+            await Promise.all([updateIPMI(), updateStatus(), updateResults(), updateHistory()]);
             updateLastUpdated();
         }
 
         // Initial load
         updateAll();
 
-        // Poll for updates
-        setInterval(updateAll, POLL_INTERVAL);
+        // Poll for updates (starts with idle interval)
+        pollInterval = setInterval(updateAll, POLL_INTERVAL_IDLE);
     </script>
 </body>
 </html>

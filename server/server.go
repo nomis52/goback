@@ -14,6 +14,7 @@
 //   - POST /run - Triggers a backup run
 //   - GET /status - Returns status of current/last run
 //   - GET /history - Returns history of completed runs
+//   - GET /results - Returns activity results from current/last run
 //
 // # Architecture
 //
@@ -194,6 +195,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	runHandler := handlers.NewRunHandler(s.runner)
 	statusHandler := handlers.NewRunStatusHandler(s.runner)
 	historyHandler := handlers.NewHistoryHandler(s.runner)
+	resultsHandler := handlers.NewResultsHandler(s.runner)
 
 	// API endpoints
 	mux.HandleFunc("GET /health", handlers.HandleHealth)
@@ -203,6 +205,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.Handle("POST /run", runHandler)
 	mux.Handle("GET /status", statusHandler)
 	mux.Handle("GET /history", historyHandler)
+	mux.Handle("GET /results", resultsHandler)
 
 	// Static files (web UI)
 	staticFS, err := fs.Sub(staticFiles, "static")

@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"time"
 )
 
 // Activity represents a single step in the orchestration process.
@@ -48,6 +49,12 @@ type Activity interface {
 // - Progresses through states during Execute(): NotStarted -> Pending -> Running -> (Completed|Skipped)
 // - Final state persists after Execute() completes
 // - Thread-safe access via orchestrator result methods
+//
+// TIMING:
+// - StartTime is set when the activity transitions to Running state
+// - EndTime is set when the activity transitions to Completed state
+// - Skipped activities have zero values for both times (they never ran)
+// - Both times are zero values if the activity never reached Running state
 type Result struct {
 	// State indicates the current execution state
 	// See ActivityState constants and package documentation for state progression details
@@ -57,6 +64,14 @@ type Result struct {
 	// nil indicates Execute() returned nil (success) or Execute() was never called
 	// Validation errors, dependency failures, and cancellations are reflected in State only
 	Error error
+
+	// StartTime is when the activity began executing (transitioned to Running state)
+	// Zero value if the activity never started execution
+	StartTime time.Time
+
+	// EndTime is when the activity transitioned to Completed
+	// Zero value if the activity hasn't finished yet
+	EndTime time.Time
 }
 
 // IsSuccess returns true if the activity completed successfully.
@@ -68,4 +83,15 @@ type Result struct {
 // NOTE: Skipped activities are not considered successful even if Error is nil.
 func (r *Result) IsSuccess() bool {
 	return r.State == Completed && r.Error == nil
+}
+
+// Duration returns the execution duration of the activity.
+//
+// Returns the time between StartTime and EndTime if both are set.
+// Returns zero duration if the activity never started or hasn't finished yet.
+func (r *Result) Duration() time.Duration {
+	if r.StartTime.IsZero() || r.EndTime.IsZero() {
+		return 0
+	}
+	return r.EndTime.Sub(r.StartTime)
 }

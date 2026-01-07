@@ -7,6 +7,7 @@ package handlers
 
 import (
 	"github.com/nomis52/goback/config"
+	"github.com/nomis52/goback/orchestrator"
 	"github.com/nomis52/goback/server/runner"
 )
 
@@ -33,4 +34,9 @@ type RunStatusProvider interface {
 // HistoryProvider provides access to run history.
 type HistoryProvider interface {
 	History() []runner.RunStatus
+}
+
+// ResultsProvider provides access to activity results.
+type ResultsProvider interface {
+	GetResults() map[orchestrator.ActivityID]*orchestrator.Result
 }

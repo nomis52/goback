@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Orchestrator manages the execution of activities with dependency resolution.
@@ -307,21 +308,21 @@ func (o *Orchestrator) runActivity(ctx context.Context, id ActivityID, activity 
 	activityLogger.Info("all dependencies satisfied, executing activity")
 
 	// Mark as running
-	result = &Result{State: Running, Error: nil}
+	result = &Result{State: Running, Error: nil, StartTime: time.Now()}
 	o.mu.Lock()
 	o.resultMap[id] = result
 	o.mu.Unlock()
 
 	// Execute the activity
 	err := activity.Execute(ctx)
+	endTime := time.Now()
 
-	// Create final result
+	// Create final result (preserve StartTime from when we marked as Running)
+	result = &Result{State: Completed, Error: err, StartTime: result.StartTime, EndTime: endTime}
 	if err != nil {
 		activityLogger.Error("activity execution failed", "error", err)
-		result = &Result{State: Completed, Error: err}
 	} else {
 		activityLogger.Info("activity execution completed successfully")
-		result = &Result{State: Completed, Error: nil}
 	}
 
 	// Store final result
