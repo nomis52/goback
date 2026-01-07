@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Goback - PBS Backup Automation</title>
+    <title>d.ne4.org Backup Automation</title>
     <style>
         :root {
             --bg-primary: #0f172a;
@@ -64,7 +64,7 @@
 
         .grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
             gap: 1.5rem;
             margin-bottom: 2rem;
         }
@@ -109,6 +109,8 @@
         .status-dot.unknown { background-color: var(--text-secondary); }
         .status-dot.running { background-color: var(--accent-blue); }
         .status-dot.idle { background-color: var(--accent-green); }
+        .status-dot.scheduled { background-color: var(--accent-blue); }
+        .status-dot.not-scheduled { background-color: var(--text-secondary); }
 
         @keyframes pulse {
             0%, 100% { opacity: 1; }
@@ -286,7 +288,7 @@
 <body>
     <div class="container">
         <header>
-            <h1><span>Goback</span> PBS Backup</h1>
+            <h1>d.ne4.org Backup</h1>
             <div class="last-updated">Last updated: <span id="lastUpdated">-</span></div>
         </header>
 
@@ -315,6 +317,17 @@
 
             <div class="card">
                 <div class="card-header">
+                    <span class="card-title">Next Run</span>
+                    <div class="status-indicator">
+                        <div id="nextRunDot" class="status-dot unknown"></div>
+                    </div>
+                </div>
+                <div id="nextRunStatus" class="status-value">-</div>
+                <div id="nextRunDetail" class="status-detail">Checking schedule...</div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
                     <span class="card-title">Actions</span>
                 </div>
                 <button id="runBtn" class="btn btn-primary" onclick="triggerBackup()">
@@ -329,13 +342,13 @@
 
         <div id="currentRunSection" class="section hidden">
             <div class="section-header">
-                <span class="section-title">Current Run Activities</span>
-                <span id="activityCount" class="card-title">0 activities</span>
+                <span class="section-title">Current Run</span>
+                <span id="activityCount" class="card-title">0 steps</span>
             </div>
             <table>
                 <thead>
                     <tr>
-                        <th>Activity</th>
+                        <th>Step</th>
                         <th>Status</th>
                         <th>Started</th>
                         <th class="hide-mobile">Ended</th>
@@ -412,15 +425,27 @@
             return `${seconds}s`;
         }
 
-        function updateLastUpdated() {
-            document.getElementById('lastUpdated').textContent = new Date().toLocaleTimeString();
+        function formatRelativeTime(isoString) {
+            if (!isoString) return '-';
+            const date = new Date(isoString);
+            const now = new Date();
+            const diffMs = date - now;
+            
+            if (diffMs < 0) return 'now';
+            
+            const seconds = Math.floor(diffMs / 1000) % 60;
+            const minutes = Math.floor(diffMs / 60000) % 60;
+            const hours = Math.floor(diffMs / 3600000) % 24;
+            const days = Math.floor(diffMs / 86400000);
+            
+            if (days > 0) return `in ${days}d ${hours}h`;
+            if (hours > 0) return `in ${hours}h ${minutes}m`;
+            if (minutes > 0) return `in ${minutes}m`;
+            return `in ${seconds}s`;
         }
 
-        function getActivityDisplayName(fullName) {
-            // Extract just the activity type from the full path
-            // e.g., "github.com/nomis52/goback/activities.PowerOnPBS" -> "PowerOnPBS"
-            const lastDot = fullName.lastIndexOf('.');
-            return lastDot >= 0 ? fullName.substring(lastDot + 1) : fullName;
+        function updateLastUpdated() {
+            document.getElementById('lastUpdated').textContent = new Date().toLocaleTimeString();
         }
 
         function getStateBadge(state, error) {
@@ -501,6 +526,29 @@
             }
         }
 
+        async function updateNextRun() {
+            try {
+                const data = await fetchJSON('/next-run');
+                const dot = document.getElementById('nextRunDot');
+                const status = document.getElementById('nextRunStatus');
+                const detail = document.getElementById('nextRunDetail');
+
+                if (data.scheduled && data.next_run) {
+                    dot.className = 'status-dot scheduled';
+                    status.textContent = formatRelativeTime(data.next_run);
+                    detail.textContent = formatTime(data.next_run);
+                } else {
+                    dot.className = 'status-dot not-scheduled';
+                    status.textContent = 'Not scheduled';
+                    detail.textContent = 'No cron schedule configured';
+                }
+            } catch (err) {
+                document.getElementById('nextRunStatus').textContent = 'Error';
+                document.getElementById('nextRunDetail').textContent = err.message;
+                document.getElementById('nextRunDot').className = 'status-dot unknown';
+            }
+        }
+
         async function updateResults() {
             const section = document.getElementById('currentRunSection');
             const tbody = document.getElementById('activitiesBody');
@@ -513,12 +561,9 @@
 
             try {
                 const data = await fetchJSON('/results');
-                
-                // Convert object to array and sort by start time
-                const activities = Object.entries(data).map(([key, result]) => ({
-                    name: key,
-                    ...result
-                }));
+
+                // data is already an array
+                const activities = data;
 
                 if (activities.length === 0) {
                     section.classList.add('hidden');
@@ -527,13 +572,13 @@
 
                 // Sort: running first, then by start time, then pending
                 activities.sort((a, b) => {
-                    if (a.State === 'running' && b.State !== 'running') return -1;
-                    if (b.State === 'running' && a.State !== 'running') return 1;
-                    if (a.StartTime && b.StartTime) {
-                        return new Date(a.StartTime) - new Date(b.StartTime);
+                    if (a.state === 'running' && b.state !== 'running') return -1;
+                    if (b.state === 'running' && a.state !== 'running') return 1;
+                    if (a.start_time && b.start_time) {
+                        return new Date(a.start_time) - new Date(b.start_time);
                     }
-                    if (a.StartTime && !b.StartTime) return -1;
-                    if (!a.StartTime && b.StartTime) return 1;
+                    if (a.start_time && !b.start_time) return -1;
+                    if (!a.start_time && b.start_time) return 1;
                     return 0;
                 });
 
@@ -541,16 +586,16 @@
                 count.textContent = `${activities.length} activit${activities.length !== 1 ? 'ies' : 'y'}`;
 
                 tbody.innerHTML = activities.map(activity => {
-                    const displayName = getActivityDisplayName(activity.name);
-                    const startTime = activity.StartTime && activity.StartTime !== '0001-01-01T00:00:00Z' 
-                        ? activity.StartTime : null;
-                    const endTime = activity.EndTime && activity.EndTime !== '0001-01-01T00:00:00Z' 
-                        ? activity.EndTime : null;
-                    const errorMsg = activity.Error ? activity.Error : null;
+                    const displayName = activity.type || 'Unknown';
+                    const startTime = activity.start_time && activity.start_time !== '0001-01-01T00:00:00Z'
+                        ? activity.start_time : null;
+                    const endTime = activity.end_time && activity.end_time !== '0001-01-01T00:00:00Z'
+                        ? activity.end_time : null;
+                    const errorMsg = activity.error ? activity.error : null;
 
                     return `<tr>
                         <td><span class="activity-name">${displayName}</span></td>
-                        <td>${getStateBadge(activity.State, errorMsg)}</td>
+                        <td>${getStateBadge(activity.state, errorMsg)}</td>
                         <td>${formatTimeShort(startTime)}</td>
                         <td class="hide-mobile">${formatTimeShort(endTime)}</td>
                         <td><span class="duration">${formatDuration(startTime, endTime)}</span></td>
@@ -637,7 +682,7 @@
         }
 
         async function updateAll() {
-            await Promise.all([updateIPMI(), updateStatus(), updateResults(), updateHistory()]);
+            await Promise.all([updateIPMI(), updateStatus(), updateNextRun(), updateResults(), updateHistory()]);
             updateLastUpdated();
         }
 
