@@ -30,14 +30,10 @@ The UI auto-refreshes every 5 seconds.
 | `/` | GET | Web UI dashboard |
 | `/health` | GET | Simple health check, returns `ok` |
 | `/api/status` | GET | Consolidated status endpoint (PBS state, run status, next run, results) |
-| `/ipmi` | GET | Returns PBS power state via IPMI |
 | `/config` | GET | Returns current configuration as YAML |
 | `/reload` | POST | Reloads configuration from disk |
 | `/run` | POST | Triggers a backup run |
-| `/status` | GET | Returns status of current/last run |
 | `/history` | GET | Returns history of completed runs |
-| `/results` | GET | Returns activity results from current/last run |
-| `/next-run` | GET | Returns next scheduled run time |
 
 ## Package Structure
 

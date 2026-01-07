@@ -9,14 +9,10 @@
 //   - GET / - Web UI dashboard
 //   - GET /health - Simple health check, returns "ok"
 //   - GET /api/status - Consolidated status endpoint (PBS state, run status, next run, results)
-//   - GET /ipmi - Returns PBS power state via IPMI
 //   - GET /config - Returns current configuration as YAML
 //   - POST /reload - Reloads configuration from disk
 //   - POST /run - Triggers a backup run
-//   - GET /status - Returns status of current/last run
 //   - GET /history - Returns history of completed runs
-//   - GET /results - Returns activity results from current/last run
-//   - GET /next-run - Returns next scheduled run time (if cron configured)
 //
 // # Architecture
 //
@@ -256,27 +252,19 @@ func (s *Server) Run(ctx context.Context) error {
 }
 
 func (s *Server) registerRoutes(mux *http.ServeMux) {
-	ipmiHandler := handlers.NewIPMIHandler(s.logger, s)
 	configHandler := handlers.NewConfigHandler(s)
 	reloadHandler := handlers.NewReloadHandler(s.logger, s)
 	runHandler := handlers.NewRunHandler(s.runner)
-	statusHandler := handlers.NewRunStatusHandler(s.runner)
 	historyHandler := handlers.NewHistoryHandler(s.runner)
-	resultsHandler := handlers.NewResultsHandler(s.runner)
-	nextRunHandler := handlers.NewNextRunHandler(s)
 	apiStatusHandler := handlers.NewAPIStatusHandler(s.logger, s)
 
 	// API endpoints
 	mux.HandleFunc("GET /health", handlers.HandleHealth)
 	mux.Handle("GET /api/status", apiStatusHandler)
-	mux.Handle("GET /ipmi", ipmiHandler)
 	mux.Handle("GET /config", configHandler)
 	mux.Handle("POST /reload", reloadHandler)
 	mux.Handle("POST /run", runHandler)
-	mux.Handle("GET /status", statusHandler)
 	mux.Handle("GET /history", historyHandler)
-	mux.Handle("GET /results", resultsHandler)
-	mux.Handle("GET /next-run", nextRunHandler)
 
 	// Static files (web UI)
 	staticFS, err := fs.Sub(staticFiles, "static")
