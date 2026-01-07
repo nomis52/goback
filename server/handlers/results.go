@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"sort"
 	"time"
 )
 
@@ -53,6 +54,11 @@ func (h *ResultsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		response = append(response, ar)
 	}
+
+	// Sort by Type alphabetically for stable order
+	sort.Slice(response, func(i, j int) bool {
+		return response[i].Type < response[j].Type
+	})
 
 	writeJSON(w, http.StatusOK, response)
 }

@@ -324,13 +324,7 @@
                 </div>
                 <div id="nextRunStatus" class="status-value">-</div>
                 <div id="nextRunDetail" class="status-detail">Checking schedule...</div>
-            </div>
-
-            <div class="card">
-                <div class="card-header">
-                    <span class="card-title">Actions</span>
-                </div>
-                <button id="runBtn" class="btn btn-primary" onclick="triggerBackup()">
+                <button id="runBtn" class="btn btn-primary" onclick="triggerBackup()" style="margin-top: 1rem; width: 100%;">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <polygon points="5 3 19 12 5 21 5 3"></polygon>
                     </svg>
@@ -540,18 +534,7 @@
                 } else {
                     const activities = data.results;
 
-                    // Sort: running first, then by start time, then pending
-                    activities.sort((a, b) => {
-                        if (a.state === 'running' && b.state !== 'running') return -1;
-                        if (b.state === 'running' && a.state !== 'running') return 1;
-                        if (a.start_time && b.start_time) {
-                            return new Date(a.start_time) - new Date(b.start_time);
-                        }
-                        if (a.start_time && !b.start_time) return -1;
-                        if (!a.start_time && b.start_time) return 1;
-                        return 0;
-                    });
-
+                    // Backend provides stable alphabetical order
                     section.classList.remove('hidden');
                     count.textContent = `${activities.length} activit${activities.length !== 1 ? 'ies' : 'y'}`;
 
