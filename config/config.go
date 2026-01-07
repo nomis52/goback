@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"reflect"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -44,7 +45,7 @@ type Config struct {
 type IPMIConfig struct {
 	Host     string `yaml:"host"`
 	Username string `yaml:"username"`
-	Password string `yaml:"password"`
+	Password string `yaml:"password" sensitive:"true"`
 }
 
 // PBSConfig holds Proxmox Backup Server settings
@@ -68,18 +69,16 @@ type PBSConfig struct {
 // ProxmoxConfig holds Proxmox API connection settings
 type ProxmoxConfig struct {
 	Host          string        `yaml:"host"`
-	Token         string        `yaml:"token"`
+	Token         string        `yaml:"token" sensitive:"true"`
 	Storage       string        `yaml:"storage"`
 	BackupTimeout time.Duration `yaml:"backup_timeout"`
 }
 
-
-
 // ComputeConfig defines backup behavior settings for VMs and LXCs
 type ComputeConfig struct {
 	MaxBackupAge time.Duration `yaml:"max_backup_age"`
-	Mode         string        `yaml:"mode"`           // backup mode: snapshot, suspend, stop
-	Compress     string        `yaml:"compress"`       // compression: "0", "1", "gzip", "lzo", "zstd"
+	Mode         string        `yaml:"mode"`     // backup mode: snapshot, suspend, stop
+	Compress     string        `yaml:"compress"` // compression: "0", "1", "gzip", "lzo", "zstd"
 }
 
 // FilesConfig defines a single SSH backup job for file-based backups
@@ -87,7 +86,7 @@ type FilesConfig struct {
 	Host           string   `yaml:"host"`
 	User           string   `yaml:"user"`
 	PrivateKeyPath string   `yaml:"private_key_path"`
-	Token          string   `yaml:"token"`
+	Token          string   `yaml:"token" sensitive:"true"`
 	Target         string   `yaml:"target"`
 	Sources        []string `yaml:"sources"`
 }
@@ -98,8 +97,6 @@ type MonitoringConfig struct {
 	MetricsPrefix      string `yaml:"metrics_prefix"`
 	JobName            string `yaml:"jobname"`
 }
-
-
 
 // LoggingConfig defines logging behavior settings
 type LoggingConfig struct {
@@ -277,4 +274,41 @@ func LoadConfig(path string) (Config, error) {
 		return cfg, fmt.Errorf("config validation failed: %w", err)
 	}
 	return cfg, nil
+}
+
+// Redacted returns a copy of the config with sensitive fields masked.
+func (c *Config) Redacted() Config {
+	redacted := *c
+	redactSensitiveFields(reflect.ValueOf(&redacted).Elem())
+	return redacted
+}
+
+// redactSensitiveFields recursively walks a struct and redacts fields tagged with sensitive:"true"
+func redactSensitiveFields(v reflect.Value) {
+	if !v.IsValid() || !v.CanSet() {
+		return
+	}
+
+	t := v.Type()
+
+	switch v.Kind() {
+	case reflect.Struct:
+		for i := 0; i < v.NumField(); i++ {
+			field := v.Field(i)
+			fieldType := t.Field(i)
+
+			// Check if field is marked as sensitive
+			if fieldType.Tag.Get("sensitive") == "true" {
+				// Redact the field based on its type
+				if field.Kind() == reflect.String && field.CanSet() {
+					if field.String() != "" {
+						field.SetString("***REDACTED***")
+					}
+				}
+			} else {
+				// Recursively process nested structs
+				redactSensitiveFields(field)
+			}
+		}
+	}
 }

@@ -23,9 +23,12 @@ func NewConfigHandler(provider ConfigProvider) *ConfigHandler {
 func (h *ConfigHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	cfg := h.configProvider.Config()
 
+	// Redact sensitive fields before returning
+	redacted := cfg.Redacted()
+
 	w.Header().Set("Content-Type", "text/yaml")
 	w.WriteHeader(http.StatusOK)
-	if err := yaml.NewEncoder(w).Encode(cfg); err != nil {
+	if err := yaml.NewEncoder(w).Encode(redacted); err != nil {
 		slog.Error("failed to encode YAML response", "error", err)
 	}
 }
