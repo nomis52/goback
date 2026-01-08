@@ -21,7 +21,7 @@ go test ./orchestrator
 go test -v ./server/handlers
 
 # Run a single test
-go test -v -run TestBackupVMs ./activities
+go test -v -run TestBackupVMs ./backup/activities
 
 # Format code
 make fmt
@@ -89,7 +89,7 @@ The **runner** (server/runner/) prevents concurrent runs, tracks current status,
 ### Key Packages
 
 - `orchestrator/` - Dependency-resolved activity execution engine
-- `activities/` - Concrete activities (PowerOnPBS, PowerOffPBS, BackupVMs, BackupDirs)
+- `backup/activities/` - Concrete activities (PowerOnPBS, PowerOffPBS, BackupVMs, BackupDirs)
 - `config/` - YAML configuration loading and validation
 - `ipmi/` - IPMI controller for power management
 - `pbsclient/` - PBS API client

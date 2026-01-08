@@ -1,0 +1,5 @@
+- SSL support with let's encrypt
+- metrics, prom style ? 
+- hide power off button when workflow is running
+- config to separate tab ? 
+- activity logs in history

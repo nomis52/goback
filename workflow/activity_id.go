@@ -18,7 +18,7 @@ import (
 type ActivityID struct {
 	// Module is the full import path of the package containing the activity.
 	// This is obtained via reflect.TypeOf(activity).Elem().PkgPath().
-	// Example: "github.com/nomis52/goback/activities"
+	// Example: "github.com/nomis52/goback/backup/activities"
 	Module string
 
 	// Type is the struct name of the activity.
@@ -31,7 +31,7 @@ type ActivityID struct {
 // The format is "Module.Type", providing clear identification of the activity's
 // origin and type.
 //
-// Example: "github.com/nomis52/goback/activities.PowerOnPBS"
+// Example: "github.com/nomis52/goback/backup/activities.PowerOnPBS"
 func (id ActivityID) String() string {
 	return fmt.Sprintf("%s.%s", id.Module, id.Type)
 }
@@ -59,7 +59,7 @@ func (id ActivityID) Equal(other ActivityID) bool {
 // It includes only the last component of the module path plus the type.
 // This is useful for logging and UI display where full paths would be too verbose.
 //
-// Example: "github.com/nomis52/goback/activities.PowerOnPBS" becomes "activities.PowerOnPBS"
+// Example: "github.com/nomis52/goback/backup/activities.PowerOnPBS" becomes "activities.PowerOnPBS"
 func (id ActivityID) ShortString() string {
 	if id.Module == "" {
 		return id.Type

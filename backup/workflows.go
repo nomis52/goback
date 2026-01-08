@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/nomis52/goback/activities"
+	"github.com/nomis52/goback/backup/activities"
 	"github.com/nomis52/goback/config"
 	"github.com/nomis52/goback/ipmi"
 	"github.com/nomis52/goback/metrics"

@@ -10,12 +10,12 @@ import (
 func TestActivityID_Methods(t *testing.T) {
 	// Test valid ActivityID
 	id := ActivityID{
-		Module: "github.com/nomis52/goback/activities",
+		Module: "github.com/nomis52/goback/backup/activities",
 		Type:   "PowerOnPBSActivity",
 	}
 
 	t.Run("String", func(t *testing.T) {
-		expected := "github.com/nomis52/goback/activities.PowerOnPBSActivity"
+		expected := "github.com/nomis52/goback/backup/activities.PowerOnPBSActivity"
 		assert.Equal(t, expected, id.String())
 	})
 
@@ -39,7 +39,7 @@ func TestActivityID_Methods(t *testing.T) {
 
 	t.Run("Equal", func(t *testing.T) {
 		sameID := ActivityID{
-			Module: "github.com/nomis52/goback/activities",
+			Module: "github.com/nomis52/goback/backup/activities",
 			Type:   "PowerOnPBSActivity",
 		}
 		assert.True(t, id.Equal(sameID), "Identical IDs should be equal")
@@ -51,7 +51,7 @@ func TestActivityID_Methods(t *testing.T) {
 		assert.False(t, id.Equal(differentModule), "Different modules should not be equal")
 
 		differentType := ActivityID{
-			Module: "github.com/nomis52/goback/activities",
+			Module: "github.com/nomis52/goback/backup/activities",
 			Type:   "BackupTaskActivity",
 		}
 		assert.False(t, id.Equal(differentType), "Different types should not be equal")
@@ -145,12 +145,12 @@ func TestActivityID_RealWorldScenarios(t *testing.T) {
 	t.Run("PBSAutomationScenario", func(t *testing.T) {
 		// Simulate real PBS automation activities
 		powerOnID := ActivityID{
-			Module: "github.com/nomis52/goback/activities",
+			Module: "github.com/nomis52/goback/backup/activities",
 			Type:   "PowerOnPBSActivity",
 		}
 
 		backupID := ActivityID{
-			Module: "github.com/nomis52/goback/activities",
+			Module: "github.com/nomis52/goback/backup/activities",
 			Type:   "BackupVMsActivity",
 		}
 
