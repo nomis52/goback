@@ -137,7 +137,9 @@
 //	err = orchestrator.Execute(ctx)
 //
 //	// Check individual results
-//	if result := orchestrator.GetResultByActivity(dbSetup); !result.IsSuccess() {
+//	results := orchestrator.GetAllResults()
+//	dbSetupID := GetActivityID(dbSetup)
+//	if result := results[dbSetupID]; !result.IsSuccess() {
 //	    log.Printf("Database setup failed: %v", result.Error)
 //	}
 //
@@ -172,4 +174,4 @@
 // Use unnamed dependencies (_) when you only need ordering constraints.
 // Validate early in Init() to fail fast for configuration issues.
 // Handle context cancellation gracefully in Execute().
-package orchestrator
+package workflow

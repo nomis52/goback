@@ -35,18 +35,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"sync"
 	"time"
 
-	"github.com/nomis52/goback/activities"
+	"github.com/nomis52/goback/backup"
 	"github.com/nomis52/goback/config"
-	"github.com/nomis52/goback/ipmi"
-	"github.com/nomis52/goback/metrics"
-	"github.com/nomis52/goback/orchestrator"
-	"github.com/nomis52/goback/pbsclient"
-	"github.com/nomis52/goback/proxmoxclient"
 	"github.com/nomis52/goback/statusreporter"
+	"github.com/nomis52/goback/workflow"
 )
 
 const defaultMaxHistorySize = 100
@@ -62,7 +57,7 @@ type Runner struct {
 
 	mu             sync.Mutex
 	runStatus      RunStatus
-	orchestrator   *orchestrator.Orchestrator     // Current or last run's orchestrator
+	workflow       workflow.Workflow // Current or last run's workflow
 	statusReporter *statusreporter.StatusReporter // Current run's status reporter
 }
 
@@ -136,14 +131,14 @@ func (r *Runner) History() []RunStatus {
 
 // GetResults returns the activity results from the current or last run.
 // Returns nil if no run has been executed yet.
-func (r *Runner) GetResults() map[orchestrator.ActivityID]*orchestrator.Result {
+func (r *Runner) GetResults() map[workflow.ActivityID]*workflow.Result {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if r.orchestrator == nil {
+	if r.workflow == nil {
 		return nil
 	}
-	return r.orchestrator.GetAllResults()
+	return r.workflow.GetAllResults()
 }
 
 // CurrentStatuses returns the current activity statuses during a run.
@@ -207,88 +202,41 @@ func (r *Runner) executeRun(ctx context.Context) error {
 		return errors.New("no configuration available")
 	}
 
-	deps, err := r.buildRunDeps(cfg)
+	// Create status reporter
+	sr, err := r.createStatusReporter()
 	if err != nil {
-		return fmt.Errorf("failed to build run dependencies: %w", err)
+		return fmt.Errorf("failed to create status reporter: %w", err)
 	}
 
-	o := orchestrator.NewOrchestrator(
-		orchestrator.WithConfig(cfg),
-		orchestrator.WithLogger(r.logger),
-	)
+	// Create backup workflow (PowerOnPBS → BackupDirs → BackupVMs)
+	backupWorkflow, err := backup.NewBackupWorkflow(cfg, r.logger, sr)
+	if err != nil {
+		return fmt.Errorf("failed to create backup workflow: %w", err)
+	}
 
-	// Store orchestrator and status reporter references for result/status access
+	// Create power off workflow (PowerOffPBS)
+	powerOffWorkflow, err := backup.NewPowerOffWorkflow(cfg, r.logger, sr)
+	if err != nil {
+		return fmt.Errorf("failed to create power off workflow: %w", err)
+	}
+
+	// Compose workflows to run backup then power off
+	composedWorkflow := workflow.Compose(backupWorkflow, powerOffWorkflow)
+
+	// Store workflow and status reporter references for result/status access
 	r.mu.Lock()
-	r.orchestrator = o
-	r.statusReporter = deps.statusReporter
+	r.workflow = composedWorkflow
+	r.statusReporter = sr
 	r.mu.Unlock()
 
-	if err := o.Inject(r.logger, deps.metricsClient, deps.ipmiController, deps.pbsClient, deps.proxmoxClient, deps.statusReporter); err != nil {
-		return fmt.Errorf("failed to inject dependencies: %w", err)
-	}
-
-	powerOnPBS := &activities.PowerOnPBS{}
-	backupDirs := &activities.BackupDirs{}
-	backupVMs := &activities.BackupVMs{}
-	powerOffPBS := &activities.PowerOffPBS{}
-
-	if err := o.AddActivity(powerOnPBS, backupDirs, backupVMs, powerOffPBS); err != nil {
-		return fmt.Errorf("failed to add activities: %w", err)
-	}
-
-	if err := o.Execute(ctx); err != nil {
-		return fmt.Errorf("orchestrator execution failed: %w", err)
+	// Execute composed workflow
+	if err := composedWorkflow.Execute(ctx); err != nil {
+		return fmt.Errorf("workflow execution failed: %w", err)
 	}
 
 	return nil
 }
 
-// runDeps holds dependencies created for a single run.
-type runDeps struct {
-	ipmiController *ipmi.IPMIController
-	pbsClient      *pbsclient.Client
-	proxmoxClient  *proxmoxclient.Client
-	metricsClient  *metrics.Client
-	statusReporter *statusreporter.StatusReporter
-}
-
-func (r *Runner) buildRunDeps(cfg *config.Config) (*runDeps, error) {
-	hostname, err := os.Hostname()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get hostname: %w", err)
-	}
-
-	ctrl := ipmi.NewIPMIController(
-		cfg.PBS.IPMI.Host,
-		ipmi.WithUsername(cfg.PBS.IPMI.Username),
-		ipmi.WithPassword(cfg.PBS.IPMI.Password),
-		ipmi.WithLogger(r.logger),
-	)
-
-	pbsClient, err := pbsclient.New(cfg.PBS.Host, r.logger)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create PBS client: %w", err)
-	}
-
-	proxmoxClient, err := proxmoxclient.New(cfg.Proxmox.Host, proxmoxclient.WithToken(cfg.Proxmox.Token))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Proxmox client: %w", err)
-	}
-
-	metricsClient := metrics.NewClient(
-		cfg.Monitoring.VictoriaMetricsURL,
-		metrics.WithPrefix(cfg.Monitoring.MetricsPrefix),
-		metrics.WithJob(cfg.Monitoring.JobName),
-		metrics.WithInstance(hostname),
-	)
-
-	statusReporter := statusreporter.New(r.logger)
-
-	return &runDeps{
-		ipmiController: ctrl,
-		pbsClient:      pbsClient,
-		proxmoxClient:  proxmoxClient,
-		metricsClient:  metricsClient,
-		statusReporter: statusReporter,
-	}, nil
+func (r *Runner) createStatusReporter() (*statusreporter.StatusReporter, error) {
+	return statusreporter.New(r.logger), nil
 }

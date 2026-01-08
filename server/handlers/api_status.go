@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/nomis52/goback/ipmi"
-	"github.com/nomis52/goback/orchestrator"
+	"github.com/nomis52/goback/workflow"
 	"github.com/nomis52/goback/server/runner"
 )
 
@@ -46,7 +46,7 @@ type APIStatusProvider interface {
 	IPMIController() *ipmi.IPMIController
 	Status() runner.RunStatus
 	NextRun() *time.Time
-	GetResults() map[orchestrator.ActivityID]*orchestrator.Result
+	GetResults() map[workflow.ActivityID]*workflow.Result
 	CurrentStatuses() map[string]string
 }
 

@@ -49,7 +49,7 @@ import (
 
 	"github.com/nomis52/goback/config"
 	"github.com/nomis52/goback/ipmi"
-	"github.com/nomis52/goback/orchestrator"
+	"github.com/nomis52/goback/workflow"
 	"github.com/nomis52/goback/server/cron"
 	"github.com/nomis52/goback/server/handlers"
 	"github.com/nomis52/goback/server/runner"
@@ -233,7 +233,7 @@ func (s *Server) Status() runner.RunStatus {
 }
 
 // GetResults returns the activity results by delegating to the runner.
-func (s *Server) GetResults() map[orchestrator.ActivityID]*orchestrator.Result {
+func (s *Server) GetResults() map[workflow.ActivityID]*workflow.Result {
 	return s.runner.GetResults()
 }
 

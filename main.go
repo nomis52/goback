@@ -4,17 +4,13 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log/slog"
 	"os"
 
-	"github.com/nomis52/goback/activities"
+	"github.com/nomis52/goback/backup"
 	"github.com/nomis52/goback/config"
-	"github.com/nomis52/goback/ipmi"
 	"github.com/nomis52/goback/logging"
-	"github.com/nomis52/goback/metrics"
-	"github.com/nomis52/goback/orchestrator"
-	"github.com/nomis52/goback/pbsclient"
-	"github.com/nomis52/goback/proxmoxclient"
+	"github.com/nomis52/goback/statusreporter"
+	"github.com/nomis52/goback/workflow"
 )
 
 // Version information (set via ldflags during build)
@@ -82,28 +78,28 @@ func run() error {
 		"config_path", args.ConfigPath,
 	)
 
-	// Create orchestrator with config
-	o := orchestrator.NewOrchestrator(
-		orchestrator.WithConfig(&cfg),
-		orchestrator.WithLogger(logger),
-	)
+	// Create status reporter for tracking activity progress
+	sr := statusreporter.New(logger)
 
-	// Inject dependencies
-	if err := injectClients(o, cfg, logger); err != nil {
-		return fmt.Errorf("failed to inject clients: %w", err)
+	// Create backup workflow (PowerOnPBS → BackupDirs → BackupVMs)
+	backupWorkflow, err := backup.NewBackupWorkflow(&cfg, logger, sr)
+	if err != nil {
+		return fmt.Errorf("failed to create backup workflow: %w", err)
 	}
 
-	// Add activities
-	powerOnPBS := &activities.PowerOnPBS{}
-	backupDirs := &activities.BackupDirs{}
-	backupVMs := &activities.BackupVMs{}
-	powerOffPBS := &activities.PowerOffPBS{}
-	o.AddActivity(powerOnPBS, backupDirs, backupVMs, powerOffPBS)
+	// Create power off workflow (PowerOffPBS)
+	powerOffWorkflow, err := backup.NewPowerOffWorkflow(&cfg, logger, sr)
+	if err != nil {
+		return fmt.Errorf("failed to create power off workflow: %w", err)
+	}
 
-	// Execute orchestrator
+	// Compose workflows to run backup then power off
+	composedWorkflow := workflow.Compose(backupWorkflow, powerOffWorkflow)
+
+	// Execute composed workflow
 	ctx := context.Background()
-	if err := o.Execute(ctx); err != nil {
-		return fmt.Errorf("orchestrator execution failed: %w", err)
+	if err := composedWorkflow.Execute(ctx); err != nil {
+		return fmt.Errorf("workflow execution failed: %w", err)
 	}
 
 	return nil
@@ -113,40 +109,6 @@ func showVersion() {
 	fmt.Printf("goback version %s\n", Version)
 	fmt.Printf("Built: %s\n", BuildTime)
 	fmt.Printf("Commit: %s\n", GitCommit)
-}
-
-func injectClients(o *orchestrator.Orchestrator, cfg config.Config, logger *slog.Logger) error {
-	hostname, err := os.Hostname()
-	if err != nil {
-		return fmt.Errorf("failed to get hostname: %w", err)
-	}
-
-	ctrl := ipmi.NewIPMIController(
-		cfg.PBS.IPMI.Host,
-		ipmi.WithUsername(cfg.PBS.IPMI.Username),
-		ipmi.WithPassword(cfg.PBS.IPMI.Password),
-		ipmi.WithLogger(logger),
-	)
-
-	pbsClient, err := pbsclient.New(cfg.PBS.Host, logger)
-	if err != nil {
-		return fmt.Errorf("failed to create PBS client: %w", err)
-	}
-
-	proxmoxClient, err := proxmoxclient.New(cfg.Proxmox.Host, proxmoxclient.WithToken(cfg.Proxmox.Token))
-	if err != nil {
-		return fmt.Errorf("failed to create Proxmox client: %w", err)
-	}
-
-	metricsClient := metrics.NewClient(
-		cfg.Monitoring.VictoriaMetricsURL,
-		metrics.WithPrefix(cfg.Monitoring.MetricsPrefix),
-		metrics.WithJob(cfg.Monitoring.JobName),
-		metrics.WithInstance(hostname),
-	)
-
-	o.Inject(logger, metricsClient, ctrl, pbsClient, proxmoxClient)
-	return nil
 }
 
 func parseArgs() Args {

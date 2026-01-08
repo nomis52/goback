@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/nomis52/goback/orchestrator"
+	"github.com/nomis52/goback/workflow"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -44,7 +44,7 @@ func TestStatusReporter_SetStatus(t *testing.T) {
 
 	statuses := reporter.CurrentStatuses()
 	require.Len(t, statuses, 1)
-	activityID := orchestrator.GetActivityID(activity)
+	activityID := workflow.GetActivityID(activity)
 	assert.Equal(t, "waiting for server", statuses[activityID.String()])
 }
 
@@ -58,7 +58,7 @@ func TestStatusReporter_SetStatus_UpdatesExisting(t *testing.T) {
 
 	statuses := reporter.CurrentStatuses()
 	require.Len(t, statuses, 1)
-	activityID := orchestrator.GetActivityID(activity)
+	activityID := workflow.GetActivityID(activity)
 	assert.Equal(t, "server is online", statuses[activityID.String()])
 }
 
@@ -73,9 +73,9 @@ func TestStatusReporter_SetStatus_MultipleActivities(t *testing.T) {
 	reporter.SetStatus(activityB, "backing up VM 1/10")
 	reporter.SetStatus(activityC, "backing up /data")
 
-	idA := orchestrator.GetActivityID(activityA)
-	idB := orchestrator.GetActivityID(activityB)
-	idC := orchestrator.GetActivityID(activityC)
+	idA := workflow.GetActivityID(activityA)
+	idB := workflow.GetActivityID(activityB)
+	idC := workflow.GetActivityID(activityC)
 
 	statuses := reporter.CurrentStatuses()
 	require.Len(t, statuses, 3)
@@ -97,7 +97,7 @@ func TestStatusReporter_CurrentStatuses_ReturnsCopy(t *testing.T) {
 	require.Len(t, statuses1, 1)
 	require.Len(t, statuses2, 1)
 
-	activityID := orchestrator.GetActivityID(activity)
+	activityID := workflow.GetActivityID(activity)
 	// Modify one copy - should not affect the other
 	statuses1[activityID.String()] = "modified"
 	assert.Equal(t, "waiting for server", statuses2[activityID.String()])
@@ -138,9 +138,9 @@ func TestStatusReporter_Concurrent(t *testing.T) {
 	// Wait for all goroutines to finish
 	wg.Wait()
 
-	idA := orchestrator.GetActivityID(activityA)
-	idB := orchestrator.GetActivityID(activityB)
-	idC := orchestrator.GetActivityID(activityC)
+	idA := workflow.GetActivityID(activityA)
+	idB := workflow.GetActivityID(activityB)
+	idC := workflow.GetActivityID(activityC)
 
 	statuses := reporter.CurrentStatuses()
 	require.Len(t, statuses, 3)

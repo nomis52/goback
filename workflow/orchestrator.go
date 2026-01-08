@@ -1,4 +1,4 @@
-package orchestrator
+package workflow
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 // Core guarantees:
 // - Results are available immediately after AddActivity() in NotStarted state
 // - All activities will have final results after Execute() completes
-// - Thread-safe result access via GetResultByActivity() and related methods
+// - Thread-safe result access via GetAllResults()
 // - Automatic dependency injection for activity fields and configuration
 // - Circular dependency detection with error reporting
 //
@@ -32,9 +32,6 @@ type Orchestrator struct {
 	dependencyMap   map[ActivityID][]ActivityID  // activity ID -> list of dependency IDs
 	completionChans map[ActivityID]chan struct{} // activity ID -> completion signal (closed when done)
 	resultMap       map[ActivityID]*Result       // activity ID -> result (protected by mutex)
-
-	// Performance optimization: cache ActivityID lookups to avoid repeated reflection
-	activityIDCache map[Activity]ActivityID
 
 	mu sync.RWMutex
 }
@@ -65,7 +62,6 @@ func NewOrchestrator(opts ...OrchestratorOption) *Orchestrator {
 		dependencyMap:   make(map[ActivityID][]ActivityID),
 		completionChans: make(map[ActivityID]chan struct{}),
 		resultMap:       make(map[ActivityID]*Result),
-		activityIDCache: make(map[Activity]ActivityID),
 	}
 
 	// Apply options
@@ -108,14 +104,14 @@ func (o *Orchestrator) Inject(deps ...interface{}) error {
 
 // AddActivity adds one or more activities to the orchestrator.
 //
-// IMPORTANT: Results are immediately available via GetResultByActivity() in NotStarted state.
+// IMPORTANT: Results are immediately available via GetAllResults() in NotStarted state.
 // This allows callers to access result objects before Execute() is called.
 //
 // Returns an error if an activity of the same type already exists.
 // Activity types are identified by their full module path + struct name to prevent collisions.
 func (o *Orchestrator) AddActivity(activities ...Activity) error {
 	for _, activity := range activities {
-		id := o.getOrCacheActivityID(activity)
+		id := GetActivityID(activity)
 
 		// Check for duplicate activity type using map lookup (O(1))
 		if _, exists := o.resultMap[id]; exists {
@@ -669,42 +665,6 @@ func (o *Orchestrator) injectConfigValue(fieldValue reflect.Value, configPath st
 
 	fieldValue.Set(value)
 	return nil
-}
-
-// getOrCacheActivityID returns the ActivityID for an activity, using cache for performance
-// This is the key optimization that eliminates redundant reflection calls
-func (o *Orchestrator) getOrCacheActivityID(activity Activity) ActivityID {
-	// Check cache first for O(1) lookup
-	if id, exists := o.activityIDCache[activity]; exists {
-		return id
-	}
-
-	// Calculate and cache the ActivityID using the public function
-	id := GetActivityID(activity)
-	o.activityIDCache[activity] = id
-	return id
-}
-
-// GetResult returns the result for an activity by ActivityID (thread-safe).
-//
-// Use GetResultByActivity() instead when you have the activity reference.
-// Returns nil if the ActivityID was never registered via AddActivity().
-func (o *Orchestrator) GetResult(id ActivityID) *Result {
-	o.mu.RLock()
-	defer o.mu.RUnlock()
-	return o.resultMap[id]
-}
-
-// GetResultByActivity returns the result for an activity by reference (thread-safe).
-//
-// AVAILABILITY: Results are available immediately after AddActivity() (NotStarted state)
-// and persist with final state after Execute() completes.
-//
-// PREFERRED METHOD: Use this over GetResult(ActivityID) when you have the activity reference.
-// Performance optimized with cached ActivityID lookups.
-func (o *Orchestrator) GetResultByActivity(activity Activity) *Result {
-	id := o.getOrCacheActivityID(activity)
-	return o.GetResult(id)
 }
 
 // GetAllResults returns a copy of all activity results (thread-safe).

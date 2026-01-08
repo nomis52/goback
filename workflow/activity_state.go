@@ -1,4 +1,4 @@
-package orchestrator
+package workflow
 
 // ActivityState represents the execution state of an activity
 type ActivityState int

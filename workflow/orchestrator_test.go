@@ -1,4 +1,4 @@
-package orchestrator
+package workflow
 
 import (
 	"context"
@@ -11,6 +11,16 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// Test Helpers
+// ---------------------------------------------------------------------
+
+// getResult is a helper to get a result for an activity from the orchestrator
+func getResult(o *Orchestrator, activity Activity) *Result {
+	allResults := o.GetAllResults()
+	activityID := GetActivityID(activity)
+	return allResults[activityID]
+}
 
 // Tests
 // ---------------------------------------------------------------------
@@ -62,9 +72,9 @@ func TestOrchestrator_BasicFeatures(t *testing.T) {
 
 	t.Run("ActivityResults", func(t *testing.T) {
 		// Example: PBS automation logic
-		successResult := orchestrator.GetResultByActivity(successActivity)
-		failResult := orchestrator.GetResultByActivity(failActivity)
-		dependentResult := orchestrator.GetResultByActivity((dependentActivity))
+		successResult := getResult(orchestrator, successActivity)
+		failResult := getResult(orchestrator, failActivity)
+		dependentResult := getResult(orchestrator, (dependentActivity))
 
 		require.NotNil(t, successResult, "Should have result for success activity")
 		require.NotNil(t, failResult, "Should have result for fail activity")
@@ -165,25 +175,16 @@ func TestOrchestrator_ComprehensiveFeatures(t *testing.T) {
 
 	// Test result access patterns
 	t.Run("ResultAccessPatterns", func(t *testing.T) {
-		// Pattern 1: Access by activity reference (recommended)
-		result := orchestrator.GetResultByActivity(dbSetup)
+		// Pattern 1: Access by activity reference
+		result := getResult(orchestrator, dbSetup)
 		require.NotNil(t, result, "Should find result for DatabaseSetupActivity")
 		assert.True(t, result.IsSuccess(), "DatabaseSetupActivity should have succeeded")
 
-		result = orchestrator.GetResultByActivity(dataMigration)
+		result = getResult(orchestrator, dataMigration)
 		require.NotNil(t, result, "Should find result for DataMigrationActivity")
 		assert.True(t, result.IsSuccess(), "DataMigrationActivity should have succeeded")
 
-		// Pattern 2: Access by ActivityID
-		dbSetupID := ActivityID{
-			Module: "github.com/nomis52/goback/orchestrator", // This test package
-			Type:   "DatabaseSetupActivity",
-		}
-		result = orchestrator.GetResult(dbSetupID)
-		require.NotNil(t, result, "Should find result by ActivityID")
-		assert.True(t, result.IsSuccess(), "Result should indicate success")
-
-		// Pattern 3: Get all results
+		// Pattern 2: Get all results
 		allResults := orchestrator.GetAllResults()
 		assert.Len(t, allResults, 4, "Should have results for all 4 activities")
 
@@ -259,12 +260,12 @@ func TestOrchestrator_CircularDependencyDetection(t *testing.T) {
 
 	// Both activities should remain in NotStarted state with no individual errors
 	// (circular dependency is a structural issue, not an individual activity failure)
-	firstResult := orchestrator.GetResultByActivity(firstActivity)
+	firstResult := getResult(orchestrator, firstActivity)
 	require.NotNil(t, firstResult, "First activity result should not be nil")
 	assert.Equal(t, NotStarted, firstResult.State, "First activity should remain NotStarted")
 	assert.NoError(t, firstResult.Error, "First activity should have no individual error")
 
-	secondResult := orchestrator.GetResultByActivity(secondActivity)
+	secondResult := getResult(orchestrator, secondActivity)
 	require.NotNil(t, secondResult, "Second activity result should not be nil")
 	assert.Equal(t, NotStarted, secondResult.State, "Second activity should remain NotStarted")
 	assert.NoError(t, secondResult.Error, "Second activity should have no individual error")
@@ -299,7 +300,7 @@ func TestOrchestrator_ImmediateResultAvailability(t *testing.T) {
 	orchestrator := NewOrchestrator()
 
 	// Before adding activity - should return nil
-	result := orchestrator.GetResultByActivity(activity)
+	result := getResult(orchestrator, activity)
 	assert.Nil(t, result, "Result should be nil before activity is added")
 
 	// Add activity
@@ -307,7 +308,7 @@ func TestOrchestrator_ImmediateResultAvailability(t *testing.T) {
 	require.NoError(t, err, "Should add activity successfully")
 
 	// Immediately after adding - should have NotStarted result
-	result = orchestrator.GetResultByActivity(activity)
+	result = getResult(orchestrator, activity)
 	require.NotNil(t, result, "Result should not be nil immediately after AddActivity")
 	assert.Equal(t, NotStarted, result.State, "Initial state should be NotStarted")
 	assert.NoError(t, result.Error, "Initial error should be nil")
@@ -318,7 +319,7 @@ func TestOrchestrator_ImmediateResultAvailability(t *testing.T) {
 	require.NoError(t, err, "Execution should succeed")
 
 	// Result should now be Completed
-	result = orchestrator.GetResultByActivity(activity)
+	result = getResult(orchestrator, activity)
 	require.NotNil(t, result, "Result should still not be nil after execution")
 	assert.Equal(t, Completed, result.State, "Final state should be Completed")
 	assert.NoError(t, result.Error, "Final error should be nil for successful execution")

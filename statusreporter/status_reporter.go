@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/nomis52/goback/orchestrator"
+	"github.com/nomis52/goback/workflow"
 )
 
 // StatusReporter allows activities to report their current status during execution.
@@ -50,8 +50,8 @@ func New(logger *slog.Logger) *StatusReporter {
 // for example: "waiting for PBS server to power on" or "backing up VM 3/10".
 //
 // Each status change is automatically logged at Info level with the activity name and status.
-func (r *StatusReporter) SetStatus(activity orchestrator.Activity, status string) {
-	activityID := orchestrator.GetActivityID(activity)
+func (r *StatusReporter) SetStatus(activity workflow.Activity, status string) {
+	activityID := workflow.GetActivityID(activity)
 
 	// Log status change (outside the lock to avoid holding it during I/O)
 	r.logger.Info(status, "activity", activityID.ShortString())
