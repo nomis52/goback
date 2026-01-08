@@ -23,7 +23,7 @@ all: clean test build
 .PHONY: clean
 clean:
 	@echo "Cleaning build artifacts..."
-	rm -rf $(BUILD_DIR)
+	rm -f $(BUILD_DIR)/$(APP_NAME) $(BUILD_DIR)/$(APP_NAME)-server $(BUILD_DIR)/$(APP_NAME)-poweroff
 	go clean
 
 # Run tests
@@ -32,12 +32,30 @@ test:
 	@echo "Running tests..."
 	go test -v ./...
 
-# Build for current platform
+# Build all binaries
 .PHONY: build
-build:
-	@echo "Building $(APP_NAME) v$(VERSION)..."
+build: build-cli build-server build-poweroff
+
+# Build CLI binary
+.PHONY: build-cli
+build-cli:
+	@echo "Building $(APP_NAME) CLI v$(VERSION)..."
 	mkdir -p $(BUILD_DIR)
-	CGO_ENABLED=0 go build $(LDFLAGS) -o $(BUILD_DIR)/$(APP_NAME) .
+	CGO_ENABLED=0 go build $(LDFLAGS) -o $(BUILD_DIR)/$(APP_NAME) ./cmd/cli
+
+# Build server binary
+.PHONY: build-server
+build-server:
+	@echo "Building $(APP_NAME) server v$(VERSION)..."
+	mkdir -p $(BUILD_DIR)
+	CGO_ENABLED=0 go build $(LDFLAGS) -o $(BUILD_DIR)/$(APP_NAME)-server ./cmd/server
+
+# Build power-off binary
+.PHONY: build-poweroff
+build-poweroff:
+	@echo "Building $(APP_NAME) power-off utility..."
+	mkdir -p $(BUILD_DIR)
+	CGO_ENABLED=0 go build -o $(BUILD_DIR)/$(APP_NAME)-poweroff ./cmd/power_off
 
 # Install locally (requires sudo)
 .PHONY: install

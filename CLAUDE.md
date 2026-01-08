@@ -9,8 +9,13 @@ Goback is a PBS (Proxmox Backup Server) backup automation system written in Go. 
 ## Build and Test Commands
 
 ```bash
-# Build the project
+# Build all binaries
 make build
+
+# Build individual binaries
+go build -o build/goback ./cmd/cli
+go build -o build/goback-server ./cmd/server
+go build -o build/goback-poweroff ./cmd/power_off
 
 # Run all tests
 make test
@@ -40,9 +45,15 @@ make clean
 ./build/goback --config config.yaml
 
 # Server mode with web UI
+./build/goback-server --config config.yaml
+./build/goback-server --config config.yaml --listen :9090
+./build/goback-server --config config.yaml --cron "0 2 * * *"
+
+# Or run directly with go
 go run ./cmd/server --config config.yaml
-go run ./cmd/server --config config.yaml --listen :9090
-go run ./cmd/server --config config.yaml --cron "0 2 * * *"
+
+# Power-off utility (testing/manual)
+./build/goback-poweroff --config config.yaml
 
 # Validate configuration
 ./build/goback --config config.yaml --validate
@@ -72,7 +83,7 @@ The orchestrator doc.go (orchestrator/doc.go:1) contains comprehensive documenta
 
 ### Two Execution Modes
 
-1. **CLI Mode** (`main.go`): Creates orchestrator, adds activities (PowerOnPBS → BackupDirs → BackupVMs → PowerOffPBS), executes once, exits
+1. **CLI Mode** (`cmd/cli/main.go`): Creates orchestrator, adds activities (PowerOnPBS → BackupDirs → BackupVMs → PowerOffPBS), executes once, exits
 2. **Server Mode** (`cmd/server/main.go`): HTTP server with REST API and web UI for triggering runs, viewing status/history, optional cron scheduling
 
 ### Server Architecture
@@ -168,7 +179,7 @@ See server/README.md for more details.
 2. Implement `Init()` for structural validation (check required fields, validate config)
 3. Implement `Execute(ctx)` for actual work (check runtime state of dependencies)
 4. Dependencies are auto-injected via struct fields (pointer to other activity types)
-5. Add to orchestrator in `main.go` via `AddActivity()`
+5. Add to orchestrator in `cmd/cli/main.go` or server via `AddActivity()`
 
 ### Adding a New Client Package
 

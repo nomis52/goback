@@ -1,3 +1,6 @@
 goback
+goback-server
+goback-poweroff
+build/
 config.yaml
 state
