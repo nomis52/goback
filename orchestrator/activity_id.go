@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"fmt"
+	"reflect"
 )
 
 // ActivityID provides collision-proof identification for activities across modules.
@@ -81,4 +82,15 @@ func (id ActivityID) ShortString() string {
 	}
 
 	return fmt.Sprintf("%s.%s", packageName, id.Type)
+}
+
+// GetActivityID returns the ActivityID for an activity.
+// This is a helper function that activities can use to identify themselves
+// when reporting status or performing other operations that require an ActivityID.
+func GetActivityID(activity Activity) ActivityID {
+	activityType := reflect.TypeOf(activity).Elem()
+	return ActivityID{
+		Module: activityType.PkgPath(),
+		Type:   activityType.Name(),
+	}
 }

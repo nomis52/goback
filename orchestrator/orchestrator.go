@@ -679,12 +679,8 @@ func (o *Orchestrator) getOrCacheActivityID(activity Activity) ActivityID {
 		return id
 	}
 
-	// Calculate and cache the ActivityID
-	activityType := reflect.TypeOf(activity).Elem()
-	id := ActivityID{
-		Module: activityType.PkgPath(),
-		Type:   activityType.Name(),
-	}
+	// Calculate and cache the ActivityID using the public function
+	id := GetActivityID(activity)
 	o.activityIDCache[activity] = id
 	return id
 }

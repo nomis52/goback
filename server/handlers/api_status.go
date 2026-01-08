@@ -34,10 +34,11 @@ type activityResult struct {
 
 // APIStatusResponse is the consolidated response for /api/status.
 type APIStatusResponse struct {
-	PBS     PBSStatus        `json:"pbs"`
-	Run     runner.RunStatus `json:"run"`
-	NextRun NextRunResponse  `json:"next_run"`
-	Results []activityResult `json:"results,omitempty"`
+	PBS      PBSStatus          `json:"pbs"`
+	Run      runner.RunStatus   `json:"run"`
+	NextRun  NextRunResponse    `json:"next_run"`
+	Results  []activityResult   `json:"results,omitempty"`
+	Statuses map[string]string  `json:"statuses,omitempty"`
 }
 
 // APIStatusProvider aggregates all the providers needed for the status endpoint.
@@ -46,6 +47,7 @@ type APIStatusProvider interface {
 	Status() runner.RunStatus
 	NextRun() *time.Time
 	GetResults() map[orchestrator.ActivityID]*orchestrator.Result
+	CurrentStatuses() map[string]string
 }
 
 // APIStatusHandler handles requests for the consolidated status endpoint.
@@ -89,8 +91,9 @@ func (h *APIStatusHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		NextRun:   nextRun,
 	}
 
-	// Get results (only if running)
+	// Get results and statuses (only if running)
 	var results []activityResult
+	var statuses map[string]string
 	if runStatus.State == runner.RunStateRunning {
 		rawResults := h.provider.GetResults()
 		if rawResults != nil && len(rawResults) > 0 {
@@ -117,15 +120,19 @@ func (h *APIStatusHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return results[i].Type < results[j].Type
 			})
 		}
+
+		// Get current activity statuses
+		statuses = h.provider.CurrentStatuses()
 	}
 
 	resp := APIStatusResponse{
 		PBS: PBSStatus{
 			PowerState: powerStateStr,
 		},
-		Run:     runStatus,
-		NextRun: nextRunResp,
-		Results: results,
+		Run:      runStatus,
+		NextRun:  nextRunResp,
+		Results:  results,
+		Statuses: statuses,
 	}
 
 	writeJSON(w, http.StatusOK, resp)

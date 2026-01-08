@@ -62,7 +62,7 @@ func (c *Client) Ping() (string, error) {
 
 	resp, err := c.client.Get(url)
 	if err != nil {
-		c.Logger.Error("failed to ping PBS server", "error", err, "url", url)
+		c.Logger.Debug("failed to ping PBS server", "error", err, "url", url)
 		return "", fmt.Errorf("failed to ping PBS server: %w", err)
 	}
 	defer resp.Body.Close()

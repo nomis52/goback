@@ -428,8 +428,9 @@
                 <thead>
                     <tr>
                         <th>Step</th>
-                        <th>Status</th>
-                        <th>Started</th>
+                        <th>State</th>
+                        <th>Current Status</th>
+                        <th class="hide-mobile">Started</th>
                         <th class="hide-mobile">Ended</th>
                         <th>Duration</th>
                     </tr>
@@ -658,10 +659,17 @@
                             ? activity.end_time : null;
                         const errorMsg = activity.error ? activity.error : null;
 
+                        // Build activity ID string to lookup status
+                        const activityID = `${activity.module}.${activity.type}`;
+                        const currentStatus = data.statuses && data.statuses[activityID]
+                            ? data.statuses[activityID]
+                            : '-';
+
                         return `<tr>
                             <td><span class="activity-name">${displayName}</span></td>
                             <td>${getStateBadge(activity.state, errorMsg)}</td>
-                            <td>${formatTimeShort(startTime)}</td>
+                            <td>${currentStatus}</td>
+                            <td class="hide-mobile">${formatTimeShort(startTime)}</td>
                             <td class="hide-mobile">${formatTimeShort(endTime)}</td>
                             <td><span class="duration">${formatDuration(startTime, endTime)}</span></td>
                         </tr>`;

@@ -13,11 +13,12 @@ import (
 	"github.com/nomis52/goback/config"
 	"github.com/nomis52/goback/metrics"
 	"github.com/nomis52/goback/sshclient"
+	"github.com/nomis52/goback/statusreporter"
 )
 
 var (
-	ErrMissingSSHConfig = errors.New("missing SSH config: host, user, or private key is not set")
-	ErrSSHClientNotInit = errors.New("SSH client not initialized")
+	ErrMissingSSHConfig    = errors.New("missing SSH config: host, user, or private key is not set")
+	ErrSSHClientNotInit    = errors.New("SSH client not initialized")
 	ErrMissingBackupConfig = errors.New("missing backup configuration: token or target")
 )
 
@@ -33,8 +34,9 @@ const (
 // Runs after the PBS server is powered on
 type BackupDirs struct {
 	// Dependencies
-	Logger     *slog.Logger
-	PowerOnPBS *PowerOnPBS
+	Logger         *slog.Logger
+	PowerOnPBS     *PowerOnPBS
+	StatusReporter *statusreporter.StatusReporter
 
 	// Configuration
 	Files          config.FilesConfig `config:"files"`
@@ -48,11 +50,13 @@ type BackupDirs struct {
 }
 
 func (a *BackupDirs) Init() error {
-	host := a.Files.Host
-	user := a.Files.User
-	privateKeyPath := a.PrivateKeyPath
+	if a.Files.Token == "" || a.Files.Target == "" {
+		return ErrMissingBackupConfig
+	}
 
-	if host == "" || user == "" || privateKeyPath == "" {
+	host := a.Files.Host
+
+	if host == "" || a.Files.User == "" || a.PrivateKeyPath == "" {
 		return ErrMissingSSHConfig
 	}
 
@@ -61,12 +65,12 @@ func (a *BackupDirs) Init() error {
 		host = host + defaultSSHPort
 	}
 
-	privateKeyPEM, err := os.ReadFile(privateKeyPath)
+	privateKeyPEM, err := os.ReadFile(a.PrivateKeyPath)
 	if err != nil {
-		return fmt.Errorf("failed to read private key file %s: %w", privateKeyPath, err)
+		return fmt.Errorf("failed to read private key file %s: %w", a.PrivateKeyPath, err)
 	}
 
-	client, err := sshclient.New(host, user, string(privateKeyPEM))
+	client, err := sshclient.New(host, a.Files.User, string(privateKeyPEM))
 	if err != nil {
 		return fmt.Errorf("failed to create SSH client: %w", err)
 	}
@@ -75,35 +79,39 @@ func (a *BackupDirs) Init() error {
 }
 
 func (a *BackupDirs) Execute(ctx context.Context) error {
-	if a.sshClient == nil {
-		return ErrSSHClientNotInit
-	}
+	return RecordError(a, a.StatusReporter, func() error {
+		if a.sshClient == nil {
+			return ErrSSHClientNotInit
+		}
 
-	if err := validateFilesConfig(a.Files); err != nil {
-		return err
-	}
+		if len(a.Files.Sources) == 0 {
+			a.StatusReporter.SetStatus(a, "no directories to backup")
+			return nil
+		}
 
-	if len(a.Files.Sources) == 0 {
+		a.StatusReporter.SetStatus(a, fmt.Sprintf("waiting for the PBS host to become available from %s", a.Files.Host))
+
+		// Test SSH connectivity before attempting backup
+		if err := a.waitForPBSHost(ctx); err != nil {
+			a.Logger.Error("host not accessible via SSH", "error", err)
+			return err
+		}
+
+		a.StatusReporter.SetStatus(a, fmt.Sprintf("backing up %d directories", len(a.Files.Sources)))
+
+		stdout, stderr, err := a.backupAllDirs(a.Files.Sources)
+		if err != nil {
+			a.Logger.Error("Backup failed", "sources", a.Files.Sources, "error", err, "stderr", stderr)
+			return err
+		}
+		a.Logger.Debug("Backup succeeded", "sources", a.Files.Sources, "stdout", stdout)
+		if stderr != "" {
+			a.Logger.Warn("Backup stderr", "sources", a.Files.Sources, "stderr", stderr)
+		}
+
+		a.StatusReporter.SetStatus(a, "directory backup complete")
 		return nil
-	}
-
-	// Test PBS connectivity before attempting backup
-	if err := a.waitForPBSConnectivity(ctx); err != nil {
-		a.Logger.Error("PBS not accessible for backup", "error", err)
-		return err
-	}
-
-	stdout, stderr, err := a.backupAllDirs(a.Files.Sources)
-	if err != nil {
-		a.Logger.Error("Backup failed", "sources", a.Files.Sources, "error", err, "stderr", stderr)
-		return err
-	}
-	a.Logger.Info("Backup succeeded", "sources", a.Files.Sources, "stdout", stdout)
-	if stderr != "" {
-		a.Logger.Warn("Backup stderr", "sources", a.Files.Sources, "stderr", stderr)
-	}
-
-	return nil
+	})
 }
 
 // backupAllDirs executes a single backup command with all sources combined
@@ -115,7 +123,7 @@ func (a *BackupDirs) backupAllDirs(sources []string) (string, string, error) {
 	// Build the command with all sources in a single backup command
 	cmd := buildBackupCommand(token, target, sources)
 
-	a.Logger.Info("Running consolidated backup command", "command", cmd, "source_count", len(sources))
+	a.Logger.Debug("Running consolidated backup command", "command", cmd, "source_count", len(sources))
 
 	stdout, stderr, err := a.sshClient.Run(cmd)
 
@@ -160,16 +168,8 @@ func buildBackupCommand(token, target string, sources []string) string {
 	return cmd
 }
 
-// validateFilesConfig validates the file backup configuration
-func validateFilesConfig(config config.FilesConfig) error {
-	if config.Token == "" || config.Target == "" {
-		return ErrMissingBackupConfig
-	}
-	return nil
-}
-
-// waitForPBSConnectivity tests if PBS is reachable from the remote host before starting backup
-func (a *BackupDirs) waitForPBSConnectivity(ctx context.Context) error {
+// waitForPBSHost tests if PBS is reachable from the remote host before starting backup
+func (a *BackupDirs) waitForPBSHost(ctx context.Context) error {
 	// Extract hostname from target (format: user@host!datastore@hostname:port)
 	target := a.Files.Target
 	pbsHost := extractPBSHostFromTarget(target)
@@ -177,14 +177,14 @@ func (a *BackupDirs) waitForPBSConnectivity(ctx context.Context) error {
 		return fmt.Errorf("could not extract PBS host from target: %s", target)
 	}
 
-	a.Logger.Info("Testing PBS connectivity", "pbs_host", pbsHost, "max_retries", pbsConnectivityMaxRetries)
+	a.Logger.Debug("Testing PBS connectivity", "pbs_host", pbsHost, "max_retries", pbsConnectivityMaxRetries)
 
 	for attempt := 1; attempt <= pbsConnectivityMaxRetries; attempt++ {
 		// Test connectivity using a simple nc (netcat) command
 		cmd := fmt.Sprintf("nc -z -w5 %s 8007 2>/dev/null", pbsHost)
 		_, _, err := a.sshClient.Run(cmd)
 		if err == nil {
-			a.Logger.Info("PBS connectivity test successful", "pbs_host", pbsHost, "attempts", attempt)
+			a.Logger.Debug("PBS connectivity test successful", "pbs_host", pbsHost, "attempts", attempt)
 			return nil
 		}
 

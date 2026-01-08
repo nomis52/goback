@@ -9,6 +9,7 @@ import (
 
 	"github.com/nomis52/goback/metrics"
 	"github.com/nomis52/goback/proxmoxclient"
+	"github.com/nomis52/goback/statusreporter"
 )
 
 const (
@@ -22,10 +23,11 @@ const (
 // BackupVMs manages the execution of Proxmox backups
 type BackupVMs struct {
 	// Dependencies
-	ProxmoxClient *proxmoxclient.Client
-	Logger        *slog.Logger
-	PowerOnPBS    *PowerOnPBS
-	MetricsClient *metrics.Client
+	ProxmoxClient  *proxmoxclient.Client
+	Logger         *slog.Logger
+	PowerOnPBS     *PowerOnPBS
+	MetricsClient  *metrics.Client
+	StatusReporter *statusreporter.StatusReporter
 
 	// Configuration
 	BackupTimeout time.Duration `config:"proxmox.backup_timeout"`
@@ -40,62 +42,76 @@ func (a *BackupVMs) Init() error {
 }
 
 func (a *BackupVMs) Execute(ctx context.Context) error {
-	// Get and log Proxmox version
-	version, err := a.ProxmoxClient.Version()
-	if err != nil {
-		a.Logger.Error("Failed to get Proxmox version", "error", err)
-		return err
-	}
-	a.Logger.Info("Proxmox version", "version", version)
+	return RecordError(a, a.StatusReporter, func() error {
+		a.StatusReporter.SetStatus(a, "checking Proxmox version")
 
-	// Determine which resources need to be backed up
-	resourcesToBackup, err := a.determineBackups(ctx)
-	if err != nil {
-		a.Logger.Error("Failed to determine resources to backup", "error", err)
-		return err
-	}
-	a.Logger.Info("Resources that need backup", "count", len(resourcesToBackup))
-
-	// Use wait group to track all backup operations
-	var wg sync.WaitGroup
-	errChan := make(chan error, len(resourcesToBackup))
-
-	// Launch backup operations concurrently
-	for _, resource := range resourcesToBackup {
-		wg.Add(1)
-		go func(r proxmoxclient.Resource) {
-			defer wg.Done()
-			if err := a.performBackupWithMetrics(ctx, r); err != nil {
-				a.Logger.Error("Failed to perform backup",
-					"vmid", r.VMID,
-					"name", r.Name,
-					"node", r.Node,
-					"error", err)
-				errChan <- fmt.Errorf("backup failed for VMID %d: %w", r.VMID, err)
-			}
-		}(resource)
-	}
-
-	// Wait for all backups to complete
-	wg.Wait()
-	close(errChan)
-
-	// Collect any errors that occurred
-	errors := make([]error, 0)
-	for err := range errChan {
-		errors = append(errors, err)
-	}
-
-	// If any errors occurred, return a combined error
-	if len(errors) > 0 {
-		errMsg := fmt.Sprintf("%d backup(s) failed:", len(errors))
-		for _, err := range errors {
-			errMsg += "\n  - " + err.Error()
+		// Get and log Proxmox version
+		version, err := a.ProxmoxClient.Version()
+		if err != nil {
+			a.Logger.Error("Failed to get Proxmox version", "error", err)
+			return err
 		}
-		return fmt.Errorf(errMsg)
-	}
+		a.Logger.Debug("Proxmox version", "version", version)
 
-	return nil // All backups completed successfully!
+		a.StatusReporter.SetStatus(a, "determining resources to backup")
+
+		// Determine which resources need to be backed up
+		resourcesToBackup, err := a.determineBackups(ctx)
+		if err != nil {
+			a.Logger.Error("Failed to determine resources to backup", "error", err)
+			return err
+		}
+		a.Logger.Debug("Resources that need backup", "count", len(resourcesToBackup))
+
+		if len(resourcesToBackup) == 0 {
+			a.StatusReporter.SetStatus(a, "no resources need backup")
+			return nil
+		}
+
+		a.StatusReporter.SetStatus(a, fmt.Sprintf("backing up %d resources", len(resourcesToBackup)))
+
+		// Use wait group to track all backup operations
+		var wg sync.WaitGroup
+		errChan := make(chan error, len(resourcesToBackup))
+
+		// Launch backup operations concurrently
+		for _, resource := range resourcesToBackup {
+			wg.Add(1)
+			go func(r proxmoxclient.Resource) {
+				defer wg.Done()
+				if err := a.performBackupWithMetrics(ctx, r); err != nil {
+					a.Logger.Error("Failed to perform backup",
+						"vmid", r.VMID,
+						"name", r.Name,
+						"node", r.Node,
+						"error", err)
+					errChan <- fmt.Errorf("backup failed for VMID %d: %w", r.VMID, err)
+				}
+			}(resource)
+		}
+
+		// Wait for all backups to complete
+		wg.Wait()
+		close(errChan)
+
+		// Collect any errors that occurred
+		errors := make([]error, 0)
+		for err := range errChan {
+			errors = append(errors, err)
+		}
+
+		// If any errors occurred, return a combined error
+		if len(errors) > 0 {
+			errMsg := fmt.Sprintf("%d backup(s) failed:", len(errors))
+			for _, err := range errors {
+				errMsg += "\n  - " + err.Error()
+			}
+			return fmt.Errorf(errMsg)
+		}
+
+		a.StatusReporter.SetStatus(a, "backups complete")
+		return nil // All backups completed successfully!
+	})
 }
 
 // performBackupWithMetrics wraps performBackup and pushes metrics based on the result.
@@ -142,7 +158,7 @@ func (a *BackupVMs) performBackup(ctx context.Context, resource proxmoxclient.Re
 	}
 
 	// Start the backup
-	a.Logger.Info("Starting backup for resource",
+	a.Logger.Debug("Starting backup for resource",
 		"vmid", resource.VMID,
 		"name", resource.Name,
 		"node", resource.Node,
@@ -199,7 +215,7 @@ func (a *BackupVMs) performBackup(ctx context.Context, resource proxmoxclient.Re
 				if status.ExitStatus != "OK" {
 					return fmt.Errorf("backup failed with exit status: %s", status.ExitStatus)
 				}
-				a.Logger.Info("Backup completed successfully",
+				a.Logger.Debug("Backup completed successfully",
 					"vmid", resource.VMID,
 					"name", resource.Name,
 					"node", resource.Node,
@@ -226,9 +242,9 @@ func (a *BackupVMs) determineBackups(ctx context.Context) ([]proxmoxclient.Resou
 		if err == nil {
 			break // Success!
 		}
-		
+
 		a.Logger.Warn("Failed to get list of backups, retrying", "attempt", attempt, "max_retries", pbsStorageMaxRetries, "error", err)
-		
+
 		if attempt < pbsStorageMaxRetries {
 			select {
 			case <-ctx.Done():
@@ -238,7 +254,7 @@ func (a *BackupVMs) determineBackups(ctx context.Context) ([]proxmoxclient.Resou
 			}
 		}
 	}
-	
+
 	if err != nil {
 		a.Logger.Error("Failed to get list of backups after retries", "error", err)
 		return nil, err

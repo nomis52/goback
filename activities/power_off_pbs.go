@@ -50,6 +50,7 @@ import (
 	"time"
 
 	"github.com/nomis52/goback/ipmi"
+	"github.com/nomis52/goback/statusreporter"
 )
 
 const (
@@ -67,8 +68,9 @@ const (
 // with graceful ACPI shutdown as primary method and hard power-off as fallback.
 type PowerOffPBS struct {
 	// Dependencies
-	Controller *ipmi.IPMIController
-	Logger     *slog.Logger
+	Controller     *ipmi.IPMIController
+	Logger         *slog.Logger
+	StatusReporter *statusreporter.StatusReporter
 
 	// Activity dependencies - these ensure PowerOffPBS runs after backup activities complete
 	_ *BackupDirs
@@ -94,48 +96,51 @@ func (a *PowerOffPBS) Init() error {
 // This approach provides maximum reliability by using only hardware-level
 // IPMI commands, eliminating network and SSH dependencies.
 func (a *PowerOffPBS) Execute(ctx context.Context) error {
-	a.Logger.Info("starting PBS shutdown process via IPMI after backup activities completed")
+	return RecordError(a, a.StatusReporter, func() error {
+		a.StatusReporter.SetStatus(a, "checking PBS power status")
 
-	// Check current power status first
-	status, err := a.Controller.Status()
-	if err != nil {
-		a.Logger.Warn("failed to get initial power status", "error", err)
-	} else if status == ipmi.PowerStateOff {
-		a.Logger.Info("PBS host is already powered off")
+		// Check current power status first
+		status, err := a.Controller.Status()
+		if err != nil {
+			a.Logger.Warn("failed to get initial power status", "error", err)
+		} else if status == ipmi.PowerStateOff {
+			a.StatusReporter.SetStatus(a, "PBS server already powered off")
+			return nil
+		}
+
+		// Attempt graceful shutdown via IPMI ACPI signal
+		a.StatusReporter.SetStatus(a, "sending graceful shutdown signal")
+		if err := a.gracefulIPMIShutdown(); err != nil {
+			a.Logger.Warn("graceful IPMI shutdown failed, falling back to hard power-off", "error", err)
+			a.StatusReporter.SetStatus(a, "forcing hard power off")
+			return a.hardIPMIPowerOff()
+		}
+
+		// Wait for system to shutdown by monitoring IPMI power status
+		a.StatusReporter.SetStatus(a, "waiting for PBS server to shut down")
+		if err := a.waitForShutdownViaIPMI(ctx); err != nil {
+			a.Logger.Warn("graceful shutdown timed out, forcing hard power-off via IPMI", "error", err)
+			a.StatusReporter.SetStatus(a, "forcing hard power off")
+			return a.hardIPMIPowerOff()
+		}
+
+		a.StatusReporter.SetStatus(a, "PBS server powered off")
 		return nil
-	}
-
-	// Attempt graceful shutdown via IPMI ACPI signal
-	if err := a.gracefulIPMIShutdown(); err != nil {
-		a.Logger.Warn("graceful IPMI shutdown failed, falling back to hard power-off", "error", err)
-		return a.hardIPMIPowerOff()
-	}
-
-	// Wait for system to shutdown by monitoring IPMI power status
-	if err := a.waitForShutdownViaIPMI(ctx); err != nil {
-		a.Logger.Warn("graceful shutdown timed out, forcing hard power-off via IPMI", "error", err)
-		return a.hardIPMIPowerOff()
-	}
-
-	a.Logger.Info("PBS host shutdown completed successfully via graceful IPMI method")
-	return nil
+	})
 }
 
 // gracefulIPMIShutdown sends a graceful shutdown signal via IPMI ACPI
 func (a *PowerOffPBS) gracefulIPMIShutdown() error {
-	a.Logger.Info("sending graceful shutdown signal via IPMI ACPI")
-
 	if err := a.Controller.PowerOff(); err != nil {
 		return fmt.Errorf("failed to send IPMI graceful shutdown signal: %w", err)
 	}
 
-	a.Logger.Info("graceful IPMI shutdown signal sent successfully")
 	return nil
 }
 
 // waitForShutdownViaIPMI monitors IPMI power status until PBS shuts down or timeout
 func (a *PowerOffPBS) waitForShutdownViaIPMI(ctx context.Context) error {
-	a.Logger.Info("monitoring PBS shutdown via IPMI power status", "timeout", a.ShutdownTimeout)
+	a.Logger.Debug("monitoring PBS shutdown via IPMI power status", "timeout", a.ShutdownTimeout)
 
 	ticker := time.NewTicker(shutdownCheckInterval)
 	defer ticker.Stop()
@@ -163,7 +168,7 @@ func (a *PowerOffPBS) waitForShutdownViaIPMI(ctx context.Context) error {
 
 			// Check if PBS has powered off
 			if status == ipmi.PowerStateOff {
-				a.Logger.Info("PBS shutdown completed successfully", "attempts", attempts)
+				a.Logger.Debug("PBS shutdown completed successfully", "attempts", attempts)
 				return nil
 			}
 
@@ -181,6 +186,5 @@ func (a *PowerOffPBS) hardIPMIPowerOff() error {
 		return fmt.Errorf("failed to hard power-off PBS host via IPMI: %w", err)
 	}
 
-	a.Logger.Info("PBS host powered off via hard IPMI command")
 	return nil
 }

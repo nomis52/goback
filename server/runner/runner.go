@@ -46,6 +46,7 @@ import (
 	"github.com/nomis52/goback/orchestrator"
 	"github.com/nomis52/goback/pbsclient"
 	"github.com/nomis52/goback/proxmoxclient"
+	"github.com/nomis52/goback/statusreporter"
 )
 
 const defaultMaxHistorySize = 100
@@ -59,9 +60,10 @@ type Runner struct {
 	configProvider ConfigProvider
 	store          StateStore
 
-	mu           sync.Mutex
-	runStatus    RunStatus
-	orchestrator *orchestrator.Orchestrator // Current or last run's orchestrator
+	mu             sync.Mutex
+	runStatus      RunStatus
+	orchestrator   *orchestrator.Orchestrator     // Current or last run's orchestrator
+	statusReporter *statusreporter.StatusReporter // Current run's status reporter
 }
 
 // ConfigProvider provides access to the current configuration.
@@ -144,6 +146,18 @@ func (r *Runner) GetResults() map[orchestrator.ActivityID]*orchestrator.Result {
 	return r.orchestrator.GetAllResults()
 }
 
+// CurrentStatuses returns the current activity statuses during a run.
+// Returns nil if no run is currently in progress.
+func (r *Runner) CurrentStatuses() map[string]string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.statusReporter == nil {
+		return nil
+	}
+	return r.statusReporter.CurrentStatuses()
+}
+
 // tryStart attempts to transition from idle to running.
 // Returns true if successful, false if already running.
 func (r *Runner) tryStart() bool {
@@ -203,12 +217,13 @@ func (r *Runner) executeRun(ctx context.Context) error {
 		orchestrator.WithLogger(r.logger),
 	)
 
-	// Store orchestrator reference for result access
+	// Store orchestrator and status reporter references for result/status access
 	r.mu.Lock()
 	r.orchestrator = o
+	r.statusReporter = deps.statusReporter
 	r.mu.Unlock()
 
-	if err := o.Inject(r.logger, deps.metricsClient, deps.ipmiController, deps.pbsClient, deps.proxmoxClient); err != nil {
+	if err := o.Inject(r.logger, deps.metricsClient, deps.ipmiController, deps.pbsClient, deps.proxmoxClient, deps.statusReporter); err != nil {
 		return fmt.Errorf("failed to inject dependencies: %w", err)
 	}
 
@@ -234,6 +249,7 @@ type runDeps struct {
 	pbsClient      *pbsclient.Client
 	proxmoxClient  *proxmoxclient.Client
 	metricsClient  *metrics.Client
+	statusReporter *statusreporter.StatusReporter
 }
 
 func (r *Runner) buildRunDeps(cfg *config.Config) (*runDeps, error) {
@@ -266,10 +282,13 @@ func (r *Runner) buildRunDeps(cfg *config.Config) (*runDeps, error) {
 		metrics.WithInstance(hostname),
 	)
 
+	statusReporter := statusreporter.New(r.logger)
+
 	return &runDeps{
 		ipmiController: ctrl,
 		pbsClient:      pbsClient,
 		proxmoxClient:  proxmoxClient,
 		metricsClient:  metricsClient,
+		statusReporter: statusReporter,
 	}, nil
 }

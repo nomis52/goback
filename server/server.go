@@ -237,6 +237,11 @@ func (s *Server) GetResults() map[orchestrator.ActivityID]*orchestrator.Result {
 	return s.runner.GetResults()
 }
 
+// CurrentStatuses returns the current activity statuses by delegating to the runner.
+func (s *Server) CurrentStatuses() map[string]string {
+	return s.runner.CurrentStatuses()
+}
+
 // Run starts the HTTP server and blocks until the context is cancelled.
 // It performs a graceful shutdown when the context is done.
 // If a cron trigger is configured, it will be started automatically.
