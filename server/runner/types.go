@@ -29,6 +29,25 @@ func (s RunState) MarshalJSON() ([]byte, error) {
 	return []byte(`"` + s.String() + `"`), nil
 }
 
+// UnmarshalJSON implements json.Unmarshaler.
+func (s *RunState) UnmarshalJSON(data []byte) error {
+	str := string(data)
+	// Remove quotes
+	if len(str) >= 2 && str[0] == '"' && str[len(str)-1] == '"' {
+		str = str[1 : len(str)-1]
+	}
+
+	switch str {
+	case "idle":
+		*s = RunStateIdle
+	case "running":
+		*s = RunStateRunning
+	default:
+		*s = RunStateIdle
+	}
+	return nil
+}
+
 // RunStatus contains information about the current or last run.
 type RunStatus struct {
 	// State is the current state of the run.

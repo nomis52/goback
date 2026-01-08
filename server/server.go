@@ -75,11 +75,13 @@ type serverDeps struct {
 type Server struct {
 	addr        string
 	configPath  string
+	stateDir    string
 	logger      *slog.Logger
 	logLevel    *slog.LevelVar
 	deps        atomic.Pointer[serverDeps]
 	httpServer  *http.Server
 	runner      *runner.Runner
+	store       *runner.DiskStore
 	cronTrigger *cron.CronTrigger
 }
 
@@ -90,6 +92,10 @@ type Option func(*Server) error
 // The spec follows standard cron format (5 fields: minute, hour, day, month, weekday).
 func WithCron(spec string) Option {
 	return func(s *Server) error {
+		// Skip if runner hasn't been created yet (first pass)
+		if s.runner == nil {
+			return nil
+		}
 		trigger, err := cron.NewCronTrigger(spec, s.runner, s.logger)
 		if err != nil {
 			return fmt.Errorf("creating cron trigger: %w", err)
@@ -104,6 +110,15 @@ func WithCron(spec string) Option {
 func WithListenAddr(addr string) Option {
 	return func(s *Server) error {
 		s.addr = addr
+		return nil
+	}
+}
+
+// WithStateDir configures the directory where run state is persisted.
+// If not set, runs are only kept in memory.
+func WithStateDir(dir string) Option {
+	return func(s *Server) error {
+		s.stateDir = dir
 		return nil
 	}
 }
@@ -130,8 +145,26 @@ func New(configPath string, opts ...Option) (*Server, error) {
 		return nil, err
 	}
 
-	s.runner = runner.New(logger, s)
+	// First pass: apply options that don't need the runner (stateDir, listenAddr)
+	for _, opt := range opts {
+		if err := opt(s); err != nil {
+			return nil, err
+		}
+	}
 
+	// Create runner with optional disk store
+	var runnerOpts []runner.Option
+	if s.stateDir != "" {
+		store, err := runner.NewDiskStore(s.stateDir, 100, logger)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create disk store: %w", err)
+		}
+		s.store = store
+		runnerOpts = append(runnerOpts, runner.WithStateStore(store))
+	}
+	s.runner = runner.New(logger, s, runnerOpts...)
+
+	// Second pass: apply options that need the runner (cron)
 	for _, opt := range opts {
 		if err := opt(s); err != nil {
 			return nil, err
@@ -262,6 +295,10 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /health", handlers.HandleHealth)
 	mux.Handle("GET /api/status", apiStatusHandler)
 	mux.Handle("GET /api/history", historyHandler)
+	if s.store != nil {
+		storeReloadHandler := handlers.NewStoreReloadHandler(s.logger, s.store)
+		mux.Handle("POST /api/store_reload", storeReloadHandler)
+	}
 	mux.Handle("GET /config", configHandler)
 	mux.Handle("POST /reload", reloadHandler)
 	mux.Handle("POST /run", runHandler)

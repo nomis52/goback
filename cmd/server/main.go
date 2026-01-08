@@ -15,6 +15,7 @@ type Args struct {
 	ConfigPath string
 	ListenAddr string
 	CronSpec   string
+	StateDir   string
 }
 
 func main() {
@@ -37,6 +38,9 @@ func run() error {
 	}
 	if args.CronSpec != "" {
 		opts = append(opts, server.WithCron(args.CronSpec))
+	}
+	if args.StateDir != "" {
+		opts = append(opts, server.WithStateDir(args.StateDir))
 	}
 
 	srv, err := server.New(
@@ -69,6 +73,7 @@ func parseArgs() Args {
 	listenAddr := flag.String("listen", "", "Address to listen on (default :8080)")
 	listenAddrShort := flag.String("l", "", "Address to listen on (shorthand)")
 	cronSpec := flag.String("cron", "", "Cron schedule specification (e.g., '0 2 * * *')")
+	stateDir := flag.String("state-dir", "", "Directory to store run state (default: no persistence)")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [options]\n", os.Args[0])
@@ -79,6 +84,7 @@ func parseArgs() Args {
 		fmt.Fprintf(os.Stderr, "  %s --config /etc/goback/config.yaml\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -c config.yaml -l :9090\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -c config.yaml --cron '0 2 * * *'\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -c config.yaml --state-dir /var/lib/goback\n", os.Args[0])
 	}
 
 	flag.Parse()
@@ -97,5 +103,6 @@ func parseArgs() Args {
 		ConfigPath: path,
 		ListenAddr: addr,
 		CronSpec:   *cronSpec,
+		StateDir:   *stateDir,
 	}
 }

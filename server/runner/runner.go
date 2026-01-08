@@ -57,12 +57,11 @@ var ErrRunInProgress = errors.New("backup run already in progress")
 type Runner struct {
 	logger         *slog.Logger
 	configProvider ConfigProvider
+	store          StateStore
 
-	mu             sync.Mutex
-	maxHistorySize int
-	runStatus      RunStatus
-	history        []RunStatus
-	orchestrator   *orchestrator.Orchestrator // Current or last run's orchestrator
+	mu           sync.Mutex
+	runStatus    RunStatus
+	orchestrator *orchestrator.Orchestrator // Current or last run's orchestrator
 }
 
 // ConfigProvider provides access to the current configuration.
@@ -70,15 +69,31 @@ type ConfigProvider interface {
 	Config() *config.Config
 }
 
+// Option configures a Runner.
+type Option func(*Runner)
+
+// WithStateStore configures the runner to use the provided store for persistence.
+func WithStateStore(store StateStore) Option {
+	return func(r *Runner) {
+		r.store = store
+	}
+}
+
 // New creates a new Runner.
-func New(logger *slog.Logger, provider ConfigProvider) *Runner {
-	return &Runner{
+func New(logger *slog.Logger, provider ConfigProvider, opts ...Option) *Runner {
+	r := &Runner{
 		logger:         logger,
 		configProvider: provider,
-		maxHistorySize: defaultMaxHistorySize,
+		store:          NewMemoryStore(),
 		runStatus:      RunStatus{State: RunStateIdle},
-		history:        make([]RunStatus, 0),
 	}
+
+	// Apply options
+	for _, opt := range opts {
+		opt(r)
+	}
+
+	return r
 }
 
 // Run starts a backup run in the background.
@@ -114,12 +129,7 @@ func (r *Runner) IsRunning() bool {
 
 // History returns the history of completed runs, most recent first.
 func (r *Runner) History() []RunStatus {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	result := make([]RunStatus, len(r.history))
-	copy(result, r.history)
-	return result
+	return r.store.Runs()
 }
 
 // GetResults returns the activity results from the current or last run.
@@ -171,10 +181,9 @@ func (r *Runner) finish(err error) {
 		r.logger.Info("backup run completed", "duration", duration)
 	}
 
-	r.history = append([]RunStatus{r.runStatus}, r.history...)
-
-	if len(r.history) > r.maxHistorySize {
-		r.history = r.history[:r.maxHistorySize]
+	// Save to store
+	if err := r.store.Save(r.runStatus); err != nil {
+		r.logger.Error("failed to save run to store", "error", err)
 	}
 }
 
