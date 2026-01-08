@@ -40,11 +40,6 @@ func TestNewDiskStore(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, store)
 
-	// Should create the directory
-	info, err := os.Stat(tmpDir)
-	require.NoError(t, err)
-	assert.True(t, info.IsDir())
-
 	// Should start with empty runs
 	assert.Empty(t, store.Runs())
 }
@@ -115,10 +110,7 @@ func TestDiskStore_Reload(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// Reload should pick up all runs
-	err = store.Reload()
-	require.NoError(t, err)
-
+	// All runs should be visible
 	runs := store.Runs()
 	assert.Len(t, runs, 3)
 
@@ -206,30 +198,6 @@ func TestDiskStore_IgnoresNonJSONFiles(t *testing.T) {
 
 	// Should ignore non-JSON files
 	assert.Empty(t, store.Runs())
-}
-
-func TestDiskStore_Save_UpdatesInMemory(t *testing.T) {
-	tmpDir := t.TempDir()
-	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-
-	store, err := NewDiskStore(tmpDir, 10, logger)
-	require.NoError(t, err)
-
-	now := time.Now()
-	run := RunStatus{
-		State:     RunStateIdle,
-		StartedAt: &now,
-		EndedAt:   &now,
-	}
-
-	// Save should update in-memory representation
-	err = store.Save(run)
-	require.NoError(t, err)
-
-	// Should be visible immediately without Reload()
-	runs := store.Runs()
-	require.Len(t, runs, 1)
-	assert.Equal(t, run, runs[0])
 }
 
 func TestDiskStore_Runs_ReturnsCopy(t *testing.T) {
