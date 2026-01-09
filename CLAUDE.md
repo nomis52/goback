@@ -102,10 +102,10 @@ The **runner** (server/runner/) prevents concurrent runs, tracks current status,
 - `orchestrator/` - Dependency-resolved activity execution engine
 - `backup/activities/` - Concrete activities (PowerOnPBS, PowerOffPBS, BackupVMs, BackupDirs)
 - `config/` - YAML configuration loading and validation
-- `ipmi/` - IPMI controller for power management
-- `pbsclient/` - PBS API client
-- `proxmoxclient/` - Proxmox VE API client for backup operations
-- `sshclient/` - SSH client for file-based backups
+- `clients/ipmiclient/` - IPMI controller for power management
+- `clients/pbsclient/` - PBS API client
+- `clients/proxmoxclient/` - Proxmox VE API client for backup operations
+- `clients/sshclient/` - SSH client for file-based backups
 - `metrics/` - VictoriaMetrics/Prometheus metric pushing
 - `logging/` - Structured logging (slog) with configurable output
 - `server/` - HTTP server, handlers, runner, cron trigger
@@ -131,7 +131,8 @@ The **runner** (server/runner/) prevents concurrent runs, tracks current status,
 6. **Directory name matches package name** - Exception: `main` package in `cmd/*/`
 7. **All documentation in godoc comments** - Never create separate .md files for API docs (exception: READMEs for overview/setup)
 8. **Client packages:**
-   - Named `fooclient` (e.g., `pbsclient`, `proxmoxclient`)
+   - Located in `clients/` directory
+   - Named `fooclient` (e.g., `clients/pbsclient`, `clients/proxmoxclient`, `clients/ipmiclient`)
    - Main type is `Client`, constructor is `New()`
    - Separate `types.go` for return types (public types first, internal types at end)
 9. **Use Options pattern** for constructors with multiple parameters (e.g., `WithTimeout()`, `WithLogger()`)
@@ -183,7 +184,7 @@ See server/README.md for more details.
 
 ### Adding a New Client Package
 
-1. Create directory matching package name (e.g., `fooclient/`)
+1. Create directory in `clients/` matching package name (e.g., `clients/fooclient/`)
 2. Create `client.go` with `Client` type and `New()` constructor
 3. Create `types.go` for return types (public first, internal last)
 4. Use Options pattern for constructor configuration

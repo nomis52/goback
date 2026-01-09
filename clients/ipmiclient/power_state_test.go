@@ -1,4 +1,4 @@
-package ipmi
+package ipmiclient
 
 import (
 	"testing"

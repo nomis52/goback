@@ -71,15 +71,16 @@
 
 ## File Organization
 
-9. **Test files must be placed in the same directory as the code they test.** 
+9. **Test files must be placed in the same directory as the code they test.**
    - Tests for `orchestrator/orchestrator.go` go in `orchestrator/orchestrator_test.go`
-   - Tests for `ipmi/ipmi.go` go in `ipmi/ipmi_test.go`
+   - Tests for `clients/ipmiclient/ipmi.go` go in `clients/ipmiclient/ipmi_test.go`
    - **Never** place test files in parent directories or separate test directories
    - Test files should use the same package name as the code they test
    - Example: tests in `orchestrator/` should have `package orchestrator`
 
 10. **The directory name must always match the package name.**
-    - For example, code in the `pbsclient` package must be in the `pbsclient/` directory.
+    - For example, code in the `pbsclient` package must be in the `clients/pbsclient/` directory.
+    - Client packages are located in the `clients/` directory.
     - This ensures consistency and clarity in the codebase structure.
 
 ## Example Template
@@ -116,11 +117,12 @@ func run() error {
 
 ## Client Package Layout & Naming Conventions
 
-- **Package Name:**  
+- **Package Name:**
   Use the form `fooclient` (e.g., `pbsclient`, `barclient`).
 
-- **Directory Name:**  
-  The directory must match the package name (e.g., `pbsclient/`, `barclient/`).
+- **Directory Name:**
+  Client packages are located in the `clients/` directory.
+  The directory must match the package name (e.g., `clients/pbsclient/`, `clients/barclient/`).
 
 - **Main Type:**  
   The main exported type must be `Client`.

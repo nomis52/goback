@@ -48,7 +48,7 @@ import (
 	"time"
 
 	"github.com/nomis52/goback/config"
-	"github.com/nomis52/goback/ipmi"
+	"github.com/nomis52/goback/clients/ipmiclient"
 	"github.com/nomis52/goback/workflow"
 	"github.com/nomis52/goback/server/cron"
 	"github.com/nomis52/goback/server/handlers"
@@ -68,7 +68,7 @@ const (
 // serverDeps holds config-derived dependencies that are swapped atomically on reload.
 type serverDeps struct {
 	config         *config.Config
-	ipmiController *ipmi.IPMIController
+	ipmiController *ipmiclient.IPMIController
 }
 
 // Server is the HTTP server for the goback web interface.
@@ -191,11 +191,11 @@ func (s *Server) Reload() error {
 		return err
 	}
 
-	ctrl := ipmi.NewIPMIController(
+	ctrl := ipmiclient.NewIPMIController(
 		cfg.PBS.IPMI.Host,
-		ipmi.WithUsername(cfg.PBS.IPMI.Username),
-		ipmi.WithPassword(cfg.PBS.IPMI.Password),
-		ipmi.WithLogger(s.logger),
+		ipmiclient.WithUsername(cfg.PBS.IPMI.Username),
+		ipmiclient.WithPassword(cfg.PBS.IPMI.Password),
+		ipmiclient.WithLogger(s.logger),
 	)
 
 	s.deps.Store(&serverDeps{
@@ -214,7 +214,7 @@ func (s *Server) Config() *config.Config {
 }
 
 // IPMIController returns the current IPMI controller.
-func (s *Server) IPMIController() *ipmi.IPMIController {
+func (s *Server) IPMIController() *ipmiclient.IPMIController {
 	return s.deps.Load().ipmiController
 }
 

@@ -9,11 +9,11 @@ import (
 
 	"github.com/nomis52/goback/backup/activities"
 	"github.com/nomis52/goback/config"
-	"github.com/nomis52/goback/ipmi"
+	"github.com/nomis52/goback/clients/ipmiclient"
 	"github.com/nomis52/goback/logging"
 	"github.com/nomis52/goback/metrics"
-	"github.com/nomis52/goback/pbsclient"
-	"github.com/nomis52/goback/proxmoxclient"
+	"github.com/nomis52/goback/clients/pbsclient"
+	"github.com/nomis52/goback/clients/proxmoxclient"
 	"github.com/nomis52/goback/statusreporter"
 	"github.com/nomis52/goback/workflow"
 )
@@ -131,7 +131,7 @@ func NewPowerOffWorkflow(cfg *config.Config, logger *slog.Logger, statusReporter
 
 // deps holds all dependencies that can be injected into workflows.
 type deps struct {
-	ipmiController *ipmi.IPMIController
+	ipmiController *ipmiclient.IPMIController
 	pbsClient      *pbsclient.Client
 	proxmoxClient  *proxmoxclient.Client
 	metricsClient  *metrics.Client
@@ -144,11 +144,11 @@ func buildDeps(cfg *config.Config, logger *slog.Logger) (*deps, error) {
 		return nil, fmt.Errorf("failed to get hostname: %w", err)
 	}
 
-	ctrl := ipmi.NewIPMIController(
+	ctrl := ipmiclient.NewIPMIController(
 		cfg.PBS.IPMI.Host,
-		ipmi.WithUsername(cfg.PBS.IPMI.Username),
-		ipmi.WithPassword(cfg.PBS.IPMI.Password),
-		ipmi.WithLogger(logger),
+		ipmiclient.WithUsername(cfg.PBS.IPMI.Username),
+		ipmiclient.WithPassword(cfg.PBS.IPMI.Password),
+		ipmiclient.WithLogger(logger),
 	)
 
 	pbsClient, err := pbsclient.New(cfg.PBS.Host, logger)

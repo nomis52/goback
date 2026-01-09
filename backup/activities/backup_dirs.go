@@ -12,7 +12,7 @@ import (
 
 	"github.com/nomis52/goback/config"
 	"github.com/nomis52/goback/metrics"
-	"github.com/nomis52/goback/sshclient"
+	"github.com/nomis52/goback/clients/sshclient"
 	"github.com/nomis52/goback/statusreporter"
 )
 

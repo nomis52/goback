@@ -40,14 +40,14 @@ The UI auto-refreshes every 5 seconds.
 ```
 server/
 ├── handlers/          # HTTP handlers, one per endpoint
+│   ├── api_status.go  # GET /api/status
 │   ├── config.go      # GET /config
 │   ├── health.go      # GET /health
-│   ├── history.go     # GET /history
+│   ├── history.go     # GET /api/history
 │   ├── interfaces.go  # Shared interfaces
-│   ├── ipmi.go        # GET /ipmi
+│   ├── power.go       # Power on/off operations
 │   ├── reload.go      # POST /reload
-│   ├── run.go         # POST /run
-│   └── run_status.go  # GET /status
+│   └── run.go         # POST /run
 ├── runner/            # Backup run execution
 │   ├── runner.go      # Runner implementation
 │   └── types.go       # RunState, RunStatus

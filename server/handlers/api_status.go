@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/nomis52/goback/ipmi"
+	"github.com/nomis52/goback/clients/ipmiclient"
 	"github.com/nomis52/goback/server/runner"
 )
 
@@ -29,7 +29,7 @@ type APIStatusResponse struct {
 
 // APIStatusProvider aggregates all the providers needed for the status endpoint.
 type APIStatusProvider interface {
-	IPMIController() *ipmi.IPMIController
+	IPMIController() *ipmiclient.IPMIController
 	Status() runner.RunStatus
 	NextRun() *time.Time
 }

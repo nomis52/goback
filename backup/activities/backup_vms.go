@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/nomis52/goback/metrics"
-	"github.com/nomis52/goback/proxmoxclient"
+	"github.com/nomis52/goback/clients/proxmoxclient"
 	"github.com/nomis52/goback/statusreporter"
 )
 

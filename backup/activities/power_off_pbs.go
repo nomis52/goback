@@ -49,7 +49,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/nomis52/goback/ipmi"
+	"github.com/nomis52/goback/clients/ipmiclient"
 	"github.com/nomis52/goback/statusreporter"
 )
 
@@ -68,7 +68,7 @@ const (
 // with graceful ACPI shutdown as primary method and hard power-off as fallback.
 type PowerOffPBS struct {
 	// Dependencies
-	Controller     *ipmi.IPMIController
+	Controller     *ipmiclient.IPMIController
 	Logger         *slog.Logger
 	StatusReporter *statusreporter.StatusReporter
 
@@ -103,7 +103,7 @@ func (a *PowerOffPBS) Execute(ctx context.Context) error {
 		status, err := a.Controller.Status()
 		if err != nil {
 			a.Logger.Warn("failed to get initial power status", "error", err)
-		} else if status == ipmi.PowerStateOff {
+		} else if status == ipmiclient.PowerStateOff {
 			a.StatusReporter.SetStatus(a, "PBS server already powered off")
 			return nil
 		}
@@ -167,7 +167,7 @@ func (a *PowerOffPBS) waitForShutdownViaIPMI(ctx context.Context) error {
 			a.Logger.Debug("IPMI power status check", "status", status, "attempt", attempts)
 
 			// Check if PBS has powered off
-			if status == ipmi.PowerStateOff {
+			if status == ipmiclient.PowerStateOff {
 				a.Logger.Debug("PBS shutdown completed successfully", "attempts", attempts)
 				return nil
 			}

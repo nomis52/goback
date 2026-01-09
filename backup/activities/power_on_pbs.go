@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/nomis52/goback/ipmi"
-	"github.com/nomis52/goback/pbsclient"
+	"github.com/nomis52/goback/clients/ipmiclient"
+	"github.com/nomis52/goback/clients/pbsclient"
 	"github.com/nomis52/goback/statusreporter"
 )
 
@@ -18,7 +18,7 @@ const (
 // PowerOnPBS manages the power state of the PBS host through IPMI
 type PowerOnPBS struct {
 	// Dependencies
-	Controller     *ipmi.IPMIController
+	Controller     *ipmiclient.IPMIController
 	PBSClient      *pbsclient.Client
 	Logger         *slog.Logger
 	StatusReporter *statusreporter.StatusReporter
@@ -43,7 +43,7 @@ func (a *PowerOnPBS) Execute(ctx context.Context) error {
 		a.Logger.Debug("current PBS power status", "status", status)
 
 		// If power is off, turn it on
-		if status == ipmi.PowerStateOff {
+		if status == ipmiclient.PowerStateOff {
 			a.StatusReporter.SetStatus(a, "sending IPMI power on command")
 			if err := a.Controller.PowerOn(); err != nil {
 				a.Logger.Error("failed to power on PBS host", "error", err)
