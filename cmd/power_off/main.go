@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/nomis52/goback/backup/activities"
+	"github.com/nomis52/goback/backup"
 	"github.com/nomis52/goback/config"
-	"github.com/nomis52/goback/ipmi"
 	"github.com/nomis52/goback/logging"
+	"github.com/nomis52/goback/statusreporter"
 )
 
 type Args struct {
@@ -60,36 +60,24 @@ func run() error {
 
 	logger.Info("power_off utility started", "config_path", args.ConfigPath)
 
-	// Create IPMI controller
-	controller := ipmi.NewIPMIController(
-		cfg.PBS.IPMI.Host,
-		ipmi.WithUsername(cfg.PBS.IPMI.Username),
-		ipmi.WithPassword(cfg.PBS.IPMI.Password),
-		ipmi.WithLogger(logger),
-	)
+	// Create status reporter for activity status tracking
+	statusReporter := statusreporter.New(logger)
 
-	// Create and configure PowerOffPBS activity
-	powerOffActivity := &activities.PowerOffPBS{
-		Controller:      controller,
-		Logger:          logger,
-		ShutdownTimeout: cfg.PBS.ShutdownTimeout,
-		// Note: We don't set BackupDirs and BackupVMs dependencies since we're testing standalone
+	// Create power-off workflow
+	workflow, err := backup.NewPowerOffWorkflow(&cfg, logger, statusReporter)
+	if err != nil {
+		return fmt.Errorf("failed to create power-off workflow: %w", err)
 	}
 
-	// Initialize the activity
-	if err := powerOffActivity.Init(); err != nil {
-		return fmt.Errorf("failed to initialize PowerOffPBS activity: %w", err)
-	}
+	logger.Info("starting PBS shutdown")
 
-	logger.Info("starting PBS shutdown test")
-
-	// Execute the power off activity
+	// Execute the workflow
 	ctx := context.Background()
-	if err := powerOffActivity.Execute(ctx); err != nil {
-		logger.Error("PowerOffPBS execution failed", "error", err)
-		return fmt.Errorf("PowerOffPBS execution failed: %w", err)
+	if err := workflow.Execute(ctx); err != nil {
+		logger.Error("power-off workflow failed", "error", err)
+		return fmt.Errorf("power-off workflow failed: %w", err)
 	}
 
-	logger.Info("PBS shutdown test completed successfully")
+	logger.Info("PBS shutdown completed successfully")
 	return nil
 }
