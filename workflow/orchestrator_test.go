@@ -101,7 +101,7 @@ func TestOrchestrator_BasicFeatures(t *testing.T) {
 		require.NoError(t, err)
 
 		err = orchestrator.Execute(context.Background())
-		require.NoError(t, err)
+		require.Error(t, err) // FailActivity will cause an error
 
 		results := orchestrator.GetAllResults()
 		assert.Len(t, results, 2)
@@ -139,21 +139,28 @@ func TestOrchestrator_ComprehensiveFeatures(t *testing.T) {
 // TestOrchestrator_FailureHandling tests how orchestrator handles failures
 func TestOrchestrator_FailureHandling(t *testing.T) {
 	t.Run("ConfigurationError", func(t *testing.T) {
-		config := map[string]interface{}{
-			"database": map[string]interface{}{
-				"port": "invalid", // Should be int
+		// Invalid config: missing host
+		config := TestConfig{
+			Database: DatabaseConfig{
+				Host: "", // Empty host will cause Init() to fail
+				Port: 5432,
 			},
 		}
 
+		logger := &MockLogger{}
+
 		orchestrator := NewOrchestrator(WithConfig(config))
+		err := orchestrator.Inject(logger)
+		require.NoError(t, err)
+
 		activity := &DatabaseSetupActivity{}
 
-		err := orchestrator.AddActivity(activity)
+		err = orchestrator.AddActivity(activity)
 		require.NoError(t, err)
 
 		err = orchestrator.Execute(context.Background())
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "config injection failed")
+		assert.Contains(t, err.Error(), "initialization failed")
 
 		result := getResult(orchestrator, activity)
 		assert.Equal(t, NotStarted, result.State)
@@ -169,7 +176,7 @@ func TestOrchestrator_FailureHandling(t *testing.T) {
 		// Don't inject logger
 		err = orchestrator.Execute(context.Background())
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "initialization failed")
+		assert.Contains(t, err.Error(), "has nil dependency")
 
 		result := getResult(orchestrator, activity)
 		assert.Equal(t, NotStarted, result.State)
@@ -193,13 +200,13 @@ func TestOrchestrator_CircularDependencyDetection(t *testing.T) {
 // TestOrchestrator_DependencyInjection tests comprehensive dependency injection features
 func TestOrchestrator_DependencyInjection(t *testing.T) {
 	// Configuration for activities
-	config := map[string]interface{}{
-		"database": map[string]interface{}{
-			"host": "localhost",
-			"port": 5432,
+	config := TestConfig{
+		Database: DatabaseConfig{
+			Host: "localhost",
+			Port: 5432,
 		},
-		"service": map[string]interface{}{
-			"timeout": 30,
+		Service: ServiceConfig{
+			Timeout: 30,
 		},
 	}
 
@@ -498,4 +505,21 @@ func (m *MockLogger) Log(message string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.Logs = append(m.Logs, message)
+}
+
+// ---------------------------------------------------------------------
+// Test Config Structs
+// ---------------------------------------------------------------------
+type DatabaseConfig struct {
+	Host string
+	Port int
+}
+
+type ServiceConfig struct {
+	Timeout int
+}
+
+type TestConfig struct {
+	Database DatabaseConfig
+	Service  ServiceConfig
 }
