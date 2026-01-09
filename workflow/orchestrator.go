@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/nomis52/goback/logging"
 )
 
 // Orchestrator manages the execution of activities with dependency resolution.
@@ -23,6 +25,9 @@ import (
 type Orchestrator struct {
 	config interface{}
 	logger *slog.Logger
+
+	// Optional hook for creating activity-specific loggers
+	loggerHook logging.LoggerHook
 
 	// Dependency injection map: type -> instance
 	injectedTypes map[reflect.Type]interface{}
@@ -50,6 +55,13 @@ func WithLogger(logger *slog.Logger) OrchestratorOption {
 func WithConfig(config interface{}) OrchestratorOption {
 	return func(o *Orchestrator) {
 		o.config = config
+	}
+}
+
+// WithLogHook sets a custom logger hook for creating activity-specific loggers
+func WithLogHook(hook logging.LoggerHook) OrchestratorOption {
+	return func(o *Orchestrator) {
+		o.loggerHook = hook
 	}
 }
 
@@ -481,6 +493,18 @@ func (o *Orchestrator) injectConfig(activity Activity, activityID ActivityID) er
 
 		// Handle type injection for non-activity dependencies
 		if injectedValue, exists := o.injectedTypes[field.Type]; exists {
+			// Special handling for *slog.Logger: use LoggerHook if available
+			if field.Type == reflect.TypeOf((*slog.Logger)(nil)) {
+				if o.loggerHook != nil {
+					// Use hook to wrap the injected logger for this activity
+					injectedLogger := injectedValue.(*slog.Logger)
+					activityLogger := o.loggerHook.LoggerForActivity(injectedLogger, activityID.String())
+					o.logger.Debug("injecting activity-specific logger via hook", "activity_id", activityID.String(), "field", field.Name)
+					fieldValue.Set(reflect.ValueOf(activityLogger))
+					continue
+				}
+			}
+			// Normal type injection (including plain logger when no hook)
 			o.logger.Debug("injecting type dependency", "activity_id", activityID.String(), "field", field.Name, "type", field.Type.String())
 			fieldValue.Set(reflect.ValueOf(injectedValue))
 			continue

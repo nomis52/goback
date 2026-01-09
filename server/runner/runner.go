@@ -20,10 +20,16 @@
 //	    }
 //	}
 //
-//	// Check status
+//	// Check status with live activity executions and logs
 //	status := r.Status()
 //	if status.State == runner.RunStateRunning {
-//	    // Run in progress
+//	    // Run in progress - status includes real-time activity executions with logs
+//	    for _, exec := range status.ActivityExecutions {
+//	        fmt.Printf("%s [%s]: %s\n", exec.Type, exec.State, exec.Status)
+//	        for _, log := range exec.Logs {
+//	            fmt.Printf("  [%s] %s\n", log.Level, log.Message)
+//	        }
+//	    }
 //	}
 //
 //	// Get history
@@ -35,11 +41,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"sync"
 	"time"
 
 	"github.com/nomis52/goback/backup"
 	"github.com/nomis52/goback/config"
+	"github.com/nomis52/goback/logging"
 	"github.com/nomis52/goback/statusreporter"
 	"github.com/nomis52/goback/workflow"
 )
@@ -59,6 +67,7 @@ type Runner struct {
 	runStatus      RunStatus
 	workflow       workflow.Workflow // Current or last run's workflow
 	statusReporter *statusreporter.StatusReporter // Current run's status reporter
+	logCollector   *logging.LogCollector // Captures logs during workflow execution
 }
 
 // ConfigProvider provides access to the current configuration.
@@ -110,11 +119,22 @@ func (r *Runner) Run() error {
 	return nil
 }
 
-// Status returns the current run status.
+// Status returns the current run status with live activity executions and logs.
+// If a run is in progress, includes real-time activity executions with captured logs and status messages.
+// If idle, returns the last completed run status (already includes activity executions).
 func (r *Runner) Status() RunStatus {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.runStatus
+
+	// Make a copy of the base status
+	status := r.runStatus
+
+	// If running, build live activity executions with current logs and status messages
+	if r.runStatus.State == RunStateRunning && r.workflow != nil && r.logCollector != nil {
+		status.ActivityExecutions = r.buildActivityExecutions()
+	}
+
+	return status
 }
 
 // IsRunning returns true if a backup run is in progress.
@@ -190,10 +210,64 @@ func (r *Runner) finish(err error) {
 		r.logger.Info("backup run completed", "duration", duration)
 	}
 
+	// Build activity executions with logs and status messages
+	if r.workflow != nil && r.logCollector != nil {
+		r.runStatus.ActivityExecutions = r.buildActivityExecutions()
+	}
+
 	// Save to store
 	if err := r.store.Save(r.runStatus); err != nil {
 		r.logger.Error("failed to save run to store", "error", err)
 	}
+}
+
+// buildActivityExecutions combines workflow results, logs, and status messages into ActivityExecution structs.
+func (r *Runner) buildActivityExecutions() []ActivityExecution {
+	results := r.workflow.GetAllResults()
+	logs := r.logCollector.GetAllLogs()
+
+	// Get current status messages if reporter is available
+	var statuses map[string]string
+	if r.statusReporter != nil {
+		statuses = r.statusReporter.CurrentStatuses()
+	}
+
+	executions := make([]ActivityExecution, 0, len(results))
+
+	for id, result := range results {
+		exec := ActivityExecution{
+			Module:    id.Module,
+			Type:      id.Type,
+			State:     result.State.String(),
+			StartTime: &result.StartTime,
+			EndTime:   &result.EndTime,
+		}
+
+		if result.Error != nil {
+			exec.Error = result.Error.Error()
+		}
+
+		// Add status message for this activity
+		if statuses != nil {
+			if statusMsg, exists := statuses[id.String()]; exists {
+				exec.Status = statusMsg
+			}
+		}
+
+		// Add logs for this activity
+		if activityLogs, exists := logs[id.String()]; exists {
+			exec.Logs = activityLogs
+		}
+
+		executions = append(executions, exec)
+	}
+
+	// Sort by type for stable ordering
+	sort.Slice(executions, func(i, j int) bool {
+		return executions[i].Type < executions[j].Type
+	})
+
+	return executions
 }
 
 func (r *Runner) executeRun(ctx context.Context) error {
@@ -202,20 +276,26 @@ func (r *Runner) executeRun(ctx context.Context) error {
 		return errors.New("no configuration available")
 	}
 
+	// Create log collector for this run
+	logCollector := logging.NewLogCollector()
+
+	// Create logger hook that captures logs (base logger comes from orchestrator)
+	loggerHook := logging.NewCapturingLoggerHook(logCollector)
+
 	// Create status reporter
 	sr, err := r.createStatusReporter()
 	if err != nil {
 		return fmt.Errorf("failed to create status reporter: %w", err)
 	}
 
-	// Create backup workflow (PowerOnPBS → BackupDirs → BackupVMs)
-	backupWorkflow, err := backup.NewBackupWorkflow(cfg, r.logger, sr)
+	// Create backup workflow (PowerOnPBS → BackupDirs → BackupVMs) with log capturing
+	backupWorkflow, err := backup.NewBackupWorkflow(cfg, r.logger, sr, backup.WithLoggerHook(loggerHook))
 	if err != nil {
 		return fmt.Errorf("failed to create backup workflow: %w", err)
 	}
 
-	// Create power off workflow (PowerOffPBS)
-	powerOffWorkflow, err := backup.NewPowerOffWorkflow(cfg, r.logger, sr)
+	// Create power off workflow (PowerOffPBS) with log capturing
+	powerOffWorkflow, err := backup.NewPowerOffWorkflow(cfg, r.logger, sr, backup.WithLoggerHook(loggerHook))
 	if err != nil {
 		return fmt.Errorf("failed to create power off workflow: %w", err)
 	}
@@ -223,10 +303,11 @@ func (r *Runner) executeRun(ctx context.Context) error {
 	// Compose workflows to run backup then power off
 	composedWorkflow := workflow.Compose(backupWorkflow, powerOffWorkflow)
 
-	// Store workflow and status reporter references for result/status access
+	// Store workflow, status reporter, and log collector references for result/status/log access
 	r.mu.Lock()
 	r.workflow = composedWorkflow
 	r.statusReporter = sr
+	r.logCollector = logCollector
 	r.mu.Unlock()
 
 	// Execute composed workflow

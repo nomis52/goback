@@ -3,11 +3,9 @@ package handlers
 import (
 	"log/slog"
 	"net/http"
-	"sort"
 	"time"
 
 	"github.com/nomis52/goback/ipmi"
-	"github.com/nomis52/goback/workflow"
 	"github.com/nomis52/goback/server/runner"
 )
 
@@ -22,23 +20,11 @@ type NextRunResponse struct {
 	NextRun   *time.Time `json:"next_run,omitempty"`
 }
 
-// activityResult is the JSON-serializable representation of an activity result.
-type activityResult struct {
-	Module    string     `json:"module"`
-	Type      string     `json:"type"`
-	State     string     `json:"state"`
-	Error     string     `json:"error,omitempty"`
-	StartTime *time.Time `json:"start_time,omitempty"`
-	EndTime   *time.Time `json:"end_time,omitempty"`
-}
-
 // APIStatusResponse is the consolidated response for /api/status.
 type APIStatusResponse struct {
-	PBS      PBSStatus          `json:"pbs"`
-	Run      runner.RunStatus   `json:"run"`
-	NextRun  NextRunResponse    `json:"next_run"`
-	Results  []activityResult   `json:"results,omitempty"`
-	Statuses map[string]string  `json:"statuses,omitempty"`
+	PBS     PBSStatus        `json:"pbs"`
+	Run     runner.RunStatus `json:"run"`     // Includes ActivityExecutions with Status field
+	NextRun NextRunResponse  `json:"next_run"`
 }
 
 // APIStatusProvider aggregates all the providers needed for the status endpoint.
@@ -46,8 +32,6 @@ type APIStatusProvider interface {
 	IPMIController() *ipmi.IPMIController
 	Status() runner.RunStatus
 	NextRun() *time.Time
-	GetResults() map[workflow.ActivityID]*workflow.Result
-	CurrentStatuses() map[string]string
 }
 
 // APIStatusHandler handles requests for the consolidated status endpoint.
@@ -81,7 +65,7 @@ func (h *APIStatusHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		powerStateStr = "unknown"
 	}
 
-	// Get run status
+	// Get run status (includes live activity executions with logs and status messages)
 	runStatus := h.provider.Status()
 
 	// Get next run
@@ -91,48 +75,12 @@ func (h *APIStatusHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		NextRun:   nextRun,
 	}
 
-	// Get results and statuses (only if running)
-	var results []activityResult
-	var statuses map[string]string
-	if runStatus.State == runner.RunStateRunning {
-		rawResults := h.provider.GetResults()
-		if rawResults != nil && len(rawResults) > 0 {
-			results = make([]activityResult, 0, len(rawResults))
-			for id, result := range rawResults {
-				ar := activityResult{
-					Module: id.Module,
-					Type:   id.Type,
-					State:  result.State.String(),
-				}
-				if result.Error != nil {
-					ar.Error = result.Error.Error()
-				}
-				if !result.StartTime.IsZero() {
-					ar.StartTime = &result.StartTime
-				}
-				if !result.EndTime.IsZero() {
-					ar.EndTime = &result.EndTime
-				}
-				results = append(results, ar)
-			}
-			// Sort by Type alphabetically for stable order
-			sort.Slice(results, func(i, j int) bool {
-				return results[i].Type < results[j].Type
-			})
-		}
-
-		// Get current activity statuses
-		statuses = h.provider.CurrentStatuses()
-	}
-
 	resp := APIStatusResponse{
 		PBS: PBSStatus{
 			PowerState: powerStateStr,
 		},
-		Run:      runStatus,
-		NextRun:  nextRunResp,
-		Results:  results,
-		Statuses: statuses,
+		Run:     runStatus,
+		NextRun: nextRunResp,
 	}
 
 	writeJSON(w, http.StatusOK, resp)

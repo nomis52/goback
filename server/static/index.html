@@ -247,6 +247,14 @@
             color: var(--text-secondary);
         }
 
+        #currentWorkflowEmpty {
+            display: none;
+        }
+
+        #currentWorkflowEmpty:not(.hidden) {
+            display: block;
+        }
+
         .error-message {
             max-width: 300px;
             overflow: hidden;
@@ -270,56 +278,113 @@
             display: none;
         }
 
-        .collapsible-section {
-            background-color: var(--bg-secondary);
-            border-radius: 0.75rem;
-            border: 1px solid var(--border-color);
-            overflow: hidden;
-        }
-
-        .collapsible-header {
+        .tabs {
             display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 1rem 1.5rem;
-            cursor: pointer;
-            user-select: none;
-            transition: background-color 0.2s;
-        }
-
-        .collapsible-header:hover {
-            background-color: var(--bg-card);
-        }
-
-        .collapsible-title {
-            font-size: 1rem;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
             gap: 0.5rem;
+            margin-bottom: 1.5rem;
+            border-bottom: 2px solid var(--border-color);
         }
 
-        .chevron {
-            transition: transform 0.3s;
+        .tab {
+            padding: 0.75rem 1.5rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            background: none;
+            border: none;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            cursor: pointer;
+            transition: all 0.2s;
         }
 
-        .chevron.expanded {
-            transform: rotate(180deg);
+        .tab:hover {
+            color: var(--text-primary);
         }
 
-        .collapsible-content {
-            max-height: 0;
-            overflow: hidden;
-            transition: max-height 0.3s ease-out;
+        .tab.active {
+            color: var(--accent-blue);
+            border-bottom-color: var(--accent-blue);
         }
 
-        .collapsible-content.expanded {
-            max-height: 600px;
-            border-top: 1px solid var(--border-color);
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
         }
 
         .config-container {
             padding: 1.5rem;
+        }
+
+        .expandable-row {
+            cursor: pointer;
+        }
+
+        .expandable-row:hover {
+            background-color: var(--bg-card) !important;
+        }
+
+        .log-details {
+            background-color: var(--bg-primary);
+            border-top: 1px solid var(--border-color);
+        }
+
+        .log-details-content {
+            padding: 1.5rem;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .log-entry {
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+            font-size: 0.8rem;
+            margin-bottom: 0.5rem;
+            display: flex;
+            gap: 0.75rem;
+            line-height: 1.5;
+        }
+
+        .log-time {
+            color: var(--text-secondary);
+            flex-shrink: 0;
+        }
+
+        .log-level {
+            font-weight: 600;
+            flex-shrink: 0;
+            width: 50px;
+        }
+
+        .log-level.DEBUG { color: var(--text-secondary); }
+        .log-level.INFO { color: var(--accent-blue); }
+        .log-level.WARN { color: var(--accent-yellow); }
+        .log-level.ERROR { color: var(--accent-red); }
+
+        .log-message {
+            color: var(--text-primary);
+            flex: 1;
+        }
+
+        .log-attributes {
+            margin-left: 2.5rem;
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+        }
+
+        .log-attr-key {
+            color: var(--accent-blue);
+        }
+
+        .chevron-icon {
+            transition: transform 0.2s;
+            display: inline-block;
+        }
+
+        .chevron-icon.expanded {
+            transform: rotate(90deg);
         }
 
         .config-actions {
@@ -419,60 +484,69 @@
             </div>
         </div>
 
-        <div id="currentRunSection" class="section hidden">
-            <div class="section-header">
-                <span class="section-title">Current Workflow</span>
-                <span id="activityCount" class="card-title">0 steps</span>
-            </div>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Step</th>
-                        <th>State</th>
-                        <th>Current Status</th>
-                        <th class="hide-mobile">Started</th>
-                        <th class="hide-mobile">Ended</th>
-                        <th>Duration</th>
-                    </tr>
-                </thead>
-                <tbody id="activitiesBody">
-                </tbody>
-            </table>
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('current')">Current Workflow</button>
+            <button class="tab" onclick="switchTab('history')">History</button>
+            <button class="tab" onclick="switchTab('config')">Configuration</button>
         </div>
 
-        <div class="section">
-            <div class="section-header">
-                <span class="section-title">Workflow History</span>
-                <span id="historyCount" class="card-title">0 runs</span>
-            </div>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Status</th>
-                        <th>Started</th>
-                        <th class="hide-mobile">Ended</th>
-                        <th>Duration</th>
-                        <th class="hide-mobile">Error</th>
-                    </tr>
-                </thead>
-                <tbody id="historyBody">
-                    <tr>
-                        <td colspan="5" class="empty-state">Loading history...</td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-
-        <div class="collapsible-section">
-            <div class="collapsible-header" onclick="toggleConfig()">
-                <div class="collapsible-title">
-                    <svg class="chevron" id="configChevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polyline points="6 9 12 15 18 9"></polyline>
-                    </svg>
-                    Configuration
+        <div id="currentTab" class="tab-content active">
+            <div class="section">
+                <div class="section-header">
+                    <span class="section-title">Current Workflow</span>
+                    <span id="activityCount" class="card-title">No active workflow</span>
+                </div>
+                <table id="currentWorkflowTable" class="hidden">
+                    <thead>
+                        <tr>
+                            <th style="width: 30px;"></th>
+                            <th>Step</th>
+                            <th>State</th>
+                            <th>Status</th>
+                            <th class="hide-mobile">Started</th>
+                            <th class="hide-mobile">Ended</th>
+                            <th>Duration</th>
+                        </tr>
+                    </thead>
+                    <tbody id="activitiesBody">
+                    </tbody>
+                </table>
+                <div id="currentWorkflowEmpty" class="empty-state">
+                    No workflow is currently running
                 </div>
             </div>
-            <div class="collapsible-content" id="configContent">
+        </div>
+
+        <div id="historyTab" class="tab-content">
+            <div class="section">
+                <div class="section-header">
+                    <span class="section-title">Workflow History</span>
+                    <span id="historyCount" class="card-title">0 runs</span>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Status</th>
+                            <th>Started</th>
+                            <th class="hide-mobile">Ended</th>
+                            <th>Duration</th>
+                            <th class="hide-mobile">Error</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historyBody">
+                        <tr>
+                            <td colspan="5" class="empty-state">Loading history...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="configTab" class="tab-content">
+            <div class="section">
+                <div class="section-header">
+                    <span class="section-title">Configuration</span>
+                </div>
                 <div class="config-container">
                     <div class="config-actions">
                         <button class="btn btn-primary" onclick="reloadConfig()">
@@ -484,7 +558,7 @@
                             Reload Config
                         </button>
                     </div>
-                    <pre id="configYaml">Loading configuration...</pre>
+                    <pre id="configYaml">Click Reload Config to load configuration...</pre>
                     <div id="configStatus" class="config-status"></div>
                 </div>
             </div>
@@ -496,6 +570,8 @@
         const POLL_INTERVAL_RUNNING = 2000;
         let isRunning = false;
         let pollInterval = null;
+        let expandedRows = new Set(); // Track which rows are expanded
+        let currentExecutions = []; // Store current executions for expanding
 
         async function fetchJSON(url) {
             const resp = await fetch(url);
@@ -553,6 +629,65 @@
 
         function updateLastUpdated() {
             document.getElementById('lastUpdated').textContent = new Date().toLocaleTimeString();
+        }
+
+        function switchTab(tab) {
+            // Update tab buttons
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+
+            // Update tab content
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.getElementById(tab + 'Tab').classList.add('active');
+
+            // Load config when switching to config tab
+            if (tab === 'config' && !configLoaded) {
+                fetchConfig();
+            }
+        }
+
+        function toggleActivityLogs(index) {
+            const rowId = `activity-${index}`;
+            const logsRow = document.getElementById(`logs-${index}`);
+            const chevron = document.getElementById(`chevron-${index}`);
+
+            if (expandedRows.has(rowId)) {
+                expandedRows.delete(rowId);
+                logsRow.style.display = 'none';
+                chevron.classList.remove('expanded');
+            } else {
+                expandedRows.add(rowId);
+                logsRow.style.display = 'table-row';
+                chevron.classList.add('expanded');
+            }
+        }
+
+        function formatLogTime(isoString) {
+            if (!isoString) return '-';
+            const date = new Date(isoString);
+            return date.toLocaleTimeString();
+        }
+
+        function renderLogs(logs) {
+            if (!logs || logs.length === 0) {
+                return '<div class="empty-state" style="padding: 1rem;">No logs captured for this activity</div>';
+            }
+
+            return logs.map(log => {
+                const attrs = log.attributes && Object.keys(log.attributes).length > 0
+                    ? '<div class="log-attributes">' +
+                      Object.entries(log.attributes).map(([key, val]) =>
+                        `<span class="log-attr-key">${key}</span>: ${JSON.stringify(val)}`
+                      ).join(', ') +
+                      '</div>'
+                    : '';
+
+                return `<div class="log-entry">
+                    <span class="log-time">${formatLogTime(log.time)}</span>
+                    <span class="log-level ${log.level}">${log.level}</span>
+                    <span class="log-message">${log.message}${attrs}</span>
+                </div>`;
+            }).join('');
         }
 
         function getStateBadge(state, error) {
@@ -637,42 +772,57 @@
                     nextRunDetail.textContent = 'No cron schedule configured';
                 }
 
-                // Update results (if running)
-                const section = document.getElementById('currentRunSection');
+                // Update activity executions
+                const table = document.getElementById('currentWorkflowTable');
+                const emptyState = document.getElementById('currentWorkflowEmpty');
                 const tbody = document.getElementById('activitiesBody');
                 const count = document.getElementById('activityCount');
 
-                if (!isRunning || !data.results || data.results.length === 0) {
-                    section.classList.add('hidden');
+                const executions = data.run.activity_executions || [];
+                currentExecutions = executions; // Store for expand/collapse
+
+                if (!isRunning || executions.length === 0) {
+                    table.classList.add('hidden');
+                    emptyState.classList.remove('hidden');
+                    count.textContent = 'No active workflow';
                 } else {
-                    const activities = data.results;
-
                     // Backend provides stable alphabetical order
-                    section.classList.remove('hidden');
-                    count.textContent = `${activities.length} activit${activities.length !== 1 ? 'ies' : 'y'}`;
+                    table.classList.remove('hidden');
+                    emptyState.classList.add('hidden');
+                    count.textContent = `${executions.length} activit${executions.length !== 1 ? 'ies' : 'y'}`;
 
-                    tbody.innerHTML = activities.map(activity => {
-                        const displayName = activity.type || 'Unknown';
-                        const startTime = activity.start_time && activity.start_time !== '0001-01-01T00:00:00Z'
-                            ? activity.start_time : null;
-                        const endTime = activity.end_time && activity.end_time !== '0001-01-01T00:00:00Z'
-                            ? activity.end_time : null;
-                        const errorMsg = activity.error ? activity.error : null;
+                    tbody.innerHTML = executions.map((exec, index) => {
+                        const displayName = exec.type || 'Unknown';
+                        const startTime = exec.start_time && exec.start_time !== '0001-01-01T00:00:00Z'
+                            ? exec.start_time : null;
+                        const endTime = exec.end_time && exec.end_time !== '0001-01-01T00:00:00Z'
+                            ? exec.end_time : null;
+                        const errorMsg = exec.error ? exec.error : null;
+                        const statusMsg = exec.status || '-';
+                        const isExpanded = expandedRows.has(`activity-${index}`);
 
-                        // Build activity ID string to lookup status
-                        const activityID = `${activity.module}.${activity.type}`;
-                        const currentStatus = data.statuses && data.statuses[activityID]
-                            ? data.statuses[activityID]
-                            : '-';
-
-                        return `<tr>
-                            <td><span class="activity-name">${displayName}</span></td>
-                            <td>${getStateBadge(activity.state, errorMsg)}</td>
-                            <td>${currentStatus}</td>
-                            <td class="hide-mobile">${formatTimeShort(startTime)}</td>
-                            <td class="hide-mobile">${formatTimeShort(endTime)}</td>
-                            <td><span class="duration">${formatDuration(startTime, endTime)}</span></td>
-                        </tr>`;
+                        return `
+                            <tr class="expandable-row" onclick="toggleActivityLogs(${index})">
+                                <td>
+                                    <svg id="chevron-${index}" class="chevron-icon ${isExpanded ? 'expanded' : ''}" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <polyline points="9 18 15 12 9 6"></polyline>
+                                    </svg>
+                                </td>
+                                <td><span class="activity-name">${displayName}</span></td>
+                                <td>${getStateBadge(exec.state, errorMsg)}</td>
+                                <td>${statusMsg}</td>
+                                <td class="hide-mobile">${formatTimeShort(startTime)}</td>
+                                <td class="hide-mobile">${formatTimeShort(endTime)}</td>
+                                <td><span class="duration">${formatDuration(startTime, endTime)}</span></td>
+                            </tr>
+                            <tr id="logs-${index}" class="log-details" style="display: ${isExpanded ? 'table-row' : 'none'};">
+                                <td colspan="7">
+                                    <div class="log-details-content">
+                                        ${renderLogs(exec.logs)}
+                                    </div>
+                                </td>
+                            </tr>
+                        `;
                     }).join('');
                 }
             } catch (err) {
@@ -766,28 +916,7 @@
             updateLastUpdated();
         }
 
-        let configExpanded = false;
         let configLoaded = false;
-
-        async function toggleConfig() {
-            const content = document.getElementById('configContent');
-            const chevron = document.getElementById('configChevron');
-
-            configExpanded = !configExpanded;
-
-            if (configExpanded) {
-                content.classList.add('expanded');
-                chevron.classList.add('expanded');
-
-                // Fetch config if not already loaded
-                if (!configLoaded) {
-                    await fetchConfig();
-                }
-            } else {
-                content.classList.remove('expanded');
-                chevron.classList.remove('expanded');
-            }
-        }
 
         async function fetchConfig() {
             const configYaml = document.getElementById('configYaml');

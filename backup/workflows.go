@@ -10,6 +10,7 @@ import (
 	"github.com/nomis52/goback/backup/activities"
 	"github.com/nomis52/goback/config"
 	"github.com/nomis52/goback/ipmi"
+	"github.com/nomis52/goback/logging"
 	"github.com/nomis52/goback/metrics"
 	"github.com/nomis52/goback/pbsclient"
 	"github.com/nomis52/goback/proxmoxclient"
@@ -17,15 +18,41 @@ import (
 	"github.com/nomis52/goback/workflow"
 )
 
+// WorkflowOption configures workflow creation.
+type WorkflowOption func(*workflowOptions)
+
+type workflowOptions struct {
+	loggerHook logging.LoggerHook
+}
+
+// WithLoggerHook sets a logger hook for capturing activity logs.
+func WithLoggerHook(hook logging.LoggerHook) WorkflowOption {
+	return func(opts *workflowOptions) {
+		opts.loggerHook = hook
+	}
+}
+
 // NewBackupWorkflow creates a workflow that powers on PBS and performs backups.
 // The workflow executes: PowerOnPBS → BackupDirs → BackupVMs
 // It does NOT power off PBS after completion.
-func NewBackupWorkflow(cfg *config.Config, logger *slog.Logger, statusReporter *statusreporter.StatusReporter) (workflow.Workflow, error) {
-	// Create orchestrator
-	o := workflow.NewOrchestrator(
+func NewBackupWorkflow(cfg *config.Config, logger *slog.Logger, statusReporter *statusreporter.StatusReporter, opts ...WorkflowOption) (workflow.Workflow, error) {
+	// Apply options
+	options := &workflowOptions{}
+	for _, opt := range opts {
+		opt(options)
+	}
+
+	// Create orchestrator options
+	orchOpts := []workflow.OrchestratorOption{
 		workflow.WithConfig(cfg),
 		workflow.WithLogger(logger),
-	)
+	}
+	if options.loggerHook != nil {
+		orchOpts = append(orchOpts, workflow.WithLogHook(options.loggerHook))
+	}
+
+	// Create orchestrator
+	o := workflow.NewOrchestrator(orchOpts...)
 
 	// Build and inject dependencies
 	deps, err := buildDeps(cfg, logger)
@@ -33,6 +60,7 @@ func NewBackupWorkflow(cfg *config.Config, logger *slog.Logger, statusReporter *
 		return nil, fmt.Errorf("failed to build dependencies: %w", err)
 	}
 
+	// Inject dependencies (logger will be wrapped by LoggerHook if provided)
 	if err := o.Inject(
 		logger,
 		deps.metricsClient,
@@ -58,14 +86,26 @@ func NewBackupWorkflow(cfg *config.Config, logger *slog.Logger, statusReporter *
 
 // NewPowerOffWorkflow creates a workflow that gracefully powers off PBS.
 // The workflow executes: PowerOffPBS
-func NewPowerOffWorkflow(cfg *config.Config, logger *slog.Logger, statusReporter *statusreporter.StatusReporter) (workflow.Workflow, error) {
-	// Create orchestrator
-	o := workflow.NewOrchestrator(
+func NewPowerOffWorkflow(cfg *config.Config, logger *slog.Logger, statusReporter *statusreporter.StatusReporter, opts ...WorkflowOption) (workflow.Workflow, error) {
+	// Apply options
+	options := &workflowOptions{}
+	for _, opt := range opts {
+		opt(options)
+	}
+
+	// Create orchestrator options
+	orchOpts := []workflow.OrchestratorOption{
 		workflow.WithConfig(cfg),
 		workflow.WithLogger(logger),
-	)
+	}
+	if options.loggerHook != nil {
+		orchOpts = append(orchOpts, workflow.WithLogHook(options.loggerHook))
+	}
 
-	// Build and inject dependencies (only need IPMI controller and logger for power off)
+	// Create orchestrator
+	o := workflow.NewOrchestrator(orchOpts...)
+
+	// Build and inject dependencies (logger will be wrapped by LoggerHook if provided)
 	deps, err := buildDeps(cfg, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build dependencies: %w", err)

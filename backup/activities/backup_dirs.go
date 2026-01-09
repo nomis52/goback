@@ -50,6 +50,10 @@ type BackupDirs struct {
 }
 
 func (a *BackupDirs) Init() error {
+	if a.Files.Target == "" {
+		return nil // nothing configured
+	}
+
 	if a.Files.Token == "" || a.Files.Target == "" {
 		return ErrMissingBackupConfig
 	}
@@ -79,6 +83,10 @@ func (a *BackupDirs) Init() error {
 }
 
 func (a *BackupDirs) Execute(ctx context.Context) error {
+	if a.Files.Target == "" {
+		return nil // nothing configured
+	}
+
 	return RecordError(a, a.StatusReporter, func() error {
 		if a.sshClient == nil {
 			return ErrSSHClientNotInit

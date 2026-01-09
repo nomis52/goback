@@ -1,6 +1,10 @@
 package runner
 
-import "time"
+import (
+	"time"
+
+	"github.com/nomis52/goback/logging"
+)
 
 // RunState represents the current state of a backup run.
 type RunState int
@@ -58,4 +62,26 @@ type RunStatus struct {
 	EndedAt *time.Time `json:"ended_at,omitempty"`
 	// Error contains the error message if the run failed. Empty on success.
 	Error string `json:"error,omitempty"`
+	// ActivityExecutions contains detailed execution records for each activity in the workflow.
+	ActivityExecutions []ActivityExecution `json:"activity_executions,omitempty"`
+}
+
+// ActivityExecution captures all details for a single activity execution.
+type ActivityExecution struct {
+	// Module is the activity's module path.
+	Module string `json:"module"`
+	// Type is the activity's type name.
+	Type string `json:"type"`
+	// State is the activity's state (NotStarted, Pending, Running, Completed, Skipped).
+	State string `json:"state"`
+	// Status is the human-readable progress message (e.g., "backing up VM 3/10", "waiting for server").
+	Status string `json:"status,omitempty"`
+	// Error contains the error message if the activity failed. Empty on success.
+	Error string `json:"error,omitempty"`
+	// StartTime is when the activity started execution.
+	StartTime *time.Time `json:"start_time,omitempty"`
+	// EndTime is when the activity completed execution.
+	EndTime *time.Time `json:"end_time,omitempty"`
+	// Logs contains all log entries captured from this activity.
+	Logs []logging.LogEntry `json:"logs,omitempty"`
 }
