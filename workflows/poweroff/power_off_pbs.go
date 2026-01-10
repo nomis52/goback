@@ -1,4 +1,4 @@
-// Package activities provides orchestration activities for the PBS backup automation system.
+// Package poweroff provides orchestration activities for PBS power management.
 //
 // PowerOffPBS Activity:
 //
@@ -32,7 +32,6 @@
 //   - IPMI controller configuration (host, username, password)
 //
 // Dependencies:
-//   - Must run after BackupDirs and BackupVMs activities complete
 //   - Requires IPMI controller for all power operations
 //   - No SSH or PBS client dependencies needed
 //
@@ -41,7 +40,7 @@
 //   - Shutdown timeout triggers hard power-off
 //   - Already powered-off systems are handled gracefully
 //   - All operations use hardware-level IPMI commands
-package activities
+package poweroff
 
 import (
 	"context"
@@ -61,8 +60,6 @@ const (
 //
 // This activity ensures that the PBS server is gracefully powered down after
 // backup operations complete, reducing power consumption and wear on the hardware.
-// It depends on BackupDirs and BackupVMs activities to ensure it only runs
-// after all backup operations have finished.
 //
 // The shutdown process uses pure IPMI commands for maximum reliability,
 // with graceful ACPI shutdown as primary method and hard power-off as fallback.
@@ -71,10 +68,6 @@ type PowerOffPBS struct {
 	Controller     *ipmiclient.IPMIController
 	Logger         *slog.Logger
 	StatusReporter *statusreporter.StatusReporter
-
-	// Activity dependencies - these ensure PowerOffPBS runs after backup activities complete
-	_ *BackupDirs
-	_ *BackupVMs
 
 	// Configuration
 	ShutdownTimeout time.Duration `config:"pbs.shutdown_timeout"`
@@ -96,7 +89,7 @@ func (a *PowerOffPBS) Init() error {
 // This approach provides maximum reliability by using only hardware-level
 // IPMI commands, eliminating network and SSH dependencies.
 func (a *PowerOffPBS) Execute(ctx context.Context) error {
-	return RecordError(a, a.StatusReporter, func() error {
+	return statusreporter.RecordError(a, a.StatusReporter, func() error {
 		a.StatusReporter.SetStatus(a, "checking PBS power status")
 
 		// Check current power status first

@@ -1,4 +1,4 @@
-package activities
+package backup
 
 import (
 	"context"
@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nomis52/goback/clients/sshclient"
 	"github.com/nomis52/goback/config"
 	"github.com/nomis52/goback/metrics"
-	"github.com/nomis52/goback/clients/sshclient"
 	"github.com/nomis52/goback/statusreporter"
 )
 
@@ -87,7 +87,7 @@ func (a *BackupDirs) Execute(ctx context.Context) error {
 		return nil // nothing configured
 	}
 
-	return RecordError(a, a.StatusReporter, func() error {
+	return statusreporter.RecordError(a, a.StatusReporter, func() error {
 		if a.sshClient == nil {
 			return ErrSSHClientNotInit
 		}

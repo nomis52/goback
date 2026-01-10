@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/nomis52/goback/backup"
 	"github.com/nomis52/goback/config"
 	"github.com/nomis52/goback/logging"
 	"github.com/nomis52/goback/statusreporter"
+	"github.com/nomis52/goback/workflows/poweroff"
 )
 
 type Args struct {
@@ -64,7 +64,7 @@ func run() error {
 	statusReporter := statusreporter.New(logger)
 
 	// Create power-off workflow
-	workflow, err := backup.NewPowerOffWorkflow(&cfg, logger, statusReporter)
+	workflow, err := poweroff.NewWorkflow(&cfg, logger, statusReporter)
 	if err != nil {
 		return fmt.Errorf("failed to create power-off workflow: %w", err)
 	}

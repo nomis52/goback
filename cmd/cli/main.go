@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/nomis52/goback/backup"
 	"github.com/nomis52/goback/config"
 	"github.com/nomis52/goback/logging"
 	"github.com/nomis52/goback/statusreporter"
 	"github.com/nomis52/goback/workflow"
+	"github.com/nomis52/goback/workflows/backup"
+	"github.com/nomis52/goback/workflows/poweroff"
 )
 
 // Version information (set via ldflags during build)
@@ -82,13 +83,13 @@ func run() error {
 	sr := statusreporter.New(logger)
 
 	// Create backup workflow (PowerOnPBS → BackupDirs → BackupVMs)
-	backupWorkflow, err := backup.NewBackupWorkflow(&cfg, logger, sr)
+	backupWorkflow, err := backup.NewWorkflow(&cfg, logger, sr)
 	if err != nil {
 		return fmt.Errorf("failed to create backup workflow: %w", err)
 	}
 
 	// Create power off workflow (PowerOffPBS)
-	powerOffWorkflow, err := backup.NewPowerOffWorkflow(&cfg, logger, sr)
+	powerOffWorkflow, err := poweroff.NewWorkflow(&cfg, logger, sr)
 	if err != nil {
 		return fmt.Errorf("failed to create power off workflow: %w", err)
 	}

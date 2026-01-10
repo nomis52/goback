@@ -10,12 +10,12 @@ import (
 func TestActivityID_Methods(t *testing.T) {
 	// Test valid ActivityID
 	id := ActivityID{
-		Module: "github.com/nomis52/goback/backup/activities",
+		Module: "github.com/nomis52/goback/workflows/backup",
 		Type:   "PowerOnPBSActivity",
 	}
 
 	t.Run("String", func(t *testing.T) {
-		expected := "github.com/nomis52/goback/backup/activities.PowerOnPBSActivity"
+		expected := "github.com/nomis52/goback/workflows/backup.PowerOnPBSActivity"
 		assert.Equal(t, expected, id.String())
 	})
 
@@ -39,7 +39,7 @@ func TestActivityID_Methods(t *testing.T) {
 
 	t.Run("Equal", func(t *testing.T) {
 		sameID := ActivityID{
-			Module: "github.com/nomis52/goback/backup/activities",
+			Module: "github.com/nomis52/goback/workflows/backup",
 			Type:   "PowerOnPBSActivity",
 		}
 		assert.True(t, id.Equal(sameID), "Identical IDs should be equal")
@@ -51,14 +51,14 @@ func TestActivityID_Methods(t *testing.T) {
 		assert.False(t, id.Equal(differentModule), "Different modules should not be equal")
 
 		differentType := ActivityID{
-			Module: "github.com/nomis52/goback/backup/activities",
+			Module: "github.com/nomis52/goback/workflows/backup",
 			Type:   "BackupTaskActivity",
 		}
 		assert.False(t, id.Equal(differentType), "Different types should not be equal")
 	})
 
 	t.Run("ShortString", func(t *testing.T) {
-		expected := "activities.PowerOnPBSActivity"
+		expected := "backup.PowerOnPBSActivity"
 		assert.Equal(t, expected, id.ShortString())
 
 		// Test with single component module
@@ -132,11 +132,11 @@ func TestActivityID_EdgeCases(t *testing.T) {
 
 	t.Run("DeepNestedModule", func(t *testing.T) {
 		deepID := ActivityID{
-			Module: "github.com/company/project/internal/services/backup/activities",
+			Module: "github.com/company/project/internal/workflows/backup",
 			Type:   "DeepTask",
 		}
-		assert.Equal(t, "activities.DeepTask", deepID.ShortString())
-		assert.Contains(t, deepID.String(), "internal/services/backup/activities.DeepTask")
+		assert.Equal(t, "backup.DeepTask", deepID.ShortString())
+		assert.Contains(t, deepID.String(), "internal/workflows/backup.DeepTask")
 	})
 }
 
@@ -145,12 +145,12 @@ func TestActivityID_RealWorldScenarios(t *testing.T) {
 	t.Run("PBSAutomationScenario", func(t *testing.T) {
 		// Simulate real PBS automation activities
 		powerOnID := ActivityID{
-			Module: "github.com/nomis52/goback/backup/activities",
+			Module: "github.com/nomis52/goback/workflows/backup",
 			Type:   "PowerOnPBSActivity",
 		}
 
 		backupID := ActivityID{
-			Module: "github.com/nomis52/goback/backup/activities",
+			Module: "github.com/nomis52/goback/workflows/backup",
 			Type:   "BackupVMsActivity",
 		}
 

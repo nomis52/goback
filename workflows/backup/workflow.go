@@ -1,5 +1,5 @@
 // Package backup provides workflow factories for backup-related operations.
-// It composes activities from the activities package into reusable workflows.
+// It composes activities into a reusable backup workflow.
 package backup
 
 import (
@@ -7,13 +7,12 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/nomis52/goback/backup/activities"
-	"github.com/nomis52/goback/config"
 	"github.com/nomis52/goback/clients/ipmiclient"
-	"github.com/nomis52/goback/logging"
-	"github.com/nomis52/goback/metrics"
 	"github.com/nomis52/goback/clients/pbsclient"
 	"github.com/nomis52/goback/clients/proxmoxclient"
+	"github.com/nomis52/goback/config"
+	"github.com/nomis52/goback/logging"
+	"github.com/nomis52/goback/metrics"
 	"github.com/nomis52/goback/statusreporter"
 	"github.com/nomis52/goback/workflow"
 )
@@ -32,10 +31,10 @@ func WithLoggerHook(hook logging.LoggerHook) WorkflowOption {
 	}
 }
 
-// NewBackupWorkflow creates a workflow that powers on PBS and performs backups.
+// NewWorkflow creates a workflow that powers on PBS and performs backups.
 // The workflow executes: PowerOnPBS → BackupDirs → BackupVMs
 // It does NOT power off PBS after completion.
-func NewBackupWorkflow(cfg *config.Config, logger *slog.Logger, statusReporter *statusreporter.StatusReporter, opts ...WorkflowOption) (workflow.Workflow, error) {
+func NewWorkflow(cfg *config.Config, logger *slog.Logger, statusReporter *statusreporter.StatusReporter, opts ...WorkflowOption) (workflow.Workflow, error) {
 	// Apply options
 	options := &workflowOptions{}
 	for _, opt := range opts {
@@ -73,56 +72,11 @@ func NewBackupWorkflow(cfg *config.Config, logger *slog.Logger, statusReporter *
 	}
 
 	// Add backup activities
-	powerOnPBS := &activities.PowerOnPBS{}
-	backupDirs := &activities.BackupDirs{}
-	backupVMs := &activities.BackupVMs{}
+	powerOnPBS := &PowerOnPBS{}
+	backupDirs := &BackupDirs{}
+	backupVMs := &BackupVMs{}
 
 	if err := o.AddActivity(powerOnPBS, backupDirs, backupVMs); err != nil {
-		return nil, fmt.Errorf("failed to add activities: %w", err)
-	}
-
-	return o, nil
-}
-
-// NewPowerOffWorkflow creates a workflow that gracefully powers off PBS.
-// The workflow executes: PowerOffPBS
-func NewPowerOffWorkflow(cfg *config.Config, logger *slog.Logger, statusReporter *statusreporter.StatusReporter, opts ...WorkflowOption) (workflow.Workflow, error) {
-	// Apply options
-	options := &workflowOptions{}
-	for _, opt := range opts {
-		opt(options)
-	}
-
-	// Create orchestrator options
-	orchOpts := []workflow.OrchestratorOption{
-		workflow.WithConfig(cfg),
-		workflow.WithLogger(logger),
-	}
-	if options.loggerHook != nil {
-		orchOpts = append(orchOpts, workflow.WithLogHook(options.loggerHook))
-	}
-
-	// Create orchestrator
-	o := workflow.NewOrchestrator(orchOpts...)
-
-	// Build and inject dependencies (logger will be wrapped by LoggerHook if provided)
-	deps, err := buildDeps(cfg, logger)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build dependencies: %w", err)
-	}
-
-	if err := o.Inject(
-		logger,
-		deps.ipmiController,
-		statusReporter,
-	); err != nil {
-		return nil, fmt.Errorf("failed to inject dependencies: %w", err)
-	}
-
-	// Add power off activity
-	powerOffPBS := &activities.PowerOffPBS{}
-
-	if err := o.AddActivity(powerOffPBS); err != nil {
 		return nil, fmt.Errorf("failed to add activities: %w", err)
 	}
 

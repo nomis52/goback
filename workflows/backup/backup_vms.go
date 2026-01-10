@@ -1,4 +1,4 @@
-package activities
+package backup
 
 import (
 	"context"
@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nomis52/goback/metrics"
 	"github.com/nomis52/goback/clients/proxmoxclient"
+	"github.com/nomis52/goback/metrics"
 	"github.com/nomis52/goback/statusreporter"
 )
 
@@ -42,7 +42,7 @@ func (a *BackupVMs) Init() error {
 }
 
 func (a *BackupVMs) Execute(ctx context.Context) error {
-	return RecordError(a, a.StatusReporter, func() error {
+	return statusreporter.RecordError(a, a.StatusReporter, func() error {
 		a.StatusReporter.SetStatus(a, "checking Proxmox version")
 
 		// Get and log Proxmox version

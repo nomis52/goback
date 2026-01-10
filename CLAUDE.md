@@ -26,7 +26,7 @@ go test ./orchestrator
 go test -v ./server/handlers
 
 # Run a single test
-go test -v -run TestBackupVMs ./backup/activities
+go test -v -run TestBackupVMs ./workflows/backup
 
 # Format code
 make fmt
@@ -100,7 +100,8 @@ The **runner** (server/runner/) prevents concurrent runs, tracks current status,
 ### Key Packages
 
 - `orchestrator/` - Dependency-resolved activity execution engine
-- `backup/activities/` - Concrete activities (PowerOnPBS, PowerOffPBS, BackupVMs, BackupDirs)
+- `workflows/backup/` - Backup workflow and activities (PowerOnPBS, BackupVMs, BackupDirs)
+- `workflows/poweroff/` - Power-off workflow and activity (PowerOffPBS)
 - `config/` - YAML configuration loading and validation
 - `clients/ipmiclient/` - IPMI controller for power management
 - `clients/pbsclient/` - PBS API client
@@ -108,6 +109,7 @@ The **runner** (server/runner/) prevents concurrent runs, tracks current status,
 - `clients/sshclient/` - SSH client for file-based backups
 - `metrics/` - VictoriaMetrics/Prometheus metric pushing
 - `logging/` - Structured logging (slog) with configurable output
+- `statusreporter/` - Activity status reporting with RecordError helper
 - `server/` - HTTP server, handlers, runner, cron trigger
 - `server/handlers/` - HTTP endpoint handlers (one file per endpoint)
 - `server/runner/` - Backup run execution and state management
@@ -176,11 +178,12 @@ See server/README.md for more details.
 
 ### Adding a New Activity
 
-1. Create struct in `activities/` with dependencies and config tags
+1. Create struct in appropriate workflow package (e.g., `workflows/backup/`) with dependencies and config tags
 2. Implement `Init()` for structural validation (check required fields, validate config)
 3. Implement `Execute(ctx)` for actual work (check runtime state of dependencies)
 4. Dependencies are auto-injected via struct fields (pointer to other activity types)
-5. Add to orchestrator in `cmd/cli/main.go` or server via `AddActivity()`
+5. Add to workflow in the workflow's `NewWorkflow()` factory function via `AddActivity()`
+6. Use `statusreporter.RecordError()` helper to wrap Execute logic for error status reporting
 
 ### Adding a New Client Package
 

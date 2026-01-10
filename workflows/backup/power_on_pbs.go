@@ -1,4 +1,4 @@
-package activities
+package backup
 
 import (
 	"context"
@@ -32,7 +32,7 @@ func (a *PowerOnPBS) Init() error {
 }
 
 func (a *PowerOnPBS) Execute(ctx context.Context) error {
-	return RecordError(a, a.StatusReporter, func() error {
+	return statusreporter.RecordError(a, a.StatusReporter, func() error {
 		a.StatusReporter.SetStatus(a, "checking PBS power status")
 
 		// Check current power status
