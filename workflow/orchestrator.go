@@ -365,7 +365,7 @@ func (o *Orchestrator) buildDependencyGraph() error {
 		o.logger.Debug("registered activity", "activity_id", id.String())
 
 		// Inject config values (pass the already-computed ID)
-		if err := o.injectConfig(activity, id); err != nil {
+		if err := o.injectFields(activity, id); err != nil {
 			o.logger.Error("config injection failed", "activity_id", id.String(), "error", err)
 			return fmt.Errorf("config injection failed for %s: %w", id.String(), err)
 		}
@@ -466,9 +466,9 @@ func (o *Orchestrator) buildDependencyGraph() error {
 	return nil
 }
 
-// injectConfig handles config and type injection for a single activity
+// injectFields handles config and type injection for a single activity
 // Optimized version that takes precomputed ActivityID to avoid redundant reflection
-func (o *Orchestrator) injectConfig(activity Activity, activityID ActivityID) error {
+func (o *Orchestrator) injectFields(activity Activity, activityID ActivityID) error {
 	activityValue := reflect.ValueOf(activity).Elem()
 	activityType := activityValue.Type()
 
