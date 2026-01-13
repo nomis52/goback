@@ -8,7 +8,6 @@ import (
 
 	"github.com/nomis52/goback/config"
 	"github.com/nomis52/goback/logging"
-	"github.com/nomis52/goback/statusreporter"
 	"github.com/nomis52/goback/workflow"
 	"github.com/nomis52/goback/workflows/backup"
 	"github.com/nomis52/goback/workflows/poweroff"
@@ -79,17 +78,14 @@ func run() error {
 		"config_path", args.ConfigPath,
 	)
 
-	// Create status reporter for tracking activity progress
-	sr := statusreporter.New(logger)
-
 	// Create backup workflow (PowerOnPBS → BackupDirs → BackupVMs)
-	backupWorkflow, err := backup.NewWorkflow(&cfg, logger, sr)
+	backupWorkflow, err := backup.NewWorkflow(&cfg, logger)
 	if err != nil {
 		return fmt.Errorf("failed to create backup workflow: %w", err)
 	}
 
 	// Create power off workflow (PowerOffPBS)
-	powerOffWorkflow, err := poweroff.NewWorkflow(&cfg, logger, sr)
+	powerOffWorkflow, err := poweroff.NewWorkflow(&cfg, logger)
 	if err != nil {
 		return fmt.Errorf("failed to create power off workflow: %w", err)
 	}

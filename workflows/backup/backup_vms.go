@@ -27,7 +27,7 @@ type BackupVMs struct {
 	Logger         *slog.Logger
 	PowerOnPBS     *PowerOnPBS
 	MetricsClient  *metrics.Client
-	StatusReporter *statusreporter.StatusReporter
+	StatusLine *statusreporter.StatusLine
 
 	// Configuration
 	BackupTimeout time.Duration `config:"proxmox.backup_timeout"`
@@ -42,8 +42,8 @@ func (a *BackupVMs) Init() error {
 }
 
 func (a *BackupVMs) Execute(ctx context.Context) error {
-	return statusreporter.RecordError(a, a.StatusReporter, func() error {
-		a.StatusReporter.SetStatus(a, "checking Proxmox version")
+	return statusreporter.RecordError(a.StatusLine, func() error {
+		a.StatusLine.Set("checking Proxmox version")
 
 		// Get and log Proxmox version
 		version, err := a.ProxmoxClient.Version()
@@ -53,7 +53,7 @@ func (a *BackupVMs) Execute(ctx context.Context) error {
 		}
 		a.Logger.Debug("Proxmox version", "version", version)
 
-		a.StatusReporter.SetStatus(a, "determining resources to backup")
+		a.StatusLine.Set("determining resources to backup")
 
 		// Determine which resources need to be backed up
 		resourcesToBackup, err := a.determineBackups(ctx)
@@ -64,11 +64,11 @@ func (a *BackupVMs) Execute(ctx context.Context) error {
 		a.Logger.Debug("Resources that need backup", "count", len(resourcesToBackup))
 
 		if len(resourcesToBackup) == 0 {
-			a.StatusReporter.SetStatus(a, "no resources need backup")
+			a.StatusLine.Set("no resources need backup")
 			return nil
 		}
 
-		a.StatusReporter.SetStatus(a, fmt.Sprintf("backing up %d resources", len(resourcesToBackup)))
+		a.StatusLine.Set(fmt.Sprintf("backing up %d resources", len(resourcesToBackup)))
 
 		// Use wait group to track all backup operations
 		var wg sync.WaitGroup
@@ -109,7 +109,7 @@ func (a *BackupVMs) Execute(ctx context.Context) error {
 			return fmt.Errorf(errMsg)
 		}
 
-		a.StatusReporter.SetStatus(a, "backups complete")
+		a.StatusLine.Set("backups complete")
 		return nil // All backups completed successfully!
 	})
 }

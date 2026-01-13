@@ -18,10 +18,10 @@ const (
 // PowerOnPBS manages the power state of the PBS host through IPMI
 type PowerOnPBS struct {
 	// Dependencies
-	Controller     *ipmiclient.IPMIController
-	PBSClient      *pbsclient.Client
-	Logger         *slog.Logger
-	StatusReporter *statusreporter.StatusReporter
+	Controller *ipmiclient.IPMIController
+	PBSClient  *pbsclient.Client
+	Logger     *slog.Logger
+	StatusLine *statusreporter.StatusLine
 
 	BootTimeout     time.Duration `config:"pbs.boot_timeout"`
 	ServiceWaitTime time.Duration `config:"pbs.service_wait_time"`
@@ -32,8 +32,8 @@ func (a *PowerOnPBS) Init() error {
 }
 
 func (a *PowerOnPBS) Execute(ctx context.Context) error {
-	return statusreporter.RecordError(a, a.StatusReporter, func() error {
-		a.StatusReporter.SetStatus(a, "checking PBS power status")
+	return statusreporter.RecordError(a.StatusLine, func() error {
+		a.StatusLine.Set("checking PBS power status")
 
 		// Check current power status
 		status, err := a.Controller.Status()
@@ -44,7 +44,7 @@ func (a *PowerOnPBS) Execute(ctx context.Context) error {
 
 		// If power is off, turn it on
 		if status == ipmiclient.PowerStateOff {
-			a.StatusReporter.SetStatus(a, "sending IPMI power on command")
+			a.StatusLine.Set("sending IPMI power on command")
 			if err := a.Controller.PowerOn(); err != nil {
 				a.Logger.Error("failed to power on PBS host", "error", err)
 				return fmt.Errorf("failed to power on PBS host: %w", err)
@@ -53,13 +53,13 @@ func (a *PowerOnPBS) Execute(ctx context.Context) error {
 			a.Logger.Debug("PBS host is already powered on", "status", status)
 			// Do an immediate ping check since we know it's powered on
 			if _, err := a.PBSClient.Ping(); err == nil {
-				a.StatusReporter.SetStatus(a, "PBS server is online")
+				a.StatusLine.Set("PBS server is online")
 				return nil // Success!
 			}
 		}
 
 		// Wait for PBS to be available
-		a.StatusReporter.SetStatus(a, "waiting for PBS server to become available")
+		a.StatusLine.Set("waiting for PBS server to become available")
 		ticker := time.NewTicker(pingCheckInterval)
 		defer ticker.Stop()
 
@@ -75,7 +75,7 @@ func (a *PowerOnPBS) Execute(ctx context.Context) error {
 				attempts++
 				_, err := a.PBSClient.Ping()
 				if err == nil {
-					a.StatusReporter.SetStatus(a, "PBS ping passed, waiting for PBS services to stabilize")
+					a.StatusLine.Set("PBS ping passed, waiting for PBS services to stabilize")
 					a.Logger.Debug("PBS ping successful", "attempts", attempts, "wait_time", a.ServiceWaitTime)
 
 					// Give PBS additional time for all services to fully start
@@ -83,7 +83,7 @@ func (a *PowerOnPBS) Execute(ctx context.Context) error {
 					case <-ctx.Done():
 						return fmt.Errorf("context cancelled while waiting for PBS services: %w", ctx.Err())
 					case <-time.After(a.ServiceWaitTime):
-						a.StatusReporter.SetStatus(a, "PBS server is online")
+						a.StatusLine.Set("PBS server is online")
 						return nil // Success!
 					}
 				}

@@ -34,9 +34,9 @@ const (
 // Runs after the PBS server is powered on
 type BackupDirs struct {
 	// Dependencies
-	Logger         *slog.Logger
-	PowerOnPBS     *PowerOnPBS
-	StatusReporter *statusreporter.StatusReporter
+	Logger     *slog.Logger
+	PowerOnPBS *PowerOnPBS
+	StatusLine *statusreporter.StatusLine
 
 	// Configuration
 	Files          config.FilesConfig `config:"files"`
@@ -87,17 +87,17 @@ func (a *BackupDirs) Execute(ctx context.Context) error {
 		return nil // nothing configured
 	}
 
-	return statusreporter.RecordError(a, a.StatusReporter, func() error {
+	return statusreporter.RecordError(a.StatusLine, func() error {
 		if a.sshClient == nil {
 			return ErrSSHClientNotInit
 		}
 
 		if len(a.Files.Sources) == 0 {
-			a.StatusReporter.SetStatus(a, "no directories to backup")
+			a.StatusLine.Set("no directories to backup")
 			return nil
 		}
 
-		a.StatusReporter.SetStatus(a, fmt.Sprintf("waiting for the PBS host to become available from %s", a.Files.Host))
+		a.StatusLine.Set(fmt.Sprintf("waiting for the PBS host to become available from %s", a.Files.Host))
 
 		// Test SSH connectivity before attempting backup
 		if err := a.waitForPBSHost(ctx); err != nil {
@@ -105,7 +105,7 @@ func (a *BackupDirs) Execute(ctx context.Context) error {
 			return err
 		}
 
-		a.StatusReporter.SetStatus(a, fmt.Sprintf("backing up %d directories", len(a.Files.Sources)))
+		a.StatusLine.Set(fmt.Sprintf("backing up %d directories", len(a.Files.Sources)))
 
 		stdout, stderr, err := a.backupAllDirs(a.Files.Sources)
 		if err != nil {
@@ -117,7 +117,7 @@ func (a *BackupDirs) Execute(ctx context.Context) error {
 			a.Logger.Warn("Backup stderr", "sources", a.Files.Sources, "stderr", stderr)
 		}
 
-		a.StatusReporter.SetStatus(a, "directory backup complete")
+		a.StatusLine.Set("directory backup complete")
 		return nil
 	})
 }

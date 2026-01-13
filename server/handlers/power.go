@@ -117,11 +117,12 @@ func (h *PowerOffHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create status reporter
-	sr := statusreporter.New(h.provider.Logger())
+	// Create status collection
+	statusCollection := statusreporter.NewStatusCollection()
 
 	// Create power off workflow
-	powerOffWorkflow, err := poweroff.NewWorkflow(cfg, h.provider.Logger(), sr)
+	powerOffWorkflow, err := poweroff.NewWorkflow(cfg, h.provider.Logger(),
+		poweroff.WithStatusCollection(statusCollection))
 	if err != nil {
 		h.logger.Error("failed to create power off workflow", "error", err)
 		http.Error(w, "Failed to create power off workflow", http.StatusInternalServerError)

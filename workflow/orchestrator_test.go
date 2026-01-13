@@ -150,12 +150,11 @@ func TestOrchestrator_FailureHandling(t *testing.T) {
 		logger := &MockLogger{}
 
 		orchestrator := NewOrchestrator(WithConfig(config))
-		err := orchestrator.Inject(logger)
-		require.NoError(t, err)
+		Provide(orchestrator, Shared(logger))
 
 		activity := &DatabaseSetupActivity{}
 
-		err = orchestrator.AddActivity(activity)
+		err := orchestrator.AddActivity(activity)
 		require.NoError(t, err)
 
 		err = orchestrator.Execute(context.Background())
@@ -216,13 +215,12 @@ func TestOrchestrator_DependencyInjection(t *testing.T) {
 		WithConfig(config),
 	)
 
-	err := orchestrator.Inject(logger)
-	require.NoError(t, err)
+	Provide(orchestrator, Shared(logger))
 
 	setup := &DatabaseSetupActivity{}
 	migration := &DataMigrationActivity{}
 
-	err = orchestrator.AddActivity(setup, migration)
+	err := orchestrator.AddActivity(setup, migration)
 	require.NoError(t, err)
 
 	err = orchestrator.Execute(context.Background())
@@ -256,29 +254,28 @@ func TestOrchestrator_ImmediateResultAvailability(t *testing.T) {
 	assert.Nil(t, result.Error)
 }
 
-// TestOrchestrator_LogCapture tests that logs are captured via LoggerHook
+// TestOrchestrator_LogCapture tests that logs are captured via logger factory
 func TestOrchestrator_LogCapture(t *testing.T) {
-	// Create collector and hook using actual logging package
+	// Create collector using actual logging package
 	collector := logging.NewLogCollector()
-	hook := logging.NewCapturingLoggerHook(collector)
 
 	// Create base logger
 	baseLogger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
 	}))
 
-	// Create orchestrator with logger and hook
-	orchestrator := NewOrchestrator(
-		WithLogHook(hook),
-	)
+	// Create orchestrator
+	orchestrator := NewOrchestrator()
 
-	// Inject the base logger so activities can receive it
-	err := orchestrator.Inject(baseLogger)
-	require.NoError(t, err)
+	// Register logger factory that captures logs per activity
+	Provide(orchestrator, func(id ActivityID) *slog.Logger {
+		handler := logging.NewCapturingHandler(baseLogger.Handler(), collector, id.String())
+		return slog.New(handler)
+	})
 
 	// Create and add logging activity
 	activity := &LoggingActivity{}
-	err = orchestrator.AddActivity(activity)
+	err := orchestrator.AddActivity(activity)
 	require.NoError(t, err)
 
 	// Execute

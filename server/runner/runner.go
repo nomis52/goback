@@ -64,11 +64,11 @@ type Runner struct {
 	configProvider ConfigProvider
 	store          StateStore
 
-	mu             sync.Mutex
-	runStatus      RunStatus
-	workflow       workflow.Workflow // Current or last run's workflow
-	statusReporter *statusreporter.StatusReporter // Current run's status reporter
-	logCollector   *logging.LogCollector // Captures logs during workflow execution
+	mu               sync.Mutex
+	runStatus        RunStatus
+	workflow         workflow.Workflow                 // Current or last run's workflow
+	statusCollection *statusreporter.StatusCollection // Current run's status collection
+	logCollector     *logging.LogCollector            // Captures logs during workflow execution
 }
 
 // ConfigProvider provides access to the current configuration.
@@ -164,14 +164,14 @@ func (r *Runner) GetResults() map[workflow.ActivityID]*workflow.Result {
 
 // CurrentStatuses returns the current activity statuses during a run.
 // Returns nil if no run is currently in progress.
-func (r *Runner) CurrentStatuses() map[string]string {
+func (r *Runner) CurrentStatuses() map[workflow.ActivityID]string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if r.statusReporter == nil {
+	if r.statusCollection == nil {
 		return nil
 	}
-	return r.statusReporter.CurrentStatuses()
+	return r.statusCollection.All()
 }
 
 // tryStart attempts to transition from idle to running.
@@ -227,10 +227,10 @@ func (r *Runner) buildActivityExecutions() []ActivityExecution {
 	results := r.workflow.GetAllResults()
 	logs := r.logCollector.GetAllLogs()
 
-	// Get current status messages if reporter is available
-	var statuses map[string]string
-	if r.statusReporter != nil {
-		statuses = r.statusReporter.CurrentStatuses()
+	// Get current status messages if collection is available
+	var statuses map[workflow.ActivityID]string
+	if r.statusCollection != nil {
+		statuses = r.statusCollection.All()
 	}
 
 	executions := make([]ActivityExecution, 0, len(results))
@@ -250,7 +250,7 @@ func (r *Runner) buildActivityExecutions() []ActivityExecution {
 
 		// Add status message for this activity
 		if statuses != nil {
-			if statusMsg, exists := statuses[id.String()]; exists {
+			if statusMsg, exists := statuses[id]; exists {
 				exec.Status = statusMsg
 			}
 		}
@@ -277,26 +277,30 @@ func (r *Runner) executeRun(ctx context.Context) error {
 		return errors.New("no configuration available")
 	}
 
+	// Create status collection for this run
+	statusCollection := statusreporter.NewStatusCollection()
+
 	// Create log collector for this run
 	logCollector := logging.NewLogCollector()
 
-	// Create logger hook that captures logs (base logger comes from orchestrator)
-	loggerHook := logging.NewCapturingLoggerHook(logCollector)
-
-	// Create status reporter
-	sr, err := r.createStatusReporter()
-	if err != nil {
-		return fmt.Errorf("failed to create status reporter: %w", err)
+	// Create logger factory that captures logs per activity
+	loggerFactory := func(id workflow.ActivityID) *slog.Logger {
+		handler := logging.NewCapturingHandler(r.logger.Handler(), logCollector, id.String())
+		return slog.New(handler)
 	}
 
 	// Create backup workflow (PowerOnPBS → BackupDirs → BackupVMs) with log capturing
-	backupWorkflow, err := backup.NewWorkflow(cfg, r.logger, sr, backup.WithLoggerHook(loggerHook))
+	backupWorkflow, err := backup.NewWorkflow(cfg, r.logger,
+		backup.WithStatusCollection(statusCollection),
+		backup.WithLoggerFactory(loggerFactory))
 	if err != nil {
 		return fmt.Errorf("failed to create backup workflow: %w", err)
 	}
 
 	// Create power off workflow (PowerOffPBS) with log capturing
-	powerOffWorkflow, err := poweroff.NewWorkflow(cfg, r.logger, sr, poweroff.WithLoggerHook(loggerHook))
+	powerOffWorkflow, err := poweroff.NewWorkflow(cfg, r.logger,
+		poweroff.WithStatusCollection(statusCollection),
+		poweroff.WithLoggerFactory(loggerFactory))
 	if err != nil {
 		return fmt.Errorf("failed to create power off workflow: %w", err)
 	}
@@ -304,10 +308,10 @@ func (r *Runner) executeRun(ctx context.Context) error {
 	// Compose workflows to run backup then power off
 	composedWorkflow := workflow.Compose(backupWorkflow, powerOffWorkflow)
 
-	// Store workflow, status reporter, and log collector references for result/status/log access
+	// Store workflow, status collection, and log collector references for result/status/log access
 	r.mu.Lock()
 	r.workflow = composedWorkflow
-	r.statusReporter = sr
+	r.statusCollection = statusCollection
 	r.logCollector = logCollector
 	r.mu.Unlock()
 
@@ -317,8 +321,4 @@ func (r *Runner) executeRun(ctx context.Context) error {
 	}
 
 	return nil
-}
-
-func (r *Runner) createStatusReporter() (*statusreporter.StatusReporter, error) {
-	return statusreporter.New(r.logger), nil
 }

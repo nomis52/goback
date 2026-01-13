@@ -12,7 +12,7 @@ import (
 // Step2 is the second test activity that runs after Step1 completes.
 type Step2 struct {
 	Logger         *slog.Logger
-	StatusReporter *statusreporter.StatusReporter
+	StatusLine *statusreporter.StatusLine
 	_              *Step1 // Unnamed dependency ensures Step1 runs first
 }
 
@@ -23,24 +23,24 @@ func (a *Step2) Init() error {
 
 // Execute performs the activity work.
 func (a *Step2) Execute(ctx context.Context) error {
-	return statusreporter.RecordError(a, a.StatusReporter, func() error {
+	return statusreporter.RecordError(a.StatusLine, func() error {
 		a.Logger.Info("starting step 2")
 
-		a.StatusReporter.SetStatus(a, "starting step 2")
+		a.StatusLine.Set("starting step 2")
 		select {
 		case <-time.After(2 * time.Second):
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 
-		a.StatusReporter.SetStatus(a, "halfway through step 2")
+		a.StatusLine.Set("halfway through step 2")
 		select {
 		case <-time.After(2 * time.Second):
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 
-		a.StatusReporter.SetStatus(a, "completed step 2")
+		a.StatusLine.Set("completed step 2")
 		return nil
 	})
 }

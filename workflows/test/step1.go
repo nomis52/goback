@@ -12,7 +12,7 @@ import (
 // Step1 is the first test activity that simulates work with status updates and sleeps.
 type Step1 struct {
 	Logger         *slog.Logger
-	StatusReporter *statusreporter.StatusReporter
+	StatusLine *statusreporter.StatusLine
 }
 
 // Init performs structural validation.
@@ -22,24 +22,24 @@ func (a *Step1) Init() error {
 
 // Execute performs the activity work.
 func (a *Step1) Execute(ctx context.Context) error {
-	return statusreporter.RecordError(a, a.StatusReporter, func() error {
+	return statusreporter.RecordError(a.StatusLine, func() error {
 		a.Logger.Info("starting step 1")
 
-		a.StatusReporter.SetStatus(a, "starting step 1")
+		a.StatusLine.Set("starting step 1")
 		select {
 		case <-time.After(2 * time.Second):
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 
-		a.StatusReporter.SetStatus(a, "halfway through step 1")
+		a.StatusLine.Set("halfway through step 1")
 		select {
 		case <-time.After(2 * time.Second):
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 
-		a.StatusReporter.SetStatus(a, "completed step 1")
+		a.StatusLine.Set("completed step 1")
 		return nil
 	})
 }

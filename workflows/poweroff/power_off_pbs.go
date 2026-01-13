@@ -65,9 +65,9 @@ const (
 // with graceful ACPI shutdown as primary method and hard power-off as fallback.
 type PowerOffPBS struct {
 	// Dependencies
-	Controller     *ipmiclient.IPMIController
-	Logger         *slog.Logger
-	StatusReporter *statusreporter.StatusReporter
+	Controller *ipmiclient.IPMIController
+	Logger     *slog.Logger
+	StatusLine *statusreporter.StatusLine
 
 	// Configuration
 	ShutdownTimeout time.Duration `config:"pbs.shutdown_timeout"`
@@ -89,35 +89,35 @@ func (a *PowerOffPBS) Init() error {
 // This approach provides maximum reliability by using only hardware-level
 // IPMI commands, eliminating network and SSH dependencies.
 func (a *PowerOffPBS) Execute(ctx context.Context) error {
-	return statusreporter.RecordError(a, a.StatusReporter, func() error {
-		a.StatusReporter.SetStatus(a, "checking PBS power status")
+	return statusreporter.RecordError(a.StatusLine, func() error {
+		a.StatusLine.Set("checking PBS power status")
 
 		// Check current power status first
 		status, err := a.Controller.Status()
 		if err != nil {
 			a.Logger.Warn("failed to get initial power status", "error", err)
 		} else if status == ipmiclient.PowerStateOff {
-			a.StatusReporter.SetStatus(a, "PBS server already powered off")
+			a.StatusLine.Set("PBS server already powered off")
 			return nil
 		}
 
 		// Attempt graceful shutdown via IPMI ACPI signal
-		a.StatusReporter.SetStatus(a, "sending graceful shutdown signal")
+		a.StatusLine.Set("sending graceful shutdown signal")
 		if err := a.gracefulIPMIShutdown(); err != nil {
 			a.Logger.Warn("graceful IPMI shutdown failed, falling back to hard power-off", "error", err)
-			a.StatusReporter.SetStatus(a, "forcing hard power off")
+			a.StatusLine.Set("forcing hard power off")
 			return a.hardIPMIPowerOff()
 		}
 
 		// Wait for system to shutdown by monitoring IPMI power status
-		a.StatusReporter.SetStatus(a, "waiting for PBS server to shut down")
+		a.StatusLine.Set("waiting for PBS server to shut down")
 		if err := a.waitForShutdownViaIPMI(ctx); err != nil {
 			a.Logger.Warn("graceful shutdown timed out, forcing hard power-off via IPMI", "error", err)
-			a.StatusReporter.SetStatus(a, "forcing hard power off")
+			a.StatusLine.Set("forcing hard power off")
 			return a.hardIPMIPowerOff()
 		}
 
-		a.StatusReporter.SetStatus(a, "PBS server powered off")
+		a.StatusLine.Set("PBS server powered off")
 		return nil
 	})
 }

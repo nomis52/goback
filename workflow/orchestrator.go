@@ -8,8 +8,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/nomis52/goback/logging"
 )
 
 // Orchestrator manages the execution of activities with dependency resolution.
@@ -26,11 +24,9 @@ type Orchestrator struct {
 	config interface{}
 	logger *slog.Logger
 
-	// Optional hook for creating activity-specific loggers
-	loggerHook logging.LoggerHook
-
-	// Dependency injection map: type -> instance
-	injectedTypes map[reflect.Type]interface{}
+	// Factory-based dependency injection: type -> factory function
+	// Factories create dependency instances during injection
+	factories map[reflect.Type]factoryEntry
 
 	// Core data structures using ActivityID as primary key
 	activityMap     map[ActivityID]Activity      // Primary storage for activities
@@ -39,6 +35,40 @@ type Orchestrator struct {
 	resultMap       map[ActivityID]*Result       // activity ID -> result (protected by mutex)
 
 	mu sync.RWMutex
+}
+
+// Factory creates a dependency instance for a specific activity.
+// The activityID parameter can be used to create activity-specific instances,
+// or ignored to create shared instances.
+//
+// Example - Shared dependency:
+//
+//	Shared(pbsClient)  // Helper for: func(_ ActivityID) *pbsclient.Client { return pbsClient }
+//
+// Example - Per-activity dependency:
+//
+//	func(id ActivityID) *slog.Logger {
+//	    return logger.With(slog.String("activity", id.String()))
+//	}
+type Factory[T any] func(activityID ActivityID) T
+
+// Shared creates a factory that returns the same instance for all activities.
+// This is a convenience helper for the common case of shared dependencies.
+//
+// Example:
+//
+//	o.Provide(Shared(ipmiController))
+//	o.Provide(Shared(pbsClient))
+func Shared[T any](instance T) Factory[T] {
+	return func(_ ActivityID) T {
+		return instance
+	}
+}
+
+// factoryEntry stores a type-erased factory for runtime use
+type factoryEntry struct {
+	outputType reflect.Type
+	fn         func(ActivityID) any
 }
 
 // OrchestratorOption is a function that configures an Orchestrator
@@ -58,18 +88,11 @@ func WithConfig(config interface{}) OrchestratorOption {
 	}
 }
 
-// WithLogHook sets a custom logger hook for creating activity-specific loggers
-func WithLogHook(hook logging.LoggerHook) OrchestratorOption {
-	return func(o *Orchestrator) {
-		o.loggerHook = hook
-	}
-}
-
 // NewOrchestrator creates a new orchestrator instance with optional configuration
 func NewOrchestrator(opts ...OrchestratorOption) *Orchestrator {
 	o := &Orchestrator{
 		logger:          slog.Default().With("component", "orchestrator"),
-		injectedTypes:   make(map[reflect.Type]interface{}),
+		factories:       make(map[reflect.Type]factoryEntry),
 		activityMap:     make(map[ActivityID]Activity),
 		dependencyMap:   make(map[ActivityID][]ActivityID),
 		completionChans: make(map[ActivityID]chan struct{}),
@@ -84,34 +107,35 @@ func NewOrchestrator(opts ...OrchestratorOption) *Orchestrator {
 	return o
 }
 
-// Inject adds typed dependencies for injection into activity fields.
+// Provide registers a factory for creating dependencies of type T.
+// The factory's return type determines which activity fields it satisfies.
+// If multiple factories are registered for the same type, the last one wins.
 //
-// BEHAVIOR:
-// - Dependencies are matched by exact type to activity struct fields
-// - Cannot inject the same type twice (returns error)
-// - Must be called before Execute() - dependencies are injected during execution setup
-// - Activities with missing dependencies will cause Execute() to fail
+// Example - Shared dependency:
 //
-// EXAMPLE:
+//	workflow.Provide(o, workflow.Shared(ipmiController))
+//	workflow.Provide(o, workflow.Shared(pbsClient))
 //
-//	logger := &Logger{}
-//	orchestrator.Inject(logger) // Injects into fields of type *Logger
-func (o *Orchestrator) Inject(deps ...interface{}) error {
-	for _, dep := range deps {
-		if dep == nil {
-			o.logger.Warn("attempted to inject nil dependency")
-			continue
-		}
+// Example - Per-activity dependency:
+//
+//	workflow.Provide(o, func(id workflow.ActivityID) *slog.Logger {
+//	    return logger.With(slog.String("activity", id.String()))
+//	})
+func Provide[T any](o *Orchestrator, factory Factory[T]) {
+	var zero T
+	outputType := reflect.TypeOf(zero)
 
-		depType := reflect.TypeOf(dep)
-		if _, exists := o.injectedTypes[depType]; exists {
-			return fmt.Errorf("dependency type %s already injected", depType.String())
-		}
-
-		o.injectedTypes[depType] = dep
-		o.logger.Debug("dependency injected", "type", depType.String())
+	// Type-erase the factory for storage
+	erasedFactory := func(activityID ActivityID) any {
+		return factory(activityID)
 	}
-	return nil
+
+	o.factories[outputType] = factoryEntry{
+		outputType: outputType,
+		fn:         erasedFactory,
+	}
+
+	o.logger.Debug("registered factory", "type", outputType.String())
 }
 
 // AddActivity adds one or more activities to the orchestrator.
@@ -393,16 +417,16 @@ func (o *Orchestrator) buildDependencyGraph() error {
 				continue
 			}
 
-			// Handle activity dependency injection (only if not already injected via type injection)
+			// Handle activity dependency injection (only if not already provided via factory)
 			if field.Type.Kind() == reflect.Ptr {
 				pointedType := field.Type.Elem()
-				// Skip if this type was already injected via type injection
-				if _, alreadyInjected := o.injectedTypes[field.Type]; alreadyInjected {
-					o.logger.Debug("skipping activity dependency - already injected via type injection", "activity_id", id.String(), "field", field.Name)
+				// Skip if this type was already provided via factory
+				if _, hasFactory := o.factories[field.Type]; hasFactory {
+					o.logger.Debug("skipping activity dependency - already provided via factory", "activity_id", id.String(), "field", field.Name)
 					continue
 				}
-				if _, alreadyInjected := o.injectedTypes[pointedType]; alreadyInjected {
-					o.logger.Debug("skipping activity dependency - pointed type already injected", "activity_id", id.String(), "field", field.Name)
+				if _, hasFactory := o.factories[pointedType]; hasFactory {
+					o.logger.Debug("skipping activity dependency - pointed type already provided via factory", "activity_id", id.String(), "field", field.Name)
 					continue
 				}
 				// Use map lookup for dependency resolution (O(1))
@@ -491,43 +515,26 @@ func (o *Orchestrator) injectFields(activity Activity, activityID ActivityID) er
 			continue
 		}
 
-		// Handle type injection for non-activity dependencies
-		if injectedValue, exists := o.injectedTypes[field.Type]; exists {
-			// Special handling for *slog.Logger: use LoggerHook if available
-			if field.Type == reflect.TypeOf((*slog.Logger)(nil)) {
-				if o.loggerHook != nil {
-					// Use hook to wrap the injected logger for this activity
-					injectedLogger := injectedValue.(*slog.Logger)
-					activityLogger := o.loggerHook.LoggerForActivity(injectedLogger, activityID.String())
-					o.logger.Debug("injecting activity-specific logger via hook", "activity_id", activityID.String(), "field", field.Name)
-					fieldValue.Set(reflect.ValueOf(activityLogger))
-					continue
-				}
+		// Handle non-activity type dependencies via factories
+		if factoryEntry, hasFactory := o.factories[field.Type]; hasFactory {
+			// Call factory to create instance for this activity
+			instance := factoryEntry.fn(activityID)
+
+			o.logger.Debug("injecting factory dependency",
+				"activity_id", activityID.String(),
+				"field", field.Name,
+				"type", field.Type.String())
+
+			// Allow nil values from factories
+			if instance != nil {
+				fieldValue.Set(reflect.ValueOf(instance))
 			}
-			// Normal type injection (including plain logger when no hook)
-			o.logger.Debug("injecting type dependency", "activity_id", activityID.String(), "field", field.Name, "type", field.Type.String())
-			fieldValue.Set(reflect.ValueOf(injectedValue))
 			continue
 		}
 
-		// Handle pointer type injection
-		if field.Type.Kind() == reflect.Ptr {
-			if injectedValue, exists := o.injectedTypes[field.Type]; exists {
-				o.logger.Debug("injecting pointer type dependency", "activity_id", activityID.String(), "field", field.Name, "type", field.Type.String())
-				fieldValue.Set(reflect.ValueOf(injectedValue))
-				continue
-			}
-			// Also check if we have the pointed-to type
-			pointedType := field.Type.Elem()
-			if injectedValue, exists := o.injectedTypes[pointedType]; exists {
-				o.logger.Debug("injecting pointed-to type dependency", "activity_id", activityID.String(), "field", field.Name, "type", pointedType.String())
-				// Create a pointer to the injected value
-				injectedPtr := reflect.New(pointedType)
-				injectedPtr.Elem().Set(reflect.ValueOf(injectedValue))
-				fieldValue.Set(injectedPtr)
-				continue
-			}
-		}
+		// If no factory registered, field remains uninitialized (zero value)
+		// All dependencies must have a factory registered via Provide()
+		// Factories can return nil for optional dependencies
 	}
 
 	return nil

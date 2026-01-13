@@ -238,7 +238,7 @@ func (s *Server) GetResults() map[workflow.ActivityID]*workflow.Result {
 }
 
 // CurrentStatuses returns the current activity statuses by delegating to the runner.
-func (s *Server) CurrentStatuses() map[string]string {
+func (s *Server) CurrentStatuses() map[workflow.ActivityID]string {
 	return s.runner.CurrentStatuses()
 }
 

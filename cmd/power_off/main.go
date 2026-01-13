@@ -8,7 +8,6 @@ import (
 
 	"github.com/nomis52/goback/config"
 	"github.com/nomis52/goback/logging"
-	"github.com/nomis52/goback/statusreporter"
 	"github.com/nomis52/goback/workflows/poweroff"
 )
 
@@ -60,11 +59,8 @@ func run() error {
 
 	logger.Info("power_off utility started", "config_path", args.ConfigPath)
 
-	// Create status reporter for activity status tracking
-	statusReporter := statusreporter.New(logger)
-
 	// Create power-off workflow
-	workflow, err := poweroff.NewWorkflow(&cfg, logger, statusReporter)
+	workflow, err := poweroff.NewWorkflow(&cfg, logger)
 	if err != nil {
 		return fmt.Errorf("failed to create power-off workflow: %w", err)
 	}
