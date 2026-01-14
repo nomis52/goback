@@ -49,7 +49,7 @@ import (
 	"time"
 
 	"github.com/nomis52/goback/clients/ipmiclient"
-	"github.com/nomis52/goback/statusreporter"
+	"github.com/nomis52/goback/activity"
 )
 
 const (
@@ -67,7 +67,7 @@ type PowerOffPBS struct {
 	// Dependencies
 	Controller *ipmiclient.IPMIController
 	Logger     *slog.Logger
-	StatusLine *statusreporter.StatusLine
+	StatusLine *activity.StatusLine
 
 	// Configuration
 	ShutdownTimeout time.Duration `config:"pbs.shutdown_timeout"`
@@ -89,7 +89,7 @@ func (a *PowerOffPBS) Init() error {
 // This approach provides maximum reliability by using only hardware-level
 // IPMI commands, eliminating network and SSH dependencies.
 func (a *PowerOffPBS) Execute(ctx context.Context) error {
-	return statusreporter.RecordError(a.StatusLine, func() error {
+	return activity.CaptureError(a.StatusLine, func() error {
 		a.StatusLine.Set("checking PBS power status")
 
 		// Check current power status first

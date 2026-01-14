@@ -13,7 +13,7 @@ import (
 	"github.com/nomis52/goback/clients/sshclient"
 	"github.com/nomis52/goback/config"
 	"github.com/nomis52/goback/metrics"
-	"github.com/nomis52/goback/statusreporter"
+	"github.com/nomis52/goback/activity"
 )
 
 var (
@@ -36,7 +36,7 @@ type BackupDirs struct {
 	// Dependencies
 	Logger     *slog.Logger
 	PowerOnPBS *PowerOnPBS
-	StatusLine *statusreporter.StatusLine
+	StatusLine *activity.StatusLine
 
 	// Configuration
 	Files          config.FilesConfig `config:"files"`
@@ -87,7 +87,7 @@ func (a *BackupDirs) Execute(ctx context.Context) error {
 		return nil // nothing configured
 	}
 
-	return statusreporter.RecordError(a.StatusLine, func() error {
+	return activity.CaptureError(a.StatusLine, func() error {
 		if a.sshClient == nil {
 			return ErrSSHClientNotInit
 		}

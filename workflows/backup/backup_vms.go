@@ -9,7 +9,7 @@ import (
 
 	"github.com/nomis52/goback/clients/proxmoxclient"
 	"github.com/nomis52/goback/metrics"
-	"github.com/nomis52/goback/statusreporter"
+	"github.com/nomis52/goback/activity"
 )
 
 const (
@@ -27,7 +27,7 @@ type BackupVMs struct {
 	Logger         *slog.Logger
 	PowerOnPBS     *PowerOnPBS
 	MetricsClient  *metrics.Client
-	StatusLine *statusreporter.StatusLine
+	StatusLine *activity.StatusLine
 
 	// Configuration
 	BackupTimeout time.Duration `config:"proxmox.backup_timeout"`
@@ -42,7 +42,7 @@ func (a *BackupVMs) Init() error {
 }
 
 func (a *BackupVMs) Execute(ctx context.Context) error {
-	return statusreporter.RecordError(a.StatusLine, func() error {
+	return activity.CaptureError(a.StatusLine, func() error {
 		a.StatusLine.Set("checking Proxmox version")
 
 		// Get and log Proxmox version

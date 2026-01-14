@@ -8,7 +8,7 @@ import (
 
 	"github.com/nomis52/goback/clients/ipmiclient"
 	"github.com/nomis52/goback/clients/pbsclient"
-	"github.com/nomis52/goback/statusreporter"
+	"github.com/nomis52/goback/activity"
 )
 
 const (
@@ -21,7 +21,7 @@ type PowerOnPBS struct {
 	Controller *ipmiclient.IPMIController
 	PBSClient  *pbsclient.Client
 	Logger     *slog.Logger
-	StatusLine *statusreporter.StatusLine
+	StatusLine *activity.StatusLine
 
 	BootTimeout     time.Duration `config:"pbs.boot_timeout"`
 	ServiceWaitTime time.Duration `config:"pbs.service_wait_time"`
@@ -32,7 +32,7 @@ func (a *PowerOnPBS) Init() error {
 }
 
 func (a *PowerOnPBS) Execute(ctx context.Context) error {
-	return statusreporter.RecordError(a.StatusLine, func() error {
+	return activity.CaptureError(a.StatusLine, func() error {
 		a.StatusLine.Set("checking PBS power status")
 
 		// Check current power status

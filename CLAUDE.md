@@ -109,7 +109,7 @@ The **runner** (server/runner/) prevents concurrent runs, tracks current status,
 - `clients/sshclient/` - SSH client for file-based backups
 - `metrics/` - VictoriaMetrics/Prometheus metric pushing
 - `logging/` - Structured logging (slog) with configurable output
-- `statusreporter/` - Activity status reporting with RecordError helper
+- `activity/` - Activity status reporting with CaptureError helper
 - `server/` - HTTP server, handlers, runner, cron trigger
 - `server/handlers/` - HTTP endpoint handlers (one file per endpoint)
 - `server/runner/` - Backup run execution and state management
@@ -183,7 +183,7 @@ See server/README.md for more details.
 3. Implement `Execute(ctx)` for actual work (check runtime state of dependencies)
 4. Dependencies are auto-injected via struct fields (pointer to other activity types)
 5. Add to workflow in the workflow's `NewWorkflow()` factory function via `AddActivity()`
-6. Use `statusreporter.RecordError()` helper to wrap Execute logic for error status reporting
+6. Use `activity.CaptureError()` helper to wrap Execute logic for error status reporting
 
 ### Adding a New Client Package
 

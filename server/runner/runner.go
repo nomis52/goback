@@ -47,7 +47,7 @@ import (
 
 	"github.com/nomis52/goback/config"
 	"github.com/nomis52/goback/logging"
-	"github.com/nomis52/goback/statusreporter"
+	"github.com/nomis52/goback/activity"
 	"github.com/nomis52/goback/workflow"
 	"github.com/nomis52/goback/workflows/backup"
 	"github.com/nomis52/goback/workflows/poweroff"
@@ -67,7 +67,7 @@ type Runner struct {
 	mu               sync.Mutex
 	runStatus        RunStatus
 	workflow         workflow.Workflow                 // Current or last run's workflow
-	statusCollection *statusreporter.StatusCollection // Current run's status collection
+	statusCollection *activity.StatusHandler // Current run's status collection
 	logCollector     *logging.LogCollector            // Captures logs during workflow execution
 }
 
@@ -278,7 +278,7 @@ func (r *Runner) executeRun(ctx context.Context) error {
 	}
 
 	// Create status collection for this run
-	statusCollection := statusreporter.NewStatusCollection()
+	statusCollection := activity.NewStatusHandler()
 
 	// Create log collector for this run
 	logCollector := logging.NewLogCollector()

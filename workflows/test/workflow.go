@@ -5,7 +5,7 @@ package test
 import (
 	"log/slog"
 
-	"github.com/nomis52/goback/statusreporter"
+	"github.com/nomis52/goback/activity"
 	"github.com/nomis52/goback/workflow"
 )
 
@@ -14,7 +14,7 @@ type WorkflowOption func(*workflowOptions)
 
 type workflowOptions struct {
 	loggerFactory    workflow.Factory[*slog.Logger]
-	statusCollection *statusreporter.StatusCollection
+	statusCollection *activity.StatusHandler
 }
 
 // WithLoggerFactory sets a logger factory for creating activity-specific loggers.
@@ -26,7 +26,7 @@ func WithLoggerFactory(factory workflow.Factory[*slog.Logger]) WorkflowOption {
 
 // WithStatusCollection sets a status collection for tracking activity status.
 // If not provided, status updates are only logged.
-func WithStatusCollection(collection *statusreporter.StatusCollection) WorkflowOption {
+func WithStatusCollection(collection *activity.StatusHandler) WorkflowOption {
 	return func(opts *workflowOptions) {
 		opts.statusCollection = collection
 	}
@@ -49,8 +49,8 @@ func NewWorkflow(logger *slog.Logger, opts ...WorkflowOption) (workflow.Workflow
 	workflow.Provide(o, options.loggerFactory)
 
 	// StatusLine factory (per-activity)
-	workflow.Provide(o, func(id workflow.ActivityID) *statusreporter.StatusLine {
-		return statusreporter.NewStatusLine(id, logger, options.statusCollection)
+	workflow.Provide(o, func(id workflow.ActivityID) *activity.StatusLine {
+		return activity.NewStatusLine(id, logger, options.statusCollection)
 	})
 
 	step1 := &Step1{}

@@ -7,7 +7,7 @@ import (
 
 	"github.com/nomis52/goback/clients/ipmiclient"
 	"github.com/nomis52/goback/config"
-	"github.com/nomis52/goback/statusreporter"
+	"github.com/nomis52/goback/activity"
 	"github.com/nomis52/goback/workflows/poweroff"
 )
 
@@ -118,7 +118,7 @@ func (h *PowerOffHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create status collection
-	statusCollection := statusreporter.NewStatusCollection()
+	statusCollection := activity.NewStatusHandler()
 
 	// Create power off workflow
 	powerOffWorkflow, err := poweroff.NewWorkflow(cfg, h.provider.Logger(),
