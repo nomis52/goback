@@ -56,6 +56,8 @@ func (s *RunState) UnmarshalJSON(data []byte) error {
 type RunStatus struct {
 	// State is the current state of the run.
 	State RunState `json:"state"`
+	// Workflows is the list of workflows that were/are being executed.
+	Workflows []string `json:"workflows,omitempty"`
 	// StartedAt is when the run started. Nil if no run has occurred.
 	StartedAt *time.Time `json:"started_at,omitempty"`
 	// EndedAt is when the run ended. Nil if run is in progress or no run has occurred.

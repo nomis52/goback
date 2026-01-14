@@ -887,7 +887,11 @@
             detail.textContent = 'Starting backup...';
 
             try {
-                const resp = await fetch('/run', { method: 'POST' });
+                const resp = await fetch('/run', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({workflows: ['backup', 'poweroff']})
+                });
                 if (resp.status === 202) {
                     detail.textContent = 'Backup started successfully';
                     detail.style.color = 'var(--accent-green)';

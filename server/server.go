@@ -47,12 +47,16 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/nomis52/goback/config"
+	"github.com/nomis52/goback/activity"
 	"github.com/nomis52/goback/clients/ipmiclient"
-	"github.com/nomis52/goback/workflow"
+	"github.com/nomis52/goback/config"
 	"github.com/nomis52/goback/server/cron"
 	"github.com/nomis52/goback/server/handlers"
 	"github.com/nomis52/goback/server/runner"
+	"github.com/nomis52/goback/workflow"
+	"github.com/nomis52/goback/workflows/backup"
+	"github.com/nomis52/goback/workflows/poweroff"
+	"github.com/nomis52/goback/workflows/test"
 )
 
 //go:embed static
@@ -152,6 +156,25 @@ func New(configPath string, opts ...Option) (*Server, error) {
 		}
 	}
 
+	// Create workflow factory map
+	factories := map[string]runner.WorkflowFactory{
+		"backup": func(cfg *config.Config, logger *slog.Logger, statusCollection *activity.StatusHandler, loggerFactory func(workflow.ActivityID) *slog.Logger) (workflow.Workflow, error) {
+			return backup.NewWorkflow(cfg, logger,
+				backup.WithStatusCollection(statusCollection),
+				backup.WithLoggerFactory(loggerFactory))
+		},
+		"poweroff": func(cfg *config.Config, logger *slog.Logger, statusCollection *activity.StatusHandler, loggerFactory func(workflow.ActivityID) *slog.Logger) (workflow.Workflow, error) {
+			return poweroff.NewWorkflow(cfg, logger,
+				poweroff.WithStatusCollection(statusCollection),
+				poweroff.WithLoggerFactory(loggerFactory))
+		},
+		"test": func(cfg *config.Config, logger *slog.Logger, statusCollection *activity.StatusHandler, loggerFactory func(workflow.ActivityID) *slog.Logger) (workflow.Workflow, error) {
+			return test.NewWorkflow(logger,
+				test.WithStatusCollection(statusCollection),
+				test.WithLoggerFactory(loggerFactory))
+		},
+	}
+
 	// Create runner with optional disk store
 	var runnerOpts []runner.Option
 	if s.stateDir != "" {
@@ -162,7 +185,7 @@ func New(configPath string, opts ...Option) (*Server, error) {
 		s.store = store
 		runnerOpts = append(runnerOpts, runner.WithStateStore(store))
 	}
-	s.runner = runner.New(logger, s, runnerOpts...)
+	s.runner = runner.New(logger, s, factories, runnerOpts...)
 
 	// Second pass: apply options that need the runner (cron)
 	for _, opt := range opts {

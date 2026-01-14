@@ -27,7 +27,7 @@ var ErrInvalidCronSpec = errors.New("invalid cron spec")
 
 // Runnable is implemented by anything that can be triggered by the cron scheduler.
 type Runnable interface {
-	Run() error
+	Run(workflows []string) error
 }
 
 // CronTrigger executes a Runnable according to a cron schedule.
@@ -90,9 +90,10 @@ func (ct *CronTrigger) loop(ctx context.Context) {
 
 // executeRun executes the runnable and logs the result.
 func (ct *CronTrigger) executeRun() {
-	ct.logger.Info("starting scheduled backup run")
+	workflows := []string{"backup", "poweroff"}
+	ct.logger.Info("starting scheduled backup run", "workflows", workflows)
 
-	if err := ct.runnable.Run(); err != nil {
+	if err := ct.runnable.Run(workflows); err != nil {
 		ct.logger.Warn("scheduled run completed with error", "error", err)
 	} else {
 		ct.logger.Info("scheduled run completed successfully")

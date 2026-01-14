@@ -22,7 +22,7 @@ type Reloader interface {
 
 // BackupRunner can start backup runs.
 type BackupRunner interface {
-	Run() error
+	Run(workflows []string) error
 }
 
 // HistoryProvider provides access to run history.

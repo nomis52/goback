@@ -45,12 +45,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nomis52/goback/activity"
 	"github.com/nomis52/goback/config"
 	"github.com/nomis52/goback/logging"
-	"github.com/nomis52/goback/activity"
 	"github.com/nomis52/goback/workflow"
-	"github.com/nomis52/goback/workflows/backup"
-	"github.com/nomis52/goback/workflows/poweroff"
 )
 
 const defaultMaxHistorySize = 100
@@ -58,17 +56,27 @@ const defaultMaxHistorySize = 100
 // ErrRunInProgress is returned when attempting to start a run while one is already running.
 var ErrRunInProgress = errors.New("backup run already in progress")
 
+// WorkflowFactory creates a workflow with the given configuration, logger, and workflow infrastructure.
+// The statusCollection is used to track activity status updates, and loggerFactory creates per-activity loggers.
+type WorkflowFactory func(
+	cfg *config.Config,
+	logger *slog.Logger,
+	statusCollection *activity.StatusHandler,
+	loggerFactory func(workflow.ActivityID) *slog.Logger,
+) (workflow.Workflow, error)
+
 // Runner manages backup run execution.
 type Runner struct {
 	logger         *slog.Logger
 	configProvider ConfigProvider
+	factories      map[string]WorkflowFactory
 	store          StateStore
 
 	mu               sync.Mutex
 	runStatus        RunStatus
-	workflow         workflow.Workflow                 // Current or last run's workflow
-	statusCollection *activity.StatusHandler // Current run's status collection
-	logCollector     *logging.LogCollector            // Captures logs during workflow execution
+	workflow         workflow.Workflow           // Current or last run's workflow
+	statusCollection *activity.StatusHandler     // Current run's status collection
+	logCollector     *logging.LogCollector       // Captures logs during workflow execution
 }
 
 // ConfigProvider provides access to the current configuration.
@@ -87,10 +95,11 @@ func WithStateStore(store StateStore) Option {
 }
 
 // New creates a new Runner.
-func New(logger *slog.Logger, provider ConfigProvider, opts ...Option) *Runner {
+func New(logger *slog.Logger, provider ConfigProvider, factories map[string]WorkflowFactory, opts ...Option) *Runner {
 	r := &Runner{
 		logger:         logger,
 		configProvider: provider,
+		factories:      factories,
 		store:          NewMemoryStore(),
 		runStatus:      RunStatus{State: RunStateIdle},
 	}
@@ -103,17 +112,34 @@ func New(logger *slog.Logger, provider ConfigProvider, opts ...Option) *Runner {
 	return r
 }
 
-// Run starts a backup run in the background.
+// Run starts a backup run in the background with the specified workflows.
 // Returns ErrRunInProgress if a run is already in progress.
-func (r *Runner) Run() error {
-	if !r.tryStart() {
+// Returns an error if workflows is empty or contains unknown workflow names.
+func (r *Runner) Run(workflows []string) error {
+	if len(workflows) == 0 {
+		return errors.New("no workflows specified")
+	}
+
+	// Validate all workflow names exist
+	for _, name := range workflows {
+		if _, ok := r.factories[name]; !ok {
+			available := make([]string, 0, len(r.factories))
+			for k := range r.factories {
+				available = append(available, k)
+			}
+			sort.Strings(available)
+			return fmt.Errorf("unknown workflow %q (available: %v)", name, available)
+		}
+	}
+
+	if !r.tryStart(workflows) {
 		return ErrRunInProgress
 	}
 
-	r.logger.Info("starting backup run")
+	r.logger.Info("starting backup run", "workflows", workflows)
 
 	go func() {
-		err := r.executeRun(context.Background())
+		err := r.executeRun(context.Background(), workflows)
 		r.finish(err)
 	}()
 
@@ -176,7 +202,7 @@ func (r *Runner) CurrentStatuses() map[workflow.ActivityID]string {
 
 // tryStart attempts to transition from idle to running.
 // Returns true if successful, false if already running.
-func (r *Runner) tryStart() bool {
+func (r *Runner) tryStart(workflows []string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -187,6 +213,7 @@ func (r *Runner) tryStart() bool {
 	now := time.Now()
 	r.runStatus = RunStatus{
 		State:     RunStateRunning,
+		Workflows: workflows,
 		StartedAt: &now,
 	}
 	return true
@@ -271,7 +298,7 @@ func (r *Runner) buildActivityExecutions() []ActivityExecution {
 	return executions
 }
 
-func (r *Runner) executeRun(ctx context.Context) error {
+func (r *Runner) executeRun(ctx context.Context, workflowNames []string) error {
 	cfg := r.configProvider.Config()
 	if cfg == nil {
 		return errors.New("no configuration available")
@@ -289,24 +316,19 @@ func (r *Runner) executeRun(ctx context.Context) error {
 		return slog.New(handler)
 	}
 
-	// Create backup workflow (PowerOnPBS → BackupDirs → BackupVMs) with log capturing
-	backupWorkflow, err := backup.NewWorkflow(cfg, r.logger,
-		backup.WithStatusCollection(statusCollection),
-		backup.WithLoggerFactory(loggerFactory))
-	if err != nil {
-		return fmt.Errorf("failed to create backup workflow: %w", err)
+	// Create workflows using factories
+	workflows := make([]workflow.Workflow, 0, len(workflowNames))
+	for _, name := range workflowNames {
+		factory := r.factories[name] // Already validated in Run()
+		wf, err := factory(cfg, r.logger, statusCollection, loggerFactory)
+		if err != nil {
+			return fmt.Errorf("failed to create workflow %q: %w", name, err)
+		}
+		workflows = append(workflows, wf)
 	}
 
-	// Create power off workflow (PowerOffPBS) with log capturing
-	powerOffWorkflow, err := poweroff.NewWorkflow(cfg, r.logger,
-		poweroff.WithStatusCollection(statusCollection),
-		poweroff.WithLoggerFactory(loggerFactory))
-	if err != nil {
-		return fmt.Errorf("failed to create power off workflow: %w", err)
-	}
-
-	// Compose workflows to run backup then power off
-	composedWorkflow := workflow.Compose(backupWorkflow, powerOffWorkflow)
+	// Compose all workflows
+	composedWorkflow := workflow.Compose(workflows...)
 
 	// Store workflow, status collection, and log collector references for result/status/log access
 	r.mu.Lock()
