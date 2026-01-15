@@ -1,11 +1,16 @@
 // Package cron provides cron-based scheduling for triggering backup runs.
 //
-// The CronTrigger type wraps a Runnable and executes it according to a cron schedule.
+// The CronTrigger type executes a callback according to a cron schedule.
 // It is designed to be started once and run until the context is cancelled.
+//
+// For managing multiple triggers with different workflows and schedules, use CronTriggerManager.
 //
 // Example usage:
 //
-//	trigger, err := cron.NewCronTrigger("0 2 * * *", runner, logger)
+//	callback := func() error {
+//	    return runner.Run([]string{"backup", "poweroff"})
+//	}
+//	trigger, err := cron.NewCronTrigger("0 2 * * *", callback, logger)
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
@@ -25,23 +30,19 @@ import (
 // ErrInvalidCronSpec is returned when the cron specification cannot be parsed.
 var ErrInvalidCronSpec = errors.New("invalid cron spec")
 
-// Runnable is implemented by anything that can be triggered by the cron scheduler.
-type Runnable interface {
-	Run(workflows []string) error
-}
-
-// CronTrigger executes a Runnable according to a cron schedule.
+// CronTrigger executes a callback according to a cron schedule.
 type CronTrigger struct {
 	spec     string
 	schedule cron.Schedule
-	runnable Runnable
+	callback func() error
 	logger   *slog.Logger
 }
 
-// NewCronTrigger creates a new CronTrigger with the given cron specification.
+// NewCronTrigger creates a new CronTrigger with the given cron specification and callback.
 // The spec follows standard cron format (5 fields: minute, hour, day, month, weekday).
+// The callback is executed each time the trigger fires.
 // Returns ErrInvalidCronSpec if the specification cannot be parsed.
-func NewCronTrigger(spec string, runnable Runnable, logger *slog.Logger) (*CronTrigger, error) {
+func NewCronTrigger(spec string, callback func() error, logger *slog.Logger) (*CronTrigger, error) {
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 	schedule, err := parser.Parse(spec)
 	if err != nil {
@@ -51,7 +52,7 @@ func NewCronTrigger(spec string, runnable Runnable, logger *slog.Logger) (*CronT
 	return &CronTrigger{
 		spec:     spec,
 		schedule: schedule,
-		runnable: runnable,
+		callback: callback,
 		logger:   logger,
 	}, nil
 }
@@ -88,12 +89,11 @@ func (ct *CronTrigger) loop(ctx context.Context) {
 	}
 }
 
-// executeRun executes the runnable and logs the result.
+// executeRun executes the callback and logs the result.
 func (ct *CronTrigger) executeRun() {
-	workflows := []string{"backup", "poweroff"}
-	ct.logger.Info("starting scheduled backup run", "workflows", workflows)
+	ct.logger.Info("starting scheduled run")
 
-	if err := ct.runnable.Run(workflows); err != nil {
+	if err := ct.callback(); err != nil {
 		ct.logger.Warn("scheduled run completed with error", "error", err)
 	} else {
 		ct.logger.Info("scheduled run completed successfully")

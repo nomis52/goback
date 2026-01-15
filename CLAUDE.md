@@ -47,7 +47,9 @@ make clean
 # Server mode with web UI
 ./build/goback-server --config config.yaml
 ./build/goback-server --config config.yaml --listen :9090
-./build/goback-server --config config.yaml --cron "0 2 * * *"
+./build/goback-server --config config.yaml --cron "backup,poweroff:0 2 * * *"
+./build/goback-server --config config.yaml --cron "backup,poweroff:0 2 * * *;test:0 3 * * *"
+./build/goback-server --config config.yaml --cron "backup:0 2 * * *"
 
 # Or run directly with go
 go run ./cmd/server --config config.yaml

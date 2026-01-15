@@ -86,25 +86,33 @@ type Server struct {
 	httpServer  *http.Server
 	runner      *runner.Runner
 	store       *runner.DiskStore
-	cronTrigger *cron.CronTrigger
+	cronTrigger *cron.CronTriggerManager
 }
 
 // Option configures a Server.
 type Option func(*Server) error
 
 // WithCron configures the server to run backups on a cron schedule.
-// The spec follows standard cron format (5 fields: minute, hour, day, month, weekday).
+// The spec follows the format: workflow1,workflow2:cron_expression;workflow3:cron_expression2
+//
+// Example:
+//
+//	WithCron("backup,poweroff:0 2 * * *;test:0 3 * * *")
 func WithCron(spec string) Option {
 	return func(s *Server) error {
 		// Skip if runner hasn't been created yet (first pass)
 		if s.runner == nil {
 			return nil
 		}
-		trigger, err := cron.NewCronTrigger(spec, s.runner, s.logger)
+
+		// Get available workflows from runner for validation
+		availableWorkflows := s.runner.AvailableWorkflows()
+
+		manager, err := cron.NewCronTriggerManager(spec, s.runner, s.logger, availableWorkflows)
 		if err != nil {
-			return fmt.Errorf("creating cron trigger: %w", err)
+			return fmt.Errorf("creating cron trigger manager: %w", err)
 		}
-		s.cronTrigger = trigger
+		s.cronTrigger = manager
 		return nil
 	}
 }

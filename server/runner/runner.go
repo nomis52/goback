@@ -176,6 +176,16 @@ func (r *Runner) History() []RunStatus {
 	return r.store.Runs()
 }
 
+// AvailableWorkflows returns a map of all available workflow names.
+// The map keys are workflow names, values are always true.
+func (r *Runner) AvailableWorkflows() map[string]bool {
+	available := make(map[string]bool, len(r.factories))
+	for name := range r.factories {
+		available[name] = true
+	}
+	return available
+}
+
 // GetResults returns the activity results from the current or last run.
 // Returns nil if no run has been executed yet.
 func (r *Runner) GetResults() map[workflow.ActivityID]*workflow.Result {
