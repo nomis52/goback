@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/nomis52/goback/clients/ipmiclient"
+	"github.com/nomis52/goback/server/cron"
 	"github.com/nomis52/goback/server/runner"
 )
 
@@ -18,6 +19,7 @@ type PBSStatus struct {
 type NextRunResponse struct {
 	Scheduled bool       `json:"scheduled"`
 	NextRun   *time.Time `json:"next_run,omitempty"`
+	Workflows []string   `json:"workflows,omitempty"`
 }
 
 // APIStatusResponse is the consolidated response for /api/status.
@@ -32,6 +34,7 @@ type APIStatusProvider interface {
 	IPMIController() *ipmiclient.IPMIController
 	Status() runner.RunStatus
 	NextRun() *time.Time
+	NextTrigger() *cron.NextTriggerInfo
 }
 
 // APIStatusHandler handles requests for the consolidated status endpoint.
@@ -68,11 +71,15 @@ func (h *APIStatusHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Get run status (includes live activity executions with logs and status messages)
 	runStatus := h.provider.Status()
 
-	// Get next run
-	nextRun := h.provider.NextRun()
-	nextRunResp := NextRunResponse{
-		Scheduled: nextRun != nil,
-		NextRun:   nextRun,
+	// Get next run with workflows
+	nextTrigger := h.provider.NextTrigger()
+	nextRunResp := NextRunResponse{}
+	if nextTrigger != nil {
+		nextRunResp.Scheduled = true
+		nextRunResp.NextRun = &nextTrigger.Time
+		nextRunResp.Workflows = nextTrigger.Workflows
+	} else {
+		nextRunResp.Scheduled = false
 	}
 
 	resp := APIStatusResponse{

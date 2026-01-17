@@ -14,8 +14,9 @@ type Runnable interface {
 
 // CronTriggerManager manages multiple CronTrigger instances with different workflows and schedules.
 type CronTriggerManager struct {
-	triggers []*CronTrigger
-	logger   *slog.Logger
+	triggers  []*CronTrigger
+	workflows [][]string // workflows[i] corresponds to triggers[i]
+	logger    *slog.Logger
 }
 
 // NewCronTriggerManager creates a new CronTriggerManager from a multi-trigger specification.
@@ -38,11 +39,12 @@ func NewCronTriggerManager(spec string, runnable Runnable, logger *slog.Logger, 
 
 	// Create a CronTrigger for each spec
 	triggers := make([]*CronTrigger, 0, len(triggerSpecs))
+	workflows := make([][]string, 0, len(triggerSpecs))
 	for _, spec := range triggerSpecs {
 		// Create a closure that captures the workflows and runnable
-		workflows := spec.Workflows // Capture for closure
+		workflowsCopy := spec.Workflows // Capture for closure
 		callback := func() error {
-			return runnable.Run(workflows)
+			return runnable.Run(workflowsCopy)
 		}
 
 		trigger, err := NewCronTrigger(spec.CronSpec, callback, logger)
@@ -51,6 +53,7 @@ func NewCronTriggerManager(spec string, runnable Runnable, logger *slog.Logger, 
 				formatWorkflowList(spec.Workflows), spec.CronSpec, err)
 		}
 		triggers = append(triggers, trigger)
+		workflows = append(workflows, spec.Workflows)
 	}
 
 	logger.Info("cron trigger manager created", "trigger_count", len(triggers))
@@ -66,8 +69,9 @@ func NewCronTriggerManager(spec string, runnable Runnable, logger *slog.Logger, 
 	}
 
 	return &CronTriggerManager{
-		triggers: triggers,
-		logger:   logger,
+		triggers:  triggers,
+		workflows: workflows,
+		logger:    logger,
 	}, nil
 }
 
@@ -95,6 +99,37 @@ func (m *CronTriggerManager) NextRun() time.Time {
 	}
 
 	return earliest
+}
+
+// NextTriggerInfo contains information about the next scheduled trigger.
+type NextTriggerInfo struct {
+	Time      time.Time
+	Workflows []string
+}
+
+// NextTrigger returns information about the next scheduled trigger.
+// Returns the earliest scheduled run time and its associated workflows.
+// Returns zero time and nil workflows if there are no triggers.
+func (m *CronTriggerManager) NextTrigger() NextTriggerInfo {
+	if len(m.triggers) == 0 {
+		return NextTriggerInfo{}
+	}
+
+	earliest := m.triggers[0].NextRun()
+	earliestIdx := 0
+
+	for i := 1; i < len(m.triggers); i++ {
+		next := m.triggers[i].NextRun()
+		if next.Before(earliest) {
+			earliest = next
+			earliestIdx = i
+		}
+	}
+
+	return NextTriggerInfo{
+		Time:      earliest,
+		Workflows: m.workflows[earliestIdx],
+	}
 }
 
 // formatWorkflowList formats a workflow list for error messages.

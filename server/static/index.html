@@ -433,6 +433,17 @@
                 display: none;
             }
         }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .workflow-running {
+            display: inline-block;
+            animation: spin 1s linear infinite;
+            margin-right: 0.5rem;
+        }
     </style>
 </head>
 <body>
@@ -456,41 +467,47 @@
 
             <div class="card">
                 <div class="card-header">
-                    <span class="card-title">Workflow Status</span>
-                    <div class="status-indicator">
-                        <div id="runDot" class="status-dot unknown"></div>
-                    </div>
-                </div>
-                <div id="runStatus" class="status-value">-</div>
-                <div id="runDetail" class="status-detail">Checking status...</div>
-            </div>
-
-            <div class="card">
-                <div class="card-header">
-                    <span class="card-title">Next Backup</span>
+                    <span class="card-title">Next Workflow</span>
                     <div class="status-indicator">
                         <div id="nextRunDot" class="status-dot unknown"></div>
                     </div>
                 </div>
                 <div id="nextRunStatus" class="status-value">-</div>
                 <div id="nextRunDetail" class="status-detail">Checking schedule...</div>
-                <button id="runBtn" class="btn btn-primary" onclick="triggerBackup()" style="margin-top: 1rem; width: 100%;">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                    </svg>
-                    Start Backup
-                </button>
-                <div id="actionDetail" class="status-detail" style="margin-top: 0.75rem;"></div>
+                <div id="nextRunWorkflows" class="status-detail" style="margin-top: 0.5rem; font-weight: 500;"></div>
             </div>
         </div>
 
         <div class="tabs">
-            <button class="tab active" onclick="switchTab('current')">Current Workflow</button>
+            <button class="tab active" onclick="switchTab('workflows')">Workflows</button>
+            <button class="tab" onclick="switchTab('current')">Current Workflow</button>
             <button class="tab" onclick="switchTab('history')">History</button>
             <button class="tab" onclick="switchTab('config')">Configuration</button>
         </div>
 
-        <div id="currentTab" class="tab-content active">
+        <div id="workflowsTab" class="tab-content active">
+            <div class="section">
+                <div class="section-header">
+                    <span class="section-title">Available Workflows</span>
+                    <span id="workflowCount" class="card-title">0 workflows</span>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Workflow</th>
+                            <th style="width: 120px; text-align: center;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="workflowsBody">
+                        <tr>
+                            <td colspan="2" class="empty-state">Loading workflows...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="currentTab" class="tab-content">
             <div class="section">
                 <div class="section-header">
                     <span class="section-title">Current Workflow</span>
@@ -572,6 +589,7 @@
         let pollInterval = null;
         let expandedRows = new Set(); // Track which rows are expanded
         let currentExecutions = []; // Store current executions for expanding
+        let availableWorkflows = [];
 
         async function fetchJSON(url) {
             const resp = await fetch(url);
@@ -634,7 +652,14 @@
         function switchTab(tab) {
             // Update tab buttons
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            event.target.classList.add('active');
+
+            // Find the correct tab button to activate
+            const tabs = document.querySelectorAll('.tab');
+            const tabNames = ['workflows', 'current', 'history', 'config'];
+            const tabIndex = tabNames.indexOf(tab);
+            if (tabIndex >= 0 && tabs[tabIndex]) {
+                tabs[tabIndex].classList.add('active');
+            }
 
             // Update tab content
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
@@ -643,6 +668,11 @@
             // Load config when switching to config tab
             if (tab === 'config' && !configLoaded) {
                 fetchConfig();
+            }
+
+            // Load workflows when switching to workflows tab
+            if (tab === 'workflows' && availableWorkflows.length === 0) {
+                fetchAvailableWorkflows();
             }
         }
 
@@ -719,11 +749,6 @@
                                         pbsState === 'off' ? 'Server is powered off' : 'Unable to determine state';
 
                 // Update run status
-                const runDot = document.getElementById('runDot');
-                const runStatus = document.getElementById('runStatus');
-                const runDetail = document.getElementById('runDetail');
-                const btn = document.getElementById('runBtn');
-
                 const wasRunning = isRunning;
                 isRunning = data.run.state === 'running';
 
@@ -733,43 +758,28 @@
                     pollInterval = setInterval(updateAll, isRunning ? POLL_INTERVAL_RUNNING : POLL_INTERVAL_IDLE);
                 }
 
-                runDot.className = 'status-dot ' + (isRunning ? 'running' : 'idle');
-                runStatus.textContent = isRunning ? 'Running' : 'Idle';
-                runStatus.className = 'status-value ' + (isRunning ? 'running' : '');
-
-                if (isRunning && data.run.started_at) {
-                    runDetail.textContent = `Started ${formatTime(data.run.started_at)} (${formatDuration(data.run.started_at, null)})`;
-                } else if (data.run.ended_at) {
-                    runDetail.textContent = data.run.error ?
-                        `Last run failed: ${data.run.error}` :
-                        `Last run completed ${formatTime(data.run.ended_at)}`;
-                } else {
-                    runDetail.textContent = 'No backup runs yet';
-                }
-
-                btn.disabled = isRunning;
-                btn.innerHTML = isRunning ?
-                    `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <polyline points="12 6 12 12 16 14"></polyline>
-                    </svg> Running...` :
-                    `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                    </svg> Start Backup`;
-
                 // Update next run
                 const nextRunDot = document.getElementById('nextRunDot');
                 const nextRunStatus = document.getElementById('nextRunStatus');
                 const nextRunDetail = document.getElementById('nextRunDetail');
 
+                const nextRunWorkflowsDiv = document.getElementById('nextRunWorkflows');
+
                 if (data.next_run.scheduled && data.next_run.next_run) {
                     nextRunDot.className = 'status-dot scheduled';
                     nextRunStatus.textContent = formatRelativeTime(data.next_run.next_run);
                     nextRunDetail.textContent = formatTime(data.next_run.next_run);
+
+                    if (data.next_run.workflows && data.next_run.workflows.length > 0) {
+                        nextRunWorkflowsDiv.textContent = `Workflows: ${data.next_run.workflows.join(', ')}`;
+                    } else {
+                        nextRunWorkflowsDiv.textContent = '';
+                    }
                 } else {
                     nextRunDot.className = 'status-dot not-scheduled';
                     nextRunStatus.textContent = 'Not scheduled';
                     nextRunDetail.textContent = 'No cron schedule configured';
+                    nextRunWorkflowsDiv.textContent = '';
                 }
 
                 // Update activity executions
@@ -825,12 +835,24 @@
                         `;
                     }).join('');
                 }
+
+                // Update workflows tab with running status
+                if (availableWorkflows.length > 0) {
+                    const runningWorkflows = data.run.state === 'running' ? data.run.workflows : [];
+                    updateWorkflowsTab(runningWorkflows);
+
+                    // Also disable buttons when any workflow is running
+                    availableWorkflows.forEach(wf => {
+                        const btn = document.getElementById(`run-btn-${wf}`);
+                        if (btn) {
+                            btn.disabled = isRunning;
+                        }
+                    });
+                }
             } catch (err) {
                 document.getElementById('pbsStatus').textContent = 'Error';
                 document.getElementById('pbsDetail').textContent = err.message;
                 document.getElementById('pbsDot').className = 'status-dot unknown';
-                document.getElementById('runStatus').textContent = 'Error';
-                document.getElementById('runDetail').textContent = err.message;
                 document.getElementById('nextRunStatus').textContent = 'Error';
                 document.getElementById('nextRunDetail').textContent = err.message;
             }
@@ -915,6 +937,104 @@
             }, 5000);
         }
 
+        async function fetchAvailableWorkflows() {
+            try {
+                const data = await fetchJSON('/api/workflows');
+                availableWorkflows = data.workflows || [];
+                updateWorkflowsTab();
+            } catch (err) {
+                const tbody = document.getElementById('workflowsBody');
+                tbody.innerHTML = `<tr><td colspan="2" class="empty-state">Failed to load workflows: ${err.message}</td></tr>`;
+            }
+        }
+
+        function updateWorkflowsTab(runningWorkflows = []) {
+            const tbody = document.getElementById('workflowsBody');
+            const count = document.getElementById('workflowCount');
+
+            count.textContent = `${availableWorkflows.length} workflow${availableWorkflows.length !== 1 ? 's' : ''}`;
+
+            if (availableWorkflows.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="2" class="empty-state">No workflows available</td></tr>';
+                return;
+            }
+
+            const sorted = [...availableWorkflows].sort();
+
+            tbody.innerHTML = sorted.map(workflow => {
+                const isRunning = runningWorkflows.includes(workflow);
+                const runningIcon = isRunning ? `
+                    <svg class="workflow-running" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <polyline points="12 6 12 12 16 14"></polyline>
+                    </svg>
+                ` : '';
+
+                return `
+                <tr>
+                    <td>
+                        ${runningIcon}<span class="activity-name">${workflow}</span>
+                    </td>
+                    <td style="text-align: center;">
+                        <button class="btn btn-primary" onclick="runSingleWorkflow('${workflow}')"
+                                id="run-btn-${workflow}" style="padding: 0.5rem 1rem; font-size: 0.75rem;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                            </svg>
+                            Run
+                        </button>
+                    </td>
+                </tr>
+                `;
+            }).join('');
+        }
+
+        async function runSingleWorkflow(workflowName) {
+            const btn = document.getElementById(`run-btn-${workflowName}`);
+            if (!btn) return;
+
+            // Disable all run buttons
+            availableWorkflows.forEach(wf => {
+                const b = document.getElementById(`run-btn-${wf}`);
+                if (b) b.disabled = true;
+            });
+
+            const originalHtml = btn.innerHTML;
+            btn.innerHTML = `Running...`;
+
+            try {
+                const resp = await fetch('/run', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({workflows: [workflowName]})
+                });
+
+                if (resp.status === 202) {
+                    switchTab('current');
+                    await updateAll();
+                } else if (resp.status === 409) {
+                    alert('A workflow is already running. Please wait for it to complete.');
+                } else {
+                    const data = await resp.json();
+                    alert(`Failed to start workflow: ${data.error || 'Unknown error'}`);
+                }
+            } catch (err) {
+                alert(`Error starting workflow: ${err.message}`);
+            } finally {
+                setTimeout(() => {
+                    availableWorkflows.forEach(wf => {
+                        const b = document.getElementById(`run-btn-${wf}`);
+                        if (b) {
+                            b.disabled = isRunning;
+                            if (wf === workflowName) {
+                                b.innerHTML = originalHtml;
+                            }
+                        }
+                    });
+                }, 1000);
+            }
+        }
+
         async function updateAll() {
             await Promise.all([updateAPIStatus(), updateHistory()]);
             updateLastUpdated();
@@ -978,6 +1098,7 @@
 
         // Initial load
         updateAll();
+        fetchAvailableWorkflows();
 
         // Poll for updates (starts with idle interval)
         pollInterval = setInterval(updateAll, POLL_INTERVAL_IDLE);

@@ -258,6 +258,20 @@ func (s *Server) NextRun() *time.Time {
 	return &next
 }
 
+// NextTrigger returns information about the next scheduled trigger, or nil if no cron is configured.
+func (s *Server) NextTrigger() *cron.NextTriggerInfo {
+	if s.cronTrigger == nil {
+		return nil
+	}
+
+	info := s.cronTrigger.NextTrigger()
+	if info.Time.IsZero() {
+		return nil
+	}
+
+	return &info
+}
+
 // Status returns the current run status by delegating to the runner.
 func (s *Server) Status() runner.RunStatus {
 	return s.runner.Status()
@@ -326,11 +340,13 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	runHandler := handlers.NewRunHandler(s.runner)
 	historyHandler := handlers.NewHistoryHandler(s.runner)
 	apiStatusHandler := handlers.NewAPIStatusHandler(s.logger, s)
+	availableWorkflowsHandler := handlers.NewAvailableWorkflowsHandler(s.runner)
 
 	// API endpoints
 	mux.HandleFunc("GET /health", handlers.HandleHealth)
 	mux.Handle("GET /api/status", apiStatusHandler)
 	mux.Handle("GET /api/history", historyHandler)
+	mux.Handle("GET /api/workflows", availableWorkflowsHandler)
 	if s.store != nil {
 		storeReloadHandler := handlers.NewStoreReloadHandler(s.logger, s.store)
 		mux.Handle("POST /api/store_reload", storeReloadHandler)
