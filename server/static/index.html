@@ -456,13 +456,36 @@
         <div class="grid">
             <div class="card">
                 <div class="card-header">
-                    <span class="card-title">PBS Server</span>
+                    <span class="card-title">Proxmox Backup Server</span>
                     <div class="status-indicator">
                         <div id="pbsDot" class="status-dot unknown"></div>
                     </div>
                 </div>
+                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
+                    <span style="font-size: 0.875rem; color: var(--text-secondary);">pbs.d.ne4.org</span>
+                    <a href="https://pbs.d.ne4.org:8007/" target="_blank" rel="noopener noreferrer"
+                       style="color: var(--accent-blue); display: flex; align-items: center;"
+                       title="Open PBS Web Interface">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                            <polyline points="15 3 21 3 21 9"></polyline>
+                            <line x1="10" y1="14" x2="21" y2="3"></line>
+                        </svg>
+                    </a>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
+                    <span style="font-size: 0.875rem; color: var(--text-secondary);">pbs-bmc.d.ne4.org</span>
+                    <a href="http://pbs-bmc.d.ne4.org/" target="_blank" rel="noopener noreferrer"
+                       style="color: var(--accent-blue); display: flex; align-items: center;"
+                       title="Open BMC Web Interface">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                            <polyline points="15 3 21 3 21 9"></polyline>
+                            <line x1="10" y1="14" x2="21" y2="3"></line>
+                        </svg>
+                    </a>
+                </div>
                 <div id="pbsStatus" class="status-value">-</div>
-                <div id="pbsDetail" class="status-detail">Checking IPMI status...</div>
             </div>
 
             <div class="card">
@@ -740,13 +763,10 @@
                 const pbsState = data.pbs.power_state.toLowerCase();
                 const pbsDot = document.getElementById('pbsDot');
                 const pbsStatus = document.getElementById('pbsStatus');
-                const pbsDetail = document.getElementById('pbsDetail');
 
                 pbsDot.className = 'status-dot ' + (pbsState === 'on' ? 'on' : pbsState === 'off' ? 'off' : 'unknown');
                 pbsStatus.textContent = pbsState.charAt(0).toUpperCase() + pbsState.slice(1);
                 pbsStatus.className = 'status-value ' + (pbsState === 'on' ? 'on' : pbsState === 'off' ? 'off' : '');
-                pbsDetail.textContent = pbsState === 'on' ? 'Server is powered on and ready' :
-                                        pbsState === 'off' ? 'Server is powered off' : 'Unable to determine state';
 
                 // Update run status
                 const wasRunning = isRunning;
@@ -850,8 +870,7 @@
                     });
                 }
             } catch (err) {
-                document.getElementById('pbsStatus').textContent = 'Error';
-                document.getElementById('pbsDetail').textContent = err.message;
+                document.getElementById('pbsStatus').textContent = 'Unknown';
                 document.getElementById('pbsDot').className = 'status-dot unknown';
                 document.getElementById('nextRunStatus').textContent = 'Error';
                 document.getElementById('nextRunDetail').textContent = err.message;
