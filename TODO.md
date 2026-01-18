@@ -1,3 +1,2 @@
 - SSL support with let's encrypt
-- metrics, prom style ? 
-- activity logs in history
+- metrics, prom style?
