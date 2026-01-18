@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/nomis52/goback/clients/proxmoxclient"
@@ -16,6 +17,7 @@ const (
 	backupStatusCheckInterval = 10 * time.Second
 	pbsStorageRetryInterval   = 5 * time.Second
 	pbsStorageMaxRetries      = 6 // 30 seconds total
+	backupProgressTemplate    = "Backing up VMs, %d/%d complete"
 	metricLastBackup          = "last_backup"
 	metricBackupFailure       = "backup_failure"
 )
@@ -68,11 +70,12 @@ func (a *BackupVMs) Execute(ctx context.Context) error {
 			return nil
 		}
 
-		a.StatusLine.Set(fmt.Sprintf("backing up %d resources", len(resourcesToBackup)))
+		a.StatusLine.Set(fmt.Sprintf(backupProgressTemplate, 0, len(resourcesToBackup)))
 
 		// Use wait group to track all backup operations
 		var wg sync.WaitGroup
 		errChan := make(chan error, len(resourcesToBackup))
+		var completedCount atomic.Int32
 
 		// Launch backup operations concurrently
 		for _, resource := range resourcesToBackup {
@@ -87,6 +90,9 @@ func (a *BackupVMs) Execute(ctx context.Context) error {
 						"error", err)
 					errChan <- fmt.Errorf("backup failed for VMID %d: %w", r.VMID, err)
 				}
+				// Update progress regardless of success/failure
+				completed := completedCount.Add(1)
+				a.StatusLine.Set(fmt.Sprintf(backupProgressTemplate, completed, len(resourcesToBackup)))
 			}(resource)
 		}
 
