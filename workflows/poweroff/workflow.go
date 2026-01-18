@@ -68,7 +68,8 @@ func NewWorkflow(cfg *config.Config, logger *slog.Logger, opts ...WorkflowOption
 
 	// StatusLine factory (per-activity)
 	workflow.Provide(o, func(id workflow.ActivityID) *activity.StatusLine {
-		return activity.NewStatusLine(id, logger, options.statusCollection)
+		activityLogger := options.loggerFactory(id)
+		return activity.NewStatusLine(id, activityLogger, options.statusCollection)
 	})
 
 	// Add power off activity
