@@ -3,6 +3,7 @@ package sshclient
 import (
 	"bytes"
 	"fmt"
+	"io"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -52,6 +53,30 @@ func (c *SSHClient) Run(command string) (string, string, error) {
 	}
 
 	return stdoutBuf.String(), stderrBuf.String(), nil
+}
+
+// RunWithWriter executes a command on the remote host and streams stdout/stderr to the provided writers.
+// If stdoutWriter or stderrWriter is nil, that stream will be discarded.
+// Returns any error from command execution.
+func (c *SSHClient) RunWithWriter(command string, stdoutWriter, stderrWriter io.Writer) error {
+	session, err := c.client.NewSession()
+	if err != nil {
+		return fmt.Errorf("failed to create SSH session: %w", err)
+	}
+	defer session.Close()
+
+	if stdoutWriter != nil {
+		session.Stdout = stdoutWriter
+	}
+	if stderrWriter != nil {
+		session.Stderr = stderrWriter
+	}
+
+	if err := session.Run(command); err != nil {
+		return fmt.Errorf("failed to run command: %w", err)
+	}
+
+	return nil
 }
 
 // Close closes the underlying SSH connection.

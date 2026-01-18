@@ -1,19 +1,21 @@
 package backup
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/nomis52/goback/activity"
 	"github.com/nomis52/goback/clients/sshclient"
 	"github.com/nomis52/goback/config"
 	"github.com/nomis52/goback/metrics"
-	"github.com/nomis52/goback/activity"
 )
 
 var (
@@ -29,6 +31,50 @@ const (
 	metricDirectoryLastBackup    = "directory_last_backup"
 	metricDirectoryBackupFailure = "directory_backup_failure"
 )
+
+// lineLogger is an io.Writer that logs each complete line to a logger.
+type lineLogger struct {
+	logger     *slog.Logger
+	level      slog.Level
+	scanner    *bufio.Scanner
+	pipeReader *io.PipeReader
+	pipeWriter *io.PipeWriter
+}
+
+// newLineLogger creates a new lineLogger that logs complete lines at the specified level.
+func newLineLogger(logger *slog.Logger, level slog.Level) *lineLogger {
+	pr, pw := io.Pipe()
+	ll := &lineLogger{
+		logger:     logger,
+		level:      level,
+		scanner:    bufio.NewScanner(pr),
+		pipeReader: pr,
+		pipeWriter: pw,
+	}
+
+	// Start goroutine to process lines
+	go ll.processLines()
+
+	return ll
+}
+
+// Write implements io.Writer by writing to the pipe.
+func (ll *lineLogger) Write(p []byte) (n int, err error) {
+	return ll.pipeWriter.Write(p)
+}
+
+// processLines reads lines from the scanner and logs them.
+func (ll *lineLogger) processLines() {
+	for ll.scanner.Scan() {
+		line := ll.scanner.Text()
+		ll.logger.Log(context.Background(), ll.level, line)
+	}
+}
+
+// Close closes the pipe writer, signaling completion.
+func (ll *lineLogger) Close() error {
+	return ll.pipeWriter.Close()
+}
 
 // BackupDirs manages the execution of directory backups on proxmox servers.
 // Runs after the PBS server is powered on
@@ -107,15 +153,12 @@ func (a *BackupDirs) Execute(ctx context.Context) error {
 
 		a.StatusLine.Set(fmt.Sprintf("backing up %d directories", len(a.Files.Sources)))
 
-		stdout, stderr, err := a.backupAllDirs(a.Files.Sources)
+		err := a.backupAllDirs(a.Files.Sources)
 		if err != nil {
-			a.Logger.Error("Backup failed", "sources", a.Files.Sources, "error", err, "stderr", stderr)
+			a.Logger.Error("Backup failed", "sources", a.Files.Sources, "error", err)
 			return err
 		}
-		a.Logger.Debug("Backup succeeded", "sources", a.Files.Sources, "stdout", stdout)
-		if stderr != "" {
-			a.Logger.Warn("Backup stderr", "sources", a.Files.Sources, "stderr", stderr)
-		}
+		a.Logger.Debug("Backup succeeded", "sources", a.Files.Sources)
 
 		a.StatusLine.Set("directory backup complete")
 		return nil
@@ -124,7 +167,7 @@ func (a *BackupDirs) Execute(ctx context.Context) error {
 
 // backupAllDirs executes a single backup command with all sources combined
 // This enables PBS deduplication across all directories
-func (a *BackupDirs) backupAllDirs(sources []string) (string, string, error) {
+func (a *BackupDirs) backupAllDirs(sources []string) error {
 	token := a.Files.Token
 	target := a.Files.Target
 
@@ -133,7 +176,13 @@ func (a *BackupDirs) backupAllDirs(sources []string) (string, string, error) {
 
 	a.Logger.Debug("Running consolidated backup command", "command", cmd, "source_count", len(sources))
 
-	stdout, stderr, err := a.sshClient.Run(cmd)
+	// Create line loggers for stdout and stderr
+	stdoutLogger := newLineLogger(a.Logger, slog.LevelDebug)
+	stderrLogger := newLineLogger(a.Logger, slog.LevelInfo)
+	defer stdoutLogger.Close()
+	defer stderrLogger.Close()
+
+	err := a.sshClient.RunWithWriter(cmd, stdoutLogger, stderrLogger)
 
 	// Push metrics if MetricsClient is set
 	if a.MetricsClient != nil {
@@ -163,7 +212,7 @@ func (a *BackupDirs) backupAllDirs(sources []string) (string, string, error) {
 		}
 	}
 
-	return stdout, stderr, err
+	return err
 }
 
 // buildBackupCommand constructs the PBS backup command with all sources
