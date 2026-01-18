@@ -566,6 +566,8 @@
                 <table>
                     <thead>
                         <tr>
+                            <th style="width: 30px;"></th>
+                            <th>Workflows</th>
                             <th>Status</th>
                             <th>Started</th>
                             <th class="hide-mobile">Ended</th>
@@ -575,7 +577,7 @@
                     </thead>
                     <tbody id="historyBody">
                         <tr>
-                            <td colspan="5" class="empty-state">Loading history...</td>
+                            <td colspan="7" class="empty-state">Loading history...</td>
                         </tr>
                     </tbody>
                 </table>
@@ -613,6 +615,9 @@
         let expandedRows = new Set(); // Track which rows are expanded
         let currentExecutions = []; // Store current executions for expanding
         let availableWorkflows = [];
+        let expandedHistoryRows = new Set(); // Track which history runs are expanded
+        let expandedHistoryActivities = new Set(); // Track which activities within history are expanded
+        let historyData = []; // Store history data for expansion
 
         async function fetchJSON(url) {
             const resp = await fetch(url);
@@ -713,6 +718,99 @@
                 logsRow.style.display = 'table-row';
                 chevron.classList.add('expanded');
             }
+        }
+
+        function toggleHistoryRow(runId) {
+            const logsRow = document.getElementById(`history-details-${runId}`);
+            const chevron = document.getElementById(`history-chevron-${runId}`);
+
+            if (expandedHistoryRows.has(runId)) {
+                expandedHistoryRows.delete(runId);
+                logsRow.style.display = 'none';
+                chevron.classList.remove('expanded');
+            } else {
+                expandedHistoryRows.add(runId);
+                logsRow.style.display = 'table-row';
+                chevron.classList.add('expanded');
+            }
+        }
+
+        function toggleHistoryActivity(runId, activityIndex) {
+            const activityId = `${runId}-${activityIndex}`;
+            const logsRow = document.getElementById(`history-activity-logs-${activityId}`);
+            const chevron = document.getElementById(`history-activity-chevron-${activityId}`);
+
+            if (expandedHistoryActivities.has(activityId)) {
+                expandedHistoryActivities.delete(activityId);
+                logsRow.style.display = 'none';
+                chevron.classList.remove('expanded');
+            } else {
+                expandedHistoryActivities.add(activityId);
+                logsRow.style.display = 'table-row';
+                chevron.classList.add('expanded');
+            }
+        }
+
+        function renderHistoryActivityDetails(run) {
+            const executions = run.activity_executions || [];
+
+            if (executions.length === 0) {
+                return '<div class="empty-state" style="padding: 1rem;">No activity details available</div>';
+            }
+
+            const runId = run.started_at;
+
+            return `
+                <table style="background-color: var(--bg-primary); margin: 0;">
+                    <thead>
+                        <tr>
+                            <th style="width: 30px;"></th>
+                            <th>Step</th>
+                            <th>State</th>
+                            <th>Status</th>
+                            <th class="hide-mobile">Started</th>
+                            <th class="hide-mobile">Ended</th>
+                            <th>Duration</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${executions.map((exec, index) => {
+                            const displayName = exec.type || 'Unknown';
+                            const startTime = exec.start_time && exec.start_time !== '0001-01-01T00:00:00Z'
+                                ? exec.start_time : null;
+                            const endTime = exec.end_time && exec.end_time !== '0001-01-01T00:00:00Z'
+                                ? exec.end_time : null;
+                            const errorMsg = exec.error ? exec.error : null;
+                            const statusMsg = exec.status || '-';
+                            const activityId = `${runId}-${index}`;
+                            const isExpanded = expandedHistoryActivities.has(activityId);
+
+                            return `
+                                <tr class="expandable-row" onclick="toggleHistoryActivity('${runId}', ${index})">
+                                    <td>
+                                        <svg id="history-activity-chevron-${activityId}" class="chevron-icon ${isExpanded ? 'expanded' : ''}" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <polyline points="9 18 15 12 9 6"></polyline>
+                                        </svg>
+                                    </td>
+                                    <td><span class="activity-name">${displayName}</span></td>
+                                    <td>${getStateBadge(exec.state, errorMsg)}</td>
+                                    <td>${statusMsg}</td>
+                                    <td class="hide-mobile">${formatTimeShort(startTime)}</td>
+                                    <td class="hide-mobile">${formatTimeShort(endTime)}</td>
+                                    <td><span class="duration">${formatDuration(startTime, endTime)}</span></td>
+                                </tr>
+                                <tr id="history-activity-logs-${activityId}" class="log-details" style="display: ${isExpanded ? 'table-row' : 'none'};">
+                                    <td colspan="7">
+                                        <div class="log-details-content">
+                                            ${renderLogs(exec.logs)}
+                                        </div>
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            `;
         }
 
         function formatLogTime(isoString) {
@@ -881,13 +979,14 @@
         async function updateHistory() {
             try {
                 const data = await fetchJSON('/api/history');
+                historyData = data;
                 const tbody = document.getElementById('historyBody');
                 const count = document.getElementById('historyCount');
 
                 count.textContent = `${data.length} run${data.length !== 1 ? 's' : ''}`;
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No backup runs yet</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No backup runs yet</td></tr>';
                     return;
                 }
 
@@ -895,10 +994,10 @@
                     const isSuccess = run.state !== 'running' && !run.error;
                     const isError = run.state !== 'running' && run.error;
                     const runIsRunning = run.state === 'running';
-                    
+
                     let badgeClass = 'badge-success';
                     let badgeText = 'Success';
-                    
+
                     if (runIsRunning) {
                         badgeClass = 'badge-running';
                         badgeText = 'Running';
@@ -907,17 +1006,38 @@
                         badgeText = 'Failed';
                     }
 
-                    return `<tr>
-                        <td><span class="badge ${badgeClass}">${badgeText}</span></td>
-                        <td>${formatTime(run.started_at)}</td>
-                        <td class="hide-mobile">${formatTime(run.ended_at)}</td>
-                        <td><span class="duration">${formatDuration(run.started_at, run.ended_at)}</span></td>
-                        <td class="hide-mobile">${run.error ? `<span class="error-message" title="${run.error}">${run.error}</span>` : '-'}</td>
-                    </tr>`;
+                    const runId = run.started_at;
+                    const isExpanded = expandedHistoryRows.has(runId);
+                    const workflows = run.workflows && run.workflows.length > 0
+                        ? run.workflows.join(', ')
+                        : '-';
+
+                    return `
+                        <tr class="expandable-row" onclick="toggleHistoryRow('${runId}')">
+                            <td>
+                                <svg id="history-chevron-${runId}" class="chevron-icon ${isExpanded ? 'expanded' : ''}" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="9 18 15 12 9 6"></polyline>
+                                </svg>
+                            </td>
+                            <td>${workflows}</td>
+                            <td><span class="badge ${badgeClass}">${badgeText}</span></td>
+                            <td>${formatTime(run.started_at)}</td>
+                            <td class="hide-mobile">${formatTime(run.ended_at)}</td>
+                            <td><span class="duration">${formatDuration(run.started_at, run.ended_at)}</span></td>
+                            <td class="hide-mobile">${run.error ? `<span class="error-message" title="${run.error}">${run.error}</span>` : '-'}</td>
+                        </tr>
+                        <tr id="history-details-${runId}" class="log-details" style="display: ${isExpanded ? 'table-row' : 'none'};">
+                            <td colspan="7">
+                                <div class="log-details-content">
+                                    ${renderHistoryActivityDetails(run)}
+                                </div>
+                            </td>
+                        </tr>
+                    `;
                 }).join('');
             } catch (err) {
-                document.getElementById('historyBody').innerHTML = 
-                    `<tr><td colspan="5" class="empty-state">Failed to load history: ${err.message}</td></tr>`;
+                document.getElementById('historyBody').innerHTML =
+                    `<tr><td colspan="7" class="empty-state">Failed to load history: ${err.message}</td></tr>`;
             }
         }
 
