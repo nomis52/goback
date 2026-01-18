@@ -726,7 +726,8 @@
                 return '<div class="empty-state" style="padding: 1rem;">No logs captured for this activity</div>';
             }
 
-            return logs.map(log => {
+            const reversedLogs = [...logs].reverse();
+            return reversedLogs.map(log => {
                 const attrs = log.attributes && Object.keys(log.attributes).length > 0
                     ? '<div class="log-attributes">' +
                       Object.entries(log.attributes).map(([key, val]) =>
