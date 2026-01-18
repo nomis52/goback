@@ -50,7 +50,8 @@ func NewWorkflow(logger *slog.Logger, opts ...WorkflowOption) (workflow.Workflow
 
 	// StatusLine factory (per-activity)
 	workflow.Provide(o, func(id workflow.ActivityID) *activity.StatusLine {
-		return activity.NewStatusLine(id, logger, options.statusCollection)
+		activityLogger := options.loggerFactory(id)
+		return activity.NewStatusLine(id, activityLogger, options.statusCollection)
 	})
 
 	step1 := &Step1{}
