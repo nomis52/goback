@@ -9,13 +9,22 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	serverconfig "github.com/nomis52/goback/server/config"
 )
 
 func TestNewCronTriggerManager_ValidSingleTrigger(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	runnable := &mockRunnable{}
 
-	manager, err := NewCronTriggerManager("backup:0 2 * * *", runnable, logger, testAvailableWorkflows)
+	triggers := []serverconfig.CronTrigger{
+		{
+			Workflows: []string{"backup"},
+			Schedule:  "0 2 * * *",
+		},
+	}
+
+	manager, err := NewCronTriggerManager(triggers, runnable, logger)
 	require.NoError(t, err)
 	require.NotNil(t, manager)
 	assert.Len(t, manager.triggers, 1)
@@ -25,73 +34,76 @@ func TestNewCronTriggerManager_ValidMultipleTriggers(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	runnable := &mockRunnable{}
 
-	manager, err := NewCronTriggerManager(
-		"backup,poweroff:0 2 * * *;test:0 3 * * *",
-		runnable,
-		logger,
-		testAvailableWorkflows,
-	)
+	triggers := []serverconfig.CronTrigger{
+		{
+			Workflows: []string{"backup", "poweroff"},
+			Schedule:  "0 2 * * *",
+		},
+		{
+			Workflows: []string{"test"},
+			Schedule:  "0 3 * * *",
+		},
+	}
+
+	manager, err := NewCronTriggerManager(triggers, runnable, logger)
 	require.NoError(t, err)
 	require.NotNil(t, manager)
 	assert.Len(t, manager.triggers, 2)
 }
 
-func TestNewCronTriggerManager_InvalidSpec(t *testing.T) {
+func TestNewCronTriggerManager_InvalidConfig(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	runnable := &mockRunnable{}
 
 	tests := []struct {
-		name string
-		spec string
+		name     string
+		triggers []serverconfig.CronTrigger
+		wantErr  string
 	}{
 		{
-			name: "empty spec",
-			spec: "",
+			name: "empty workflows",
+			triggers: []serverconfig.CronTrigger{
+				{
+					Workflows: []string{},
+					Schedule:  "0 2 * * *",
+				},
+			},
+			wantErr: "no workflows specified",
 		},
 		{
-			name: "missing colon",
-			spec: "backup",
-		},
-		{
-			name: "invalid cron",
-			spec: "backup:invalid",
-		},
-		{
-			name: "unknown workflow",
-			spec: "unknown:0 2 * * *",
-		},
-		{
-			name: "duplicate workflow in trigger",
-			spec: "backup,backup:0 2 * * *",
+			name: "invalid cron schedule",
+			triggers: []serverconfig.CronTrigger{
+				{
+					Workflows: []string{"backup"},
+					Schedule:  "invalid-cron",
+				},
+			},
+			wantErr: "creating trigger",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			manager, err := NewCronTriggerManager(tt.spec, runnable, logger, testAvailableWorkflows)
+			manager, err := NewCronTriggerManager(tt.triggers, runnable, logger)
 			require.Error(t, err)
 			assert.Nil(t, manager)
+			assert.Contains(t, err.Error(), tt.wantErr)
 		})
 	}
-}
-
-func TestNewCronTriggerManager_WorkflowValidation(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	runnable := &mockRunnable{}
-
-	// Unknown workflow should fail
-	manager, err := NewCronTriggerManager("unknown:0 2 * * *", runnable, logger, testAvailableWorkflows)
-	require.Error(t, err)
-	assert.Nil(t, manager)
-	assert.Contains(t, err.Error(), "unknown workflow")
-	assert.Contains(t, err.Error(), "available:")
 }
 
 func TestCronTriggerManager_NextRun_SingleTrigger(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	runnable := &mockRunnable{}
 
-	manager, err := NewCronTriggerManager("backup:0 2 * * *", runnable, logger, testAvailableWorkflows)
+	triggers := []serverconfig.CronTrigger{
+		{
+			Workflows: []string{"backup"},
+			Schedule:  "0 2 * * *",
+		},
+	}
+
+	manager, err := NewCronTriggerManager(triggers, runnable, logger)
 	require.NoError(t, err)
 
 	nextRun := manager.NextRun()
@@ -103,13 +115,22 @@ func TestCronTriggerManager_NextRun_MultipleTriggers(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	runnable := &mockRunnable{}
 
-	// Create triggers at different hours: 2am, 14pm (2pm), 20pm (8pm)
-	manager, err := NewCronTriggerManager(
-		"backup:0 2 * * *;test:0 14 * * *;poweroff:0 20 * * *",
-		runnable,
-		logger,
-		testAvailableWorkflows,
-	)
+	triggers := []serverconfig.CronTrigger{
+		{
+			Workflows: []string{"backup"},
+			Schedule:  "0 2 * * *",
+		},
+		{
+			Workflows: []string{"test"},
+			Schedule:  "0 14 * * *",
+		},
+		{
+			Workflows: []string{"poweroff"},
+			Schedule:  "0 20 * * *",
+		},
+	}
+
+	manager, err := NewCronTriggerManager(triggers, runnable, logger)
 	require.NoError(t, err)
 
 	nextRun := manager.NextRun()
@@ -136,11 +157,9 @@ func TestCronTriggerManager_NextRun_MultipleTriggers(t *testing.T) {
 func TestCronTriggerManager_NextRun_NoTriggers(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
-	// Create manager with no triggers (edge case - shouldn't happen in practice)
-	manager := &CronTriggerManager{
-		triggers: []*CronTrigger{},
-		logger:   logger,
-	}
+	// Create manager with no triggers (valid case)
+	manager, err := NewCronTriggerManager([]serverconfig.CronTrigger{}, nil, logger)
+	require.NoError(t, err)
 
 	nextRun := manager.NextRun()
 	assert.True(t, nextRun.IsZero(), "should return zero time with no triggers")
@@ -150,12 +169,18 @@ func TestCronTriggerManager_Start(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	runnable := &mockRunnable{}
 
-	manager, err := NewCronTriggerManager(
-		"backup:* * * * *;test:* * * * *",
-		runnable,
-		logger,
-		testAvailableWorkflows,
-	)
+	triggers := []serverconfig.CronTrigger{
+		{
+			Workflows: []string{"backup"},
+			Schedule:  "* * * * *",
+		},
+		{
+			Workflows: []string{"test"},
+			Schedule:  "* * * * *",
+		},
+	}
+
+	manager, err := NewCronTriggerManager(triggers, runnable, logger)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -175,25 +200,4 @@ func TestCronTriggerManager_Start(t *testing.T) {
 
 	// Verify no runs completed (we cancelled before first scheduled run)
 	assert.Equal(t, int32(0), runnable.runCount.Load())
-}
-
-func TestCronTriggerManager_ComplexSpec(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	runnable := &mockRunnable{}
-
-	// Complex spec with multiple workflows per trigger
-	manager, err := NewCronTriggerManager(
-		"backup,poweroff:0 2 * * *;test:0 3 * * *;backup:0 14 * * *",
-		runnable,
-		logger,
-		testAvailableWorkflows,
-	)
-	require.NoError(t, err)
-	assert.Len(t, manager.triggers, 3)
-
-	// Verify all triggers are scheduled
-	for _, trigger := range manager.triggers {
-		nextRun := trigger.NextRun()
-		assert.True(t, nextRun.After(time.Now()), "each trigger should have a future next run")
-	}
 }
