@@ -3,7 +3,8 @@ listener:
 cron:
   - workflows:
       - "backup"
-    schedule: "0 2 * * *"
+      - "poweroff"
+    schedule: "5 4 * * *"
 state_dir: "./state"
 log_level: "info"
 workflow_config: "./config.yaml"
