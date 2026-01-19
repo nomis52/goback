@@ -1,0 +1,9 @@
+listener:
+  addr: ":8080"
+cron:
+  - workflows:
+      - "backup"
+    schedule: "0 2 * * *"
+state_dir: "./state"
+log_level: "info"
+workflow_config: "./config.yaml"

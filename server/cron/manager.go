@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"time"
+
+	"github.com/nomis52/goback/server/config"
 )
 
 // Runnable is implemented by anything that can be triggered by the cron scheduler.
@@ -19,57 +21,47 @@ type CronTriggerManager struct {
 	logger    *slog.Logger
 }
 
-// NewCronTriggerManager creates a new CronTriggerManager from a multi-trigger specification.
-// The spec format is: workflow1,workflow2:cron_expression;workflow3:cron_expression2
-//
-// Example:
-//
-//	"backup,poweroff:0 2 * * *;test:0 3 * * *"
-//
-// Returns an error if:
-//   - The spec is invalid or cannot be parsed
-//   - Any workflow name is not in availableWorkflows
-//   - Any cron expression is invalid
-func NewCronTriggerManager(spec string, runnable Runnable, logger *slog.Logger, availableWorkflows map[string]bool) (*CronTriggerManager, error) {
-	// Parse the trigger specifications
-	triggerSpecs, err := ParseTriggerSpecs(spec, availableWorkflows)
-	if err != nil {
-		return nil, err
-	}
+// NewCronTriggerManager creates a new CronTriggerManager from a list of trigger configurations.
+func NewCronTriggerManager(triggers []config.CronTrigger, runnable Runnable, logger *slog.Logger) (*CronTriggerManager, error) {
+	// Create a CronTrigger for each config
+	managedTriggers := make([]*CronTrigger, 0, len(triggers))
+	workflows := make([][]string, 0, len(triggers))
 
-	// Create a CronTrigger for each spec
-	triggers := make([]*CronTrigger, 0, len(triggerSpecs))
-	workflows := make([][]string, 0, len(triggerSpecs))
-	for _, spec := range triggerSpecs {
+	for i, cfg := range triggers {
+		// Validate workflows
+		if len(cfg.Workflows) == 0 {
+			return nil, fmt.Errorf("trigger %d: no workflows specified", i)
+		}
+
 		// Create a closure that captures the workflows and runnable
-		workflowsCopy := spec.Workflows // Capture for closure
+		workflowsCopy := make([]string, len(cfg.Workflows))
+		copy(workflowsCopy, cfg.Workflows)
+
 		callback := func() error {
 			return runnable.Run(workflowsCopy)
 		}
 
-		trigger, err := NewCronTrigger(spec.CronSpec, callback, logger)
+		trigger, err := NewCronTrigger(cfg.Schedule, callback, logger)
 		if err != nil {
-			return nil, fmt.Errorf("creating trigger for '%s:%s': %w",
-				formatWorkflowList(spec.Workflows), spec.CronSpec, err)
+			return nil, fmt.Errorf("creating trigger %d for '%s': %w",
+				i, cfg.Schedule, err)
 		}
-		triggers = append(triggers, trigger)
-		workflows = append(workflows, spec.Workflows)
+		managedTriggers = append(managedTriggers, trigger)
+		workflows = append(workflows, workflowsCopy)
 	}
 
-	logger.Info("cron trigger manager created", "trigger_count", len(triggers))
-
 	// Log details for each trigger
-	for i, trigger := range triggers {
+	for i, trigger := range managedTriggers {
 		logger.Info("trigger registered",
 			"index", i,
-			"workflows", triggerSpecs[i].Workflows,
-			"schedule", triggerSpecs[i].CronSpec,
+			"workflows", workflows[i],
+			"schedule", triggers[i].Schedule,
 			"next_run", trigger.NextRun(),
 		)
 	}
 
 	return &CronTriggerManager{
-		triggers:  triggers,
+		triggers:  managedTriggers,
 		workflows: workflows,
 		logger:    logger,
 	}, nil

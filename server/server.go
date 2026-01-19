@@ -50,6 +50,7 @@ import (
 	"github.com/nomis52/goback/activity"
 	"github.com/nomis52/goback/clients/ipmiclient"
 	"github.com/nomis52/goback/config"
+	serverconfig "github.com/nomis52/goback/server/config"
 	"github.com/nomis52/goback/server/cron"
 	"github.com/nomis52/goback/server/handlers"
 	"github.com/nomis52/goback/server/runner"
@@ -87,32 +88,16 @@ type Server struct {
 	runner      *runner.Runner
 	store       *runner.DiskStore
 	cronTrigger *cron.CronTriggerManager
+	cronConfig  []serverconfig.CronTrigger
 }
 
 // Option configures a Server.
 type Option func(*Server) error
 
 // WithCron configures the server to run backups on a cron schedule.
-// The spec follows the format: workflow1,workflow2:cron_expression;workflow3:cron_expression2
-//
-// Example:
-//
-//	WithCron("backup,poweroff:0 2 * * *;test:0 3 * * *")
-func WithCron(spec string) Option {
+func WithCron(triggers []serverconfig.CronTrigger) Option {
 	return func(s *Server) error {
-		// Skip if runner hasn't been created yet (first pass)
-		if s.runner == nil {
-			return nil
-		}
-
-		// Get available workflows from runner for validation
-		availableWorkflows := s.runner.AvailableWorkflows()
-
-		manager, err := cron.NewCronTriggerManager(spec, s.runner, s.logger, availableWorkflows)
-		if err != nil {
-			return fmt.Errorf("creating cron trigger manager: %w", err)
-		}
-		s.cronTrigger = manager
+		s.cronConfig = triggers
 		return nil
 	}
 }
@@ -157,7 +142,7 @@ func New(configPath string, opts ...Option) (*Server, error) {
 		return nil, err
 	}
 
-	// First pass: apply options that don't need the runner (stateDir, listenAddr)
+	// Apply options to configure server
 	for _, opt := range opts {
 		if err := opt(s); err != nil {
 			return nil, err
@@ -195,11 +180,17 @@ func New(configPath string, opts ...Option) (*Server, error) {
 	}
 	s.runner = runner.New(logger, s, factories, runnerOpts...)
 
-	// Second pass: apply options that need the runner (cron)
-	for _, opt := range opts {
-		if err := opt(s); err != nil {
-			return nil, err
+	// Initialize cron triggers if configured
+	if len(s.cronConfig) > 0 {
+		if err := validateCronWorkflows(s.cronConfig, s.runner.AvailableWorkflows()); err != nil {
+			return nil, fmt.Errorf("validating workflows: %w", err)
 		}
+
+		manager, err := cron.NewCronTriggerManager(s.cronConfig, s.runner, s.logger)
+		if err != nil {
+			return nil, fmt.Errorf("creating cron trigger manager: %w", err)
+		}
+		s.cronTrigger = manager
 	}
 
 	return s, nil
@@ -362,4 +353,19 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 		return
 	}
 	mux.Handle("GET /", http.FileServer(http.FS(staticFS)))
+}
+
+func validateCronWorkflows(triggers []serverconfig.CronTrigger, availableWorkflows map[string]bool) error {
+	for i, cfg := range triggers {
+		for _, w := range cfg.Workflows {
+			if !availableWorkflows[w] {
+				availableList := make([]string, 0, len(availableWorkflows))
+				for k := range availableWorkflows {
+					availableList = append(availableList, k)
+				}
+				return fmt.Errorf("trigger %d: unknown workflow '%s' (available: %v)", i, w, availableList)
+			}
+		}
+	}
+	return nil
 }
