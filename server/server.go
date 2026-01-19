@@ -38,6 +38,7 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
 	"embed"
 	"fmt"
 	"io/fs"
@@ -89,64 +90,48 @@ type Server struct {
 	store       *runner.DiskStore
 	cronTrigger *cron.CronTriggerManager
 	cronConfig  []serverconfig.CronTrigger
+	tlsCert     string
+	tlsKey      string
 }
 
-// Option configures a Server.
-type Option func(*Server) error
-
-// WithCron configures the server to run backups on a cron schedule.
-func WithCron(triggers []serverconfig.CronTrigger) Option {
-	return func(s *Server) error {
-		s.cronConfig = triggers
-		return nil
-	}
-}
-
-// WithListenAddr configures the address the server listens on.
-// Default is ":8080".
-func WithListenAddr(addr string) Option {
-	return func(s *Server) error {
-		s.addr = addr
-		return nil
-	}
-}
-
-// WithStateDir configures the directory where run state is persisted.
-// If not set, runs are only kept in memory.
-func WithStateDir(dir string) Option {
-	return func(s *Server) error {
-		s.stateDir = dir
-		return nil
-	}
-}
-
-// New creates a new Server with the given config path and options.
+// New creates a new Server with the given configuration.
 // It loads the configuration and initializes all dependencies.
-func New(configPath string, opts ...Option) (*Server, error) {
+func New(cfg *serverconfig.ServerConfig) (*Server, error) {
 	logLevel := &slog.LevelVar{}
 	logLevel.Set(slog.LevelInfo)
+
+	// Configure log level if specified
+	if cfg.LogLevel != "" {
+		var level slog.Level
+		if err := level.UnmarshalText([]byte(cfg.LogLevel)); err != nil {
+			return nil, fmt.Errorf("invalid log level '%s': %w", cfg.LogLevel, err)
+		}
+		logLevel.Set(level)
+	}
 
 	handler := slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
 		Level: logLevel,
 	})
 	logger := slog.New(handler)
 
+	addr := defaultListenAddr
+	if cfg.Listener.Addr != "" {
+		addr = cfg.Listener.Addr
+	}
+
 	s := &Server{
-		addr:       defaultListenAddr,
-		configPath: configPath,
+		addr:       addr,
+		configPath: cfg.WorkflowConfig,
+		stateDir:   cfg.StateDir,
 		logger:     logger,
 		logLevel:   logLevel,
+		cronConfig: cfg.Cron,
+		tlsCert:    cfg.Listener.TLSCert,
+		tlsKey:     cfg.Listener.TLSKey,
 	}
 
 	if err := s.Reload(); err != nil {
 		return nil, err
-	}
-
-	// Apply options to configure server
-	for _, opt := range opts {
-		if err := opt(s); err != nil {
-			return nil, err
-		}
 	}
 
 	// Create workflow factory map
@@ -306,8 +291,27 @@ func (s *Server) Run(ctx context.Context) error {
 		s.logger.Info("starting server",
 			"addr", s.addr,
 			"config_path", s.configPath,
+			"tls_enabled", s.tlsCert != "" && s.tlsKey != "",
 		)
-		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+
+		var err error
+		if s.tlsCert != "" && s.tlsKey != "" {
+			loader, err := NewCertLoader(s.tlsCert, s.tlsKey, s.logger)
+			if err != nil {
+				errCh <- fmt.Errorf("failed to initialize cert loader: %w", err)
+				return
+			}
+
+			s.httpServer.TLSConfig = &tls.Config{
+				GetCertificate: loader.GetCertificate,
+			}
+			// Use empty strings to signal to ListenAndServeTLS to use the config
+			err = s.httpServer.ListenAndServeTLS("", "")
+		} else {
+			err = s.httpServer.ListenAndServe()
+		}
+
+		if err != nil && err != http.ErrServerClosed {
 			errCh <- err
 		}
 		close(errCh)

@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -37,32 +36,9 @@ func run() error {
 		return fmt.Errorf("failed to load server config: %w", err)
 	}
 
-	var opts []server.Option
-	if srvCfg.Listener.Addr != "" {
-		opts = append(opts, server.WithListenAddr(srvCfg.Listener.Addr))
-	}
-	if len(srvCfg.Cron) > 0 {
-		opts = append(opts, server.WithCron(srvCfg.Cron))
-	}
-	if srvCfg.StateDir != "" {
-		opts = append(opts, server.WithStateDir(srvCfg.StateDir))
-	}
-
-	srv, err := server.New(
-		srvCfg.WorkflowConfig,
-		opts...,
-	)
+	srv, err := server.New(srvCfg)
 	if err != nil {
 		return fmt.Errorf("failed to create server: %w", err)
-	}
-
-	// Configure log level if specified
-	if srvCfg.LogLevel != "" {
-		var level slog.Level
-		if err := level.UnmarshalText([]byte(srvCfg.LogLevel)); err != nil {
-			return fmt.Errorf("invalid log level '%s': %w", srvCfg.LogLevel, err)
-		}
-		srv.SetLogLevel(level)
 	}
 
 	// Set up signal handling for graceful shutdown

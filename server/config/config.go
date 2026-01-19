@@ -22,6 +22,10 @@ type ServerConfig struct {
 type ListenerConfig struct {
 	// The listen address, defaults to :8080
 	Addr string `yaml:"addr"`
+	// Path to the TLS certificate file
+	TLSCert string `yaml:"tls_cert"`
+	// Path to the TLS key file
+	TLSKey string `yaml:"tls_key"`
 }
 
 // CronTrigger defines a set of workflows to run on a schedule.
