@@ -1,0 +1,12 @@
+listener:
+  addr: ":443"
+  tls_cert: "/etc/letsencrypt/live/goback.d.ne4.org/fullchain.pem"
+  tls_key: "/etc/letsencrypt/live/goback.d.ne4.org/privkey.pem"
+cron:
+  - workflows:
+      - "backup"
+      - "poweroff"
+    schedule: "5 12 * * *"
+state_dir: "/opt/goback//state"
+log_level: "info"
+workflow_config: "/opt/goback/cfg/prod.yaml"
