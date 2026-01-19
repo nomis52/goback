@@ -1,2 +1,1 @@
-- SSL support with let's encrypt
 - metrics, prom style?
