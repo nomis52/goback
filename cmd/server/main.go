@@ -12,8 +12,16 @@ import (
 	serverconfig "github.com/nomis52/goback/server/config"
 )
 
+// Version information (set via ldflags during build)
+var (
+	Version   = "dev"
+	BuildTime = "unknown"
+	GitCommit = "unknown"
+)
+
 type Args struct {
-	ConfigPath string
+	ConfigPath  string
+	ShowVersion bool
 }
 
 func main() {
@@ -25,6 +33,11 @@ func main() {
 
 func run() error {
 	args := parseArgs()
+
+	if args.ShowVersion {
+		showVersion()
+		return nil
+	}
 
 	if args.ConfigPath == "" {
 		return fmt.Errorf("config flag (-c or --config) is required")
@@ -57,9 +70,17 @@ func run() error {
 	return srv.Run(ctx)
 }
 
+func showVersion() {
+	fmt.Printf("goback-server version %s\n", Version)
+	fmt.Printf("Built: %s\n", BuildTime)
+	fmt.Printf("Commit: %s\n", GitCommit)
+}
+
 func parseArgs() Args {
 	configPath := flag.String("config", "", "Path to server config file")
 	configPathShort := flag.String("c", "", "Path to server config file (shorthand)")
+	showVersion := flag.Bool("version", false, "Show version information")
+	versionShort := flag.Bool("v", false, "Show version information (shorthand)")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [options]\n", os.Args[0])
@@ -68,7 +89,7 @@ func parseArgs() Args {
 		flag.PrintDefaults()
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  %s --config /etc/goback/server_config.yaml\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "  %s -c server_config.yaml\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s --version\n", os.Args[0])
 	}
 
 	flag.Parse()
@@ -79,6 +100,7 @@ func parseArgs() Args {
 	}
 
 	return Args{
-		ConfigPath: path,
+		ConfigPath:  path,
+		ShowVersion: *showVersion || *versionShort,
 	}
 }
