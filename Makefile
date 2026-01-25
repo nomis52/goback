@@ -55,20 +55,14 @@ build-poweroff:
 	mkdir -p $(BUILD_DIR)
 	CGO_ENABLED=0 go build -o $(BUILD_DIR)/$(APP_NAME)-poweroff ./cmd/power_off
 
-# Install systemd service for goback-server daemon (requires sudo)
+# Install goback-server binary and systemd service (requires sudo)
 .PHONY: daemon-install
 daemon-install:
-	@echo "Installing $(APP_NAME)-server systemd service..."
-	@# Check binary exists
-	@if [ ! -f $(INSTALL_DIR)/bin/$(APP_NAME)-server ]; then \
-		echo "Error: $(INSTALL_DIR)/bin/$(APP_NAME)-server not found"; \
-		echo "Please copy the binary to $(INSTALL_DIR)/bin/ first"; \
-		exit 1; \
-	fi
-	@# Check binary is executable
-	@if [ ! -x $(INSTALL_DIR)/bin/$(APP_NAME)-server ]; then \
-		echo "Error: $(INSTALL_DIR)/bin/$(APP_NAME)-server is not executable"; \
-		echo "Run: sudo chmod +x $(INSTALL_DIR)/bin/$(APP_NAME)-server"; \
+	@echo "Installing $(APP_NAME)-server..."
+	@# Check build binary exists
+	@if [ ! -f $(BUILD_DIR)/$(APP_NAME)-server ]; then \
+		echo "Error: $(BUILD_DIR)/$(APP_NAME)-server not found"; \
+		echo "Run 'make build-server' first"; \
 		exit 1; \
 	fi
 	@# Check goback user exists
@@ -77,13 +71,26 @@ daemon-install:
 		echo "Run: sudo useradd -r -s /sbin/nologin goback"; \
 		exit 1; \
 	fi
+	@# Get commit sha from binary
+	$(eval SHA := $(shell $(BUILD_DIR)/$(APP_NAME)-server --version | grep Commit | awk '{print $$2}'))
+	@echo "Installing version: $(SHA)"
+	@# Create bin directory if needed
+	sudo mkdir -p $(INSTALL_DIR)/bin
+	@# Copy binary with sha suffix
+	sudo cp $(BUILD_DIR)/$(APP_NAME)-server $(INSTALL_DIR)/bin/$(APP_NAME)-server.$(SHA)
+	sudo chmod +x $(INSTALL_DIR)/bin/$(APP_NAME)-server.$(SHA)
+	@# Create/update symlink
+	sudo ln -sf $(APP_NAME)-server.$(SHA) $(INSTALL_DIR)/bin/$(APP_NAME)-server
+	sudo chown -R goback:goback $(INSTALL_DIR)/bin
 	@# Install systemd service
 	sudo cp systemd/$(APP_NAME)-server.service /etc/systemd/system/
 	sudo systemctl daemon-reload
 	@echo ""
-	@echo "Service installed. Next steps:"
+	@echo "Installed $(INSTALL_DIR)/bin/$(APP_NAME)-server.$(SHA)"
+	@echo ""
+	@echo "Next steps:"
 	@echo "  sudo systemctl enable $(APP_NAME)-server"
-	@echo "  sudo systemctl start $(APP_NAME)-server"
+	@echo "  sudo systemctl restart $(APP_NAME)-server"
 
 # Format code
 .PHONY: fmt
