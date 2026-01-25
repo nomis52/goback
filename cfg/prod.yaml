@@ -9,4 +9,4 @@ cron:
     schedule: "5 12 * * *"
 state_dir: "/opt/goback//state"
 log_level: "info"
-workflow_config: "/opt/goback/cfg/prod.yaml"
+workflow_config: "/opt/goback/cfg/workflows.yaml"

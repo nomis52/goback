@@ -296,9 +296,9 @@ func (s *Server) Run(ctx context.Context) error {
 
 		var err error
 		if s.tlsCert != "" && s.tlsKey != "" {
-			loader, err := NewCertLoader(s.tlsCert, s.tlsKey, s.logger)
-			if err != nil {
-				errCh <- fmt.Errorf("failed to initialize cert loader: %w", err)
+			loader, loadErr := NewCertLoader(s.tlsCert, s.tlsKey, s.logger)
+			if loadErr != nil {
+				errCh <- fmt.Errorf("failed to initialize cert loader: %w", loadErr)
 				return
 			}
 
