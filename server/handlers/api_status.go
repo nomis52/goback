@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/nomis52/goback/buildinfo"
 	"github.com/nomis52/goback/clients/ipmiclient"
 	"github.com/nomis52/goback/server/cron"
 	"github.com/nomis52/goback/server/runner"
@@ -27,6 +28,7 @@ type APIStatusResponse struct {
 	PBS     PBSStatus        `json:"pbs"`
 	Run     runner.RunStatus `json:"run"`     // Includes ActivityExecutions with Status field
 	NextRun NextRunResponse  `json:"next_run"`
+	Build   buildinfo.Properties `json:"build"`
 }
 
 // APIStatusProvider aggregates all the providers needed for the status endpoint.
@@ -35,6 +37,7 @@ type APIStatusProvider interface {
 	Status() runner.RunStatus
 	NextRun() *time.Time
 	NextTrigger() *cron.NextTriggerInfo
+	BuildProperties() buildinfo.Properties
 }
 
 // APIStatusHandler handles requests for the consolidated status endpoint.
@@ -88,6 +91,7 @@ func (h *APIStatusHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		},
 		Run:     runStatus,
 		NextRun: nextRunResp,
+		Build:   h.provider.BuildProperties(),
 	}
 
 	writeJSON(w, http.StatusOK, resp)

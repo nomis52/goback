@@ -1,7 +1,5 @@
 listener:
   addr: ":8080"
-  tls_cert: "/etc/letsencrypt/live/goback.d.ne4.org/fullchain.pem"
-  tls_key: "/etc/letsencrypt/live/goback.d.ne4.org/privkey.pem"
 cron:
   - workflows:
       - "backup"

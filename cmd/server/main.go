@@ -8,15 +8,9 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/nomis52/goback/buildinfo"
 	"github.com/nomis52/goback/server"
 	serverconfig "github.com/nomis52/goback/server/config"
-)
-
-// Version information (set via ldflags during build)
-var (
-	Version   = "dev"
-	BuildTime = "unknown"
-	GitCommit = "unknown"
 )
 
 type Args struct {
@@ -49,7 +43,7 @@ func run() error {
 		return fmt.Errorf("failed to load server config: %w", err)
 	}
 
-	srv, err := server.New(srvCfg)
+	srv, err := server.New(srvCfg, server.WithBuildProperties(buildinfo.Get()))
 	if err != nil {
 		return fmt.Errorf("failed to create server: %w", err)
 	}
@@ -71,9 +65,10 @@ func run() error {
 }
 
 func showVersion() {
-	fmt.Printf("goback-server version %s\n", Version)
-	fmt.Printf("Built: %s\n", BuildTime)
-	fmt.Printf("Commit: %s\n", GitCommit)
+	props := buildinfo.Get()
+	fmt.Printf("goback-server\n")
+	fmt.Printf("Built: %s\n", props.BuildTime)
+	fmt.Printf("Commit: %s\n", props.GitCommit)
 }
 
 func parseArgs() Args {

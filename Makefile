@@ -7,7 +7,7 @@ BUILD_TIME := $(shell date -u '+%Y-%m-%d_%H:%M:%S')
 GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
 # Build flags
-LDFLAGS := -ldflags="-s -w -X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME) -X main.GitCommit=$(GIT_COMMIT)"
+LDFLAGS := -ldflags="-s -w -X github.com/nomis52/goback/buildinfo.buildTime=$(BUILD_TIME) -X github.com/nomis52/goback/buildinfo.gitCommit=$(GIT_COMMIT)"
 
 # Directories
 BUILD_DIR := build

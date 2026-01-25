@@ -6,18 +6,12 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/nomis52/goback/buildinfo"
 	"github.com/nomis52/goback/config"
 	"github.com/nomis52/goback/logging"
 	"github.com/nomis52/goback/workflow"
 	"github.com/nomis52/goback/workflows/backup"
 	"github.com/nomis52/goback/workflows/poweroff"
-)
-
-// Version information (set via ldflags during build)
-var (
-	Version   = "dev"
-	BuildTime = "unknown"
-	GitCommit = "unknown"
 )
 
 type Args struct {
@@ -71,10 +65,10 @@ func run() error {
 		return fmt.Errorf("failed to initialize logger: %w", err)
 	}
 
+	props := buildinfo.Get()
 	logger.Info("goback started",
-		"version", Version,
-		"build_time", BuildTime,
-		"git_commit", GitCommit,
+		"build_time", props.BuildTime,
+		"git_commit", props.GitCommit,
 		"config_path", args.ConfigPath,
 	)
 
@@ -103,9 +97,10 @@ func run() error {
 }
 
 func showVersion() {
-	fmt.Printf("goback version %s\n", Version)
-	fmt.Printf("Built: %s\n", BuildTime)
-	fmt.Printf("Commit: %s\n", GitCommit)
+	props := buildinfo.Get()
+	fmt.Printf("goback\n")
+	fmt.Printf("Built: %s\n", props.BuildTime)
+	fmt.Printf("Commit: %s\n", props.GitCommit)
 }
 
 func parseArgs() Args {

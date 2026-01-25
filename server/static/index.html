@@ -61,6 +61,17 @@
             color: var(--text-secondary);
         }
 
+        .header-left {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .build-info {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
         .grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -453,7 +464,10 @@
 <body>
     <div class="container">
         <header>
-            <h1>d.ne4.org Backup</h1>
+            <div class="header-left">
+                <h1>d.ne4.org Backup</h1>
+                <span id="buildInfo" class="build-info"></span>
+            </div>
             <div class="last-updated">Last updated: <span id="lastUpdated">-</span></div>
         </header>
 
@@ -870,6 +884,14 @@
                 pbsDot.className = 'status-dot ' + (pbsState === 'on' ? 'on' : pbsState === 'off' ? 'off' : 'unknown');
                 pbsStatus.textContent = pbsState.charAt(0).toUpperCase() + pbsState.slice(1);
                 pbsStatus.className = 'status-value ' + (pbsState === 'on' ? 'on' : pbsState === 'off' ? 'off' : '');
+
+                // Update build info
+                if (data.build && data.build.build_time !== 'unknown') {
+                    const buildInfo = document.getElementById('buildInfo');
+                    const buildDate = data.build.build_time.replace('_', ' ');
+                    const commit = data.build.git_commit || 'unknown';
+                    buildInfo.textContent = `Built ${buildDate} (${commit})`;
+                }
 
                 // Update run status
                 const wasRunning = isRunning;

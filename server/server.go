@@ -49,6 +49,7 @@ import (
 	"time"
 
 	"github.com/nomis52/goback/activity"
+	"github.com/nomis52/goback/buildinfo"
 	"github.com/nomis52/goback/clients/ipmiclient"
 	"github.com/nomis52/goback/config"
 	serverconfig "github.com/nomis52/goback/server/config"
@@ -79,24 +80,35 @@ type serverDeps struct {
 
 // Server is the HTTP server for the goback web interface.
 type Server struct {
-	addr        string
-	configPath  string
-	stateDir    string
-	logger      *slog.Logger
-	logLevel    *slog.LevelVar
-	deps        atomic.Pointer[serverDeps]
-	httpServer  *http.Server
-	runner      *runner.Runner
-	store       *runner.DiskStore
-	cronTrigger *cron.CronTriggerManager
-	cronConfig  []serverconfig.CronTrigger
-	tlsCert     string
-	tlsKey      string
+	addr            string
+	configPath      string
+	stateDir        string
+	logger          *slog.Logger
+	logLevel        *slog.LevelVar
+	deps            atomic.Pointer[serverDeps]
+	httpServer      *http.Server
+	runner          *runner.Runner
+	store           *runner.DiskStore
+	cronTrigger     *cron.CronTriggerManager
+	cronConfig      []serverconfig.CronTrigger
+	tlsCert         string
+	tlsKey          string
+	buildProperties buildinfo.Properties
+}
+
+// Option is a functional option for configuring the Server.
+type Option func(*Server)
+
+// WithBuildProperties sets the build properties for the server.
+func WithBuildProperties(props buildinfo.Properties) Option {
+	return func(s *Server) {
+		s.buildProperties = props
+	}
 }
 
 // New creates a new Server with the given configuration.
 // It loads the configuration and initializes all dependencies.
-func New(cfg *serverconfig.ServerConfig) (*Server, error) {
+func New(cfg *serverconfig.ServerConfig, opts ...Option) (*Server, error) {
 	logLevel := &slog.LevelVar{}
 	logLevel.Set(slog.LevelInfo)
 
@@ -128,6 +140,11 @@ func New(cfg *serverconfig.ServerConfig) (*Server, error) {
 		cronConfig: cfg.Cron,
 		tlsCert:    cfg.Listener.TLSCert,
 		tlsKey:     cfg.Listener.TLSKey,
+	}
+
+	// Apply options
+	for _, opt := range opts {
+		opt(s)
 	}
 
 	if err := s.Reload(); err != nil {
@@ -223,6 +240,11 @@ func (s *Server) Config() *config.Config {
 // IPMIController returns the current IPMI controller.
 func (s *Server) IPMIController() *ipmiclient.IPMIController {
 	return s.deps.Load().ipmiController
+}
+
+// BuildProperties returns the build properties.
+func (s *Server) BuildProperties() buildinfo.Properties {
+	return s.buildProperties
 }
 
 // NextRun returns the next scheduled run time, or nil if no cron is configured.
