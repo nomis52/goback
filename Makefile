@@ -11,9 +11,7 @@ LDFLAGS := -ldflags="-s -w -X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_
 
 # Directories
 BUILD_DIR := build
-CONFIG_DIR := /etc/$(APP_NAME)
-BIN_DIR := /usr/local/bin
-LOG_DIR := /var/log/$(APP_NAME)
+INSTALL_DIR := /opt/goback
 
 # Default target
 .PHONY: all
@@ -57,53 +55,35 @@ build-poweroff:
 	mkdir -p $(BUILD_DIR)
 	CGO_ENABLED=0 go build -o $(BUILD_DIR)/$(APP_NAME)-poweroff ./cmd/power_off
 
-# Install locally (requires sudo)
-.PHONY: install
-install: build
-	@echo "Installing $(APP_NAME)..."
-	sudo mkdir -p $(CONFIG_DIR) $(BIN_DIR) $(LOG_DIR)
-	sudo cp $(BUILD_DIR)/$(APP_NAME) $(BIN_DIR)/
-	sudo chmod +x $(BIN_DIR)/$(APP_NAME)
-	
-	# Copy config if it doesn't exist
-	@if [ ! -f $(CONFIG_DIR)/config.yaml ]; then \
-		echo "Installing example config..."; \
-		sudo cp config.yaml $(CONFIG_DIR)/config.yaml.example; \
-		echo "Please copy $(CONFIG_DIR)/config.yaml.example to $(CONFIG_DIR)/config.yaml and edit it"; \
+# Install systemd service for goback-server daemon (requires sudo)
+.PHONY: daemon-install
+daemon-install:
+	@echo "Installing $(APP_NAME)-server systemd service..."
+	@# Check binary exists
+	@if [ ! -f $(INSTALL_DIR)/bin/$(APP_NAME)-server ]; then \
+		echo "Error: $(INSTALL_DIR)/bin/$(APP_NAME)-server not found"; \
+		echo "Please copy the binary to $(INSTALL_DIR)/bin/ first"; \
+		exit 1; \
 	fi
-	
-	# Install systemd service files
-	@if [ -d /etc/systemd/system ]; then \
-		echo "Installing systemd service and timer..."; \
-		sudo cp scripts/$(APP_NAME).service /etc/systemd/system/; \
-		sudo cp scripts/$(APP_NAME).timer /etc/systemd/system/; \
-		sudo systemctl daemon-reload; \
-		echo ""; \
-		echo "Installation complete! Next steps:"; \
-		echo "  1. sudo cp $(CONFIG_DIR)/config.yaml.example $(CONFIG_DIR)/config.yaml"; \
-		echo "  2. sudo nano $(CONFIG_DIR)/config.yaml"; \
-		echo "  3. sudo systemctl enable $(APP_NAME).timer"; \
-		echo "  4. sudo systemctl start $(APP_NAME).timer"; \
+	@# Check binary is executable
+	@if [ ! -x $(INSTALL_DIR)/bin/$(APP_NAME)-server ]; then \
+		echo "Error: $(INSTALL_DIR)/bin/$(APP_NAME)-server is not executable"; \
+		echo "Run: sudo chmod +x $(INSTALL_DIR)/bin/$(APP_NAME)-server"; \
+		exit 1; \
 	fi
-
-# Install as cron job (alternative to systemd)
-.PHONY: install-cron
-install-cron: install
-	@echo "Setting up cron job..."
-	@echo "# PBS Backup Automation - runs daily at 2 AM" | sudo tee /etc/cron.d/$(APP_NAME)
-	@echo "0 2 * * * root $(BIN_DIR)/$(APP_NAME) --config $(CONFIG_DIR)/config.yaml >> $(LOG_DIR)/$(APP_NAME).log 2>&1" | sudo tee -a /etc/cron.d/$(APP_NAME)
-	@echo "Cron job installed. Logs will be written to $(LOG_DIR)/$(APP_NAME).log"
-
-# Uninstall
-.PHONY: uninstall
-uninstall:
-	@echo "Uninstalling $(APP_NAME)..."
-	sudo rm -f $(BIN_DIR)/$(APP_NAME)
-	sudo rm -f /etc/systemd/system/$(APP_NAME).service
-	sudo rm -f /etc/systemd/system/$(APP_NAME).timer
-	sudo rm -f /etc/cron.d/$(APP_NAME)
-	sudo systemctl daemon-reload 2>/dev/null || true
-	@echo "$(APP_NAME) uninstalled. Config and logs preserved in $(CONFIG_DIR) and $(LOG_DIR)"
+	@# Check goback user exists
+	@if ! id -u goback >/dev/null 2>&1; then \
+		echo "Error: goback user does not exist"; \
+		echo "Run: sudo useradd -r -s /sbin/nologin goback"; \
+		exit 1; \
+	fi
+	@# Install systemd service
+	sudo cp systemd/$(APP_NAME)-server.service /etc/systemd/system/
+	sudo systemctl daemon-reload
+	@echo ""
+	@echo "Service installed. Next steps:"
+	@echo "  sudo systemctl enable $(APP_NAME)-server"
+	@echo "  sudo systemctl start $(APP_NAME)-server"
 
 # Format code
 .PHONY: fmt
@@ -127,18 +107,17 @@ help:
 	@echo "PBS Backup Automation - Available targets:"
 	@echo ""
 	@echo "Building:"
-	@echo "  build         Build for current platform"
-	@echo "  test          Run tests"
-	@echo "  clean         Clean build artifacts"
+	@echo "  build          Build all binaries"
+	@echo "  build-server   Build server binary only"
+	@echo "  test           Run tests"
+	@echo "  clean          Clean build artifacts"
 	@echo ""
 	@echo "Installation:"
-	@echo "  install       Install locally with systemd (requires sudo)"
-	@echo "  install-cron  Install with cron job instead of systemd"
-	@echo "  uninstall     Remove installation"
+	@echo "  daemon-install Install systemd service (requires sudo)"
 	@echo ""
 	@echo "Development:"
-	@echo "  fmt           Format code and tidy modules"
+	@echo "  fmt            Format code and tidy modules"
 	@echo ""
 	@echo "Utilities:"
-	@echo "  info          Show build information"
-	@echo "  help          Show this help message"
+	@echo "  info           Show build information"
+	@echo "  help           Show this help message"

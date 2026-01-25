@@ -1,0 +1,38 @@
+[Unit]
+Description=Goback Server - PBS Backup Automation Service
+Documentation=https://github.com/nomis52/goback
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=goback
+Group=goback
+
+WorkingDirectory=/opt/goback
+
+ExecStart=/opt/goback/bin/goback-server --config /opt/goback/cfg/prod.yaml
+
+# Allow binding to port 443 as non-root
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=goback-server
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/goback/state
+ReadOnlyPaths=/etc/letsencrypt
+
+# Restart policy
+Restart=always
+RestartSec=5
+TimeoutStopSec=30s
+
+[Install]
+WantedBy=multi-user.target
