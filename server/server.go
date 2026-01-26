@@ -40,6 +40,7 @@ import (
 	"context"
 	"crypto/tls"
 	"embed"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -50,7 +51,6 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/nomis52/goback/activity"
 	"github.com/nomis52/goback/buildinfo"
 	"github.com/nomis52/goback/clients/ipmiclient"
 	"github.com/nomis52/goback/config"
@@ -74,6 +74,15 @@ const (
 	defaultShutdownTimeout = 5 * time.Second
 	defaultListenAddr      = ":8080"
 )
+
+// defaultWorkflowFactories returns the standard workflow factories for backup, poweroff, and test workflows.
+func defaultWorkflowFactories() map[string]runner.WorkflowFactory {
+	return map[string]runner.WorkflowFactory{
+		"backup":   backup.NewWorkflow,
+		"poweroff": poweroff.NewWorkflow,
+		"test":     test.NewWorkflow,
+	}
+}
 
 // serverDeps holds config-derived dependencies that are swapped atomically on reload.
 type serverDeps struct {
@@ -101,6 +110,9 @@ type Server struct {
 	// Metrics
 	startTime       time.Time
 	metricsRegistry *metrics.ScrapeRegistry
+
+	// Static files
+	staticFS fs.FS
 }
 
 // Option is a functional option for configuring the Server.
@@ -159,6 +171,12 @@ func New(cfg *serverconfig.ServerConfig, opts ...Option) (*Server, error) {
 		return nil, fmt.Errorf("registering uptime gauge: %w", err)
 	}
 
+	// Initialize static file system
+	staticFS, err := fs.Sub(staticFiles, "static")
+	if err != nil {
+		return nil, fmt.Errorf("creating static file system: %w", err)
+	}
+
 	s := &Server{
 		addr:            addr,
 		configPath:      cfg.WorkflowConfig,
@@ -170,6 +188,7 @@ func New(cfg *serverconfig.ServerConfig, opts ...Option) (*Server, error) {
 		tlsKey:          cfg.Listener.TLSKey,
 		startTime:       startTime,
 		metricsRegistry: metricsRegistry,
+		staticFS:        staticFS,
 	}
 
 	// Apply options
@@ -179,27 +198,6 @@ func New(cfg *serverconfig.ServerConfig, opts ...Option) (*Server, error) {
 
 	if err := s.Reload(); err != nil {
 		return nil, err
-	}
-
-	// Create workflow factory map
-	factories := map[string]runner.WorkflowFactory{
-		"backup": func(cfg *config.Config, logger *slog.Logger, statusCollection *activity.StatusHandler, loggerFactory func(workflow.ActivityID) *slog.Logger, registry metrics.Registry) (workflow.Workflow, error) {
-			return backup.NewWorkflow(cfg, logger,
-				backup.WithStatusCollection(statusCollection),
-				backup.WithLoggerFactory(loggerFactory),
-				backup.WithMetricsRegistry(registry))
-		},
-		"poweroff": func(cfg *config.Config, logger *slog.Logger, statusCollection *activity.StatusHandler, loggerFactory func(workflow.ActivityID) *slog.Logger, registry metrics.Registry) (workflow.Workflow, error) {
-			return poweroff.NewWorkflow(cfg, logger,
-				poweroff.WithStatusCollection(statusCollection),
-				poweroff.WithLoggerFactory(loggerFactory),
-				poweroff.WithMetricsRegistry(registry))
-		},
-		"test": func(cfg *config.Config, logger *slog.Logger, statusCollection *activity.StatusHandler, loggerFactory func(workflow.ActivityID) *slog.Logger, registry metrics.Registry) (workflow.Workflow, error) {
-			return test.NewWorkflow(logger,
-				test.WithStatusCollection(statusCollection),
-				test.WithLoggerFactory(loggerFactory))
-		},
 	}
 
 	// Create runner with optional disk store and metrics
@@ -214,7 +212,7 @@ func New(cfg *serverconfig.ServerConfig, opts ...Option) (*Server, error) {
 		s.store = store
 		runnerOpts = append(runnerOpts, runner.WithStateStore(store))
 	}
-	s.runner = runner.New(logger, s, factories, runnerOpts...)
+	s.runner = runner.New(logger, s, defaultWorkflowFactories(), runnerOpts...)
 
 	// Initialize cron triggers if configured
 	if len(s.cronConfig) > 0 {
@@ -370,6 +368,7 @@ func (s *Server) Run(ctx context.Context) error {
 
 			s.httpServer.TLSConfig = &tls.Config{
 				GetCertificate: loader.GetCertificate,
+				MinVersion:     tls.VersionTLS12,
 			}
 			// Use empty strings to signal to ListenAndServeTLS to use the config
 			err = s.httpServer.ListenAndServeTLS("", "")
@@ -377,7 +376,7 @@ func (s *Server) Run(ctx context.Context) error {
 			err = s.httpServer.ListenAndServe()
 		}
 
-		if err != nil && err != http.ErrServerClosed {
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
 		}
 		close(errCh)
@@ -420,12 +419,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /metrics", s.metricsRegistry.Handler())
 
 	// Static files (web UI)
-	staticFS, err := fs.Sub(staticFiles, "static")
-	if err != nil {
-		s.logger.Error("failed to create static file system", "error", err)
-		return
-	}
-	mux.Handle("GET /", http.FileServer(http.FS(staticFS)))
+	mux.Handle("GET /", http.FileServer(http.FS(s.staticFS)))
 }
 
 func validateCronWorkflows(triggers []serverconfig.CronTrigger, availableWorkflows map[string]bool) error {

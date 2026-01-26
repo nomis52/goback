@@ -4,7 +4,12 @@ import (
 	"time"
 
 	"github.com/nomis52/goback/logging"
+	"github.com/nomis52/goback/workflow"
+	"github.com/nomis52/goback/workflows"
 )
+
+// WorkflowFactory creates a workflow with the given parameters.
+type WorkflowFactory func(params workflows.Params) (workflow.Workflow, error)
 
 // RunState represents the current state of a backup run.
 type RunState int

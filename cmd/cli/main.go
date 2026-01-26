@@ -11,6 +11,7 @@ import (
 	"github.com/nomis52/goback/logging"
 	"github.com/nomis52/goback/metrics"
 	"github.com/nomis52/goback/workflow"
+	"github.com/nomis52/goback/workflows"
 	"github.com/nomis52/goback/workflows/backup"
 	"github.com/nomis52/goback/workflows/poweroff"
 )
@@ -88,14 +89,25 @@ func run() error {
 	})
 
 	// Create backup workflow (PowerOnPBS → BackupDirs → BackupVMs)
-	backupWorkflow, err := backup.NewWorkflow(&cfg, logger,
-		backup.WithMetricsRegistry(registry))
+	backupWorkflow, err := backup.NewWorkflow(workflows.Params{
+		Config:           &cfg,
+		Logger:           logger,
+		StatusCollection: nil,
+		LoggerFactory:    nil,
+		Registry:         registry,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to create backup workflow: %w", err)
 	}
 
 	// Create power off workflow (PowerOffPBS)
-	powerOffWorkflow, err := poweroff.NewWorkflow(&cfg, logger)
+	powerOffWorkflow, err := poweroff.NewWorkflow(workflows.Params{
+		Config:           &cfg,
+		Logger:           logger,
+		StatusCollection: nil,
+		LoggerFactory:    nil,
+		Registry:         registry,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to create power off workflow: %w", err)
 	}

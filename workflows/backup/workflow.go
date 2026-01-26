@@ -6,58 +6,20 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/nomis52/goback/activity"
 	"github.com/nomis52/goback/clients/ipmiclient"
 	"github.com/nomis52/goback/clients/pbsclient"
 	"github.com/nomis52/goback/clients/proxmoxclient"
 	"github.com/nomis52/goback/config"
-	"github.com/nomis52/goback/metrics"
 	"github.com/nomis52/goback/workflow"
+	"github.com/nomis52/goback/workflows"
 )
-
-// WorkflowOption configures workflow creation.
-type WorkflowOption func(*workflowOptions)
-
-type workflowOptions struct {
-	loggerFactory    workflow.Factory[*slog.Logger]
-	statusCollection *activity.StatusHandler
-	registry         metrics.Registry
-}
-
-// WithLoggerFactory sets a logger factory for creating activity-specific loggers.
-func WithLoggerFactory(factory workflow.Factory[*slog.Logger]) WorkflowOption {
-	return func(opts *workflowOptions) {
-		opts.loggerFactory = factory
-	}
-}
-
-// WithStatusCollection sets a status collection for tracking activity status.
-// If not provided, status updates are only logged.
-func WithStatusCollection(collection *activity.StatusHandler) WorkflowOption {
-	return func(opts *workflowOptions) {
-		opts.statusCollection = collection
-	}
-}
-
-// WithMetricsRegistry sets the metrics registry for activities.
-// If not provided, activities will not report metrics.
-func WithMetricsRegistry(registry metrics.Registry) WorkflowOption {
-	return func(opts *workflowOptions) {
-		opts.registry = registry
-	}
-}
 
 // NewWorkflow creates a workflow that powers on PBS and performs backups.
 // The workflow executes: PowerOnPBS → BackupDirs → BackupVMs
 // It does NOT power off PBS after completion.
-func NewWorkflow(cfg *config.Config, logger *slog.Logger, opts ...WorkflowOption) (workflow.Workflow, error) {
-	// Apply options with defaults
-	options := &workflowOptions{
-		loggerFactory: workflow.Shared(logger), // Default to shared logger
-	}
-	for _, opt := range opts {
-		opt(options)
-	}
+func NewWorkflow(params workflows.Params) (workflow.Workflow, error) {
+	cfg := params.Config
+	logger := params.Logger
 
 	// Create orchestrator with config and logger options
 	o := workflow.NewOrchestrator(
@@ -76,19 +38,8 @@ func NewWorkflow(cfg *config.Config, logger *slog.Logger, opts ...WorkflowOption
 	workflow.Provide(o, workflow.Shared(deps.pbsClient))
 	workflow.Provide(o, workflow.Shared(deps.proxmoxClient))
 
-	// Metrics registry (optional - activities check for nil)
-	if options.registry != nil {
-		workflow.Provide(o, workflow.Shared(options.registry))
-	}
-
-	// Logger factory (per-activity, defaults to shared logger)
-	workflow.Provide(o, options.loggerFactory)
-
-	// StatusLine factory (per-activity)
-	workflow.Provide(o, func(id workflow.ActivityID) *activity.StatusLine {
-		activityLogger := options.loggerFactory(id)
-		return activity.NewStatusLine(id, activityLogger, options.statusCollection)
-	})
+	// Inject common factories (logger, metrics registry, status line)
+	params.InjectInto(o)
 
 	// Add backup activities
 	powerOnPBS := &PowerOnPBS{}

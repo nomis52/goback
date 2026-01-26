@@ -53,23 +53,13 @@ import (
 	"github.com/nomis52/goback/logging"
 	"github.com/nomis52/goback/metrics"
 	"github.com/nomis52/goback/workflow"
+	"github.com/nomis52/goback/workflows"
 )
 
 const defaultMaxHistorySize = 100
 
 // ErrRunInProgress is returned when attempting to start a run while one is already running.
 var ErrRunInProgress = errors.New("backup run already in progress")
-
-// WorkflowFactory creates a workflow with the given configuration, logger, and workflow infrastructure.
-// The statusCollection is used to track activity status updates, loggerFactory creates per-activity loggers,
-// and registry is used for activity-level metrics.
-type WorkflowFactory func(
-	cfg *config.Config,
-	logger *slog.Logger,
-	statusCollection *activity.StatusHandler,
-	loggerFactory func(workflow.ActivityID) *slog.Logger,
-	registry metrics.Registry,
-) (workflow.Workflow, error)
 
 // Runner manages backup run execution.
 type Runner struct {
@@ -389,18 +379,25 @@ func (r *Runner) executeRun(ctx context.Context, workflowNames []string) error {
 	}
 
 	// Create workflows using factories
-	workflows := make([]workflow.Workflow, 0, len(workflowNames))
+	wfs := make([]workflow.Workflow, 0, len(workflowNames))
+	params := workflows.Params{
+		Config:           cfg,
+		Logger:           r.logger,
+		StatusCollection: statusCollection,
+		LoggerFactory:    loggerFactory,
+		Registry:         r.registry,
+	}
 	for _, name := range workflowNames {
 		factory := r.factories[name] // Already validated in Run()
-		wf, err := factory(cfg, r.logger, statusCollection, loggerFactory, r.registry)
+		wf, err := factory(params)
 		if err != nil {
 			return fmt.Errorf("failed to create workflow %q: %w", name, err)
 		}
-		workflows = append(workflows, wf)
+		wfs = append(wfs, wf)
 	}
 
 	// Compose all workflows
-	composedWorkflow := workflow.Compose(workflows...)
+	composedWorkflow := workflow.Compose(wfs...)
 
 	// Store workflow, status collection, and log collector references for result/status/log access
 	r.mu.Lock()
