@@ -25,10 +25,11 @@ type NextRunResponse struct {
 
 // APIStatusResponse is the consolidated response for /api/status.
 type APIStatusResponse struct {
-	PBS     PBSStatus        `json:"pbs"`
-	Run     runner.RunStatus `json:"run"`     // Includes ActivityExecutions with Status field
-	NextRun NextRunResponse  `json:"next_run"`
-	Build   buildinfo.Properties `json:"build"`
+	PBS      PBSStatus            `json:"pbs"`
+	Run      runner.RunStatus     `json:"run"` // Includes ActivityExecutions with Status field
+	NextRun  NextRunResponse      `json:"next_run"`
+	Build    buildinfo.Properties `json:"build"`
+	StartedAt time.Time           `json:"started_at"`
 }
 
 // APIStatusProvider aggregates all the providers needed for the status endpoint.
@@ -38,6 +39,7 @@ type APIStatusProvider interface {
 	NextRun() *time.Time
 	NextTrigger() *cron.NextTriggerInfo
 	BuildProperties() buildinfo.Properties
+	StartTime() time.Time
 }
 
 // APIStatusHandler handles requests for the consolidated status endpoint.
@@ -89,9 +91,10 @@ func (h *APIStatusHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		PBS: PBSStatus{
 			PowerState: powerStateStr,
 		},
-		Run:     runStatus,
-		NextRun: nextRunResp,
-		Build:   h.provider.BuildProperties(),
+		Run:       runStatus,
+		NextRun:   nextRunResp,
+		Build:     h.provider.BuildProperties(),
+		StartedAt: h.provider.StartTime(),
 	}
 
 	writeJSON(w, http.StatusOK, resp)

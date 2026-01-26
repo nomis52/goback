@@ -281,6 +281,11 @@ func (s *Server) BuildProperties() buildinfo.Properties {
 	return s.buildProperties
 }
 
+// StartTime returns the server start time.
+func (s *Server) StartTime() time.Time {
+	return s.startTime
+}
+
 // MetricsRegistry returns the metrics registry.
 func (s *Server) MetricsRegistry() *metrics.ScrapeRegistry {
 	return s.metricsRegistry

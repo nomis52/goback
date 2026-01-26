@@ -677,18 +677,37 @@
             const date = new Date(isoString);
             const now = new Date();
             const diffMs = date - now;
-            
+
             if (diffMs < 0) return 'now';
-            
+
             const seconds = Math.floor(diffMs / 1000) % 60;
             const minutes = Math.floor(diffMs / 60000) % 60;
             const hours = Math.floor(diffMs / 3600000) % 24;
             const days = Math.floor(diffMs / 86400000);
-            
+
             if (days > 0) return `in ${days}d ${hours}h`;
             if (hours > 0) return `in ${hours}h ${minutes}m`;
             if (minutes > 0) return `in ${minutes}m`;
             return `in ${seconds}s`;
+        }
+
+        function formatUptime(isoString) {
+            if (!isoString) return '-';
+            const startDate = new Date(isoString);
+            const now = new Date();
+            const diffMs = now - startDate;
+
+            if (diffMs < 0) return '-';
+
+            const seconds = Math.floor(diffMs / 1000) % 60;
+            const minutes = Math.floor(diffMs / 60000) % 60;
+            const hours = Math.floor(diffMs / 3600000) % 24;
+            const days = Math.floor(diffMs / 86400000);
+
+            if (days > 0) return `${days}d ${hours}h ${minutes}m`;
+            if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+            if (minutes > 0) return `${minutes}m ${seconds}s`;
+            return `${seconds}s`;
         }
 
         function updateLastUpdated() {
@@ -885,13 +904,37 @@
                 pbsStatus.textContent = pbsState.charAt(0).toUpperCase() + pbsState.slice(1);
                 pbsStatus.className = 'status-value ' + (pbsState === 'on' ? 'on' : pbsState === 'off' ? 'off' : '');
 
-                // Update build info
+                // Update build info and uptime
+                const buildInfo = document.getElementById('buildInfo');
+                let buildText = '';
                 if (data.build && data.build.build_time !== 'unknown') {
-                    const buildInfo = document.getElementById('buildInfo');
-                    const buildDate = data.build.build_time.replace('_', ' ');
+                    // Parse build time (format: YYYY-MM-DD_HH:MM:SS) and format for AU
+                    const buildDate = data.build.build_time.replace('_', 'T');
+                    const date = new Date(buildDate);
+                    const formatted = date.toLocaleDateString('en-AU', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: false
+                    });
                     const commit = data.build.git_commit || 'unknown';
-                    buildInfo.textContent = `Built ${buildDate} (${commit})`;
+                    buildText = `Built ${formatted} (${commit})`;
                 }
+                if (data.started_at) {
+                    const startDate = new Date(data.started_at);
+                    const startFormatted = startDate.toLocaleDateString('en-AU', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: false
+                    });
+                    buildText += buildText ? ` · Started ${startFormatted}` : `Started ${startFormatted}`;
+                }
+                buildInfo.textContent = buildText;
 
                 // Update run status
                 const wasRunning = isRunning;
