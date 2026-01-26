@@ -122,8 +122,9 @@ func NewOrchestrator(opts ...OrchestratorOption) *Orchestrator {
 //	    return logger.With(slog.String("activity", id.String()))
 //	})
 func Provide[T any](o *Orchestrator, factory Factory[T]) {
-	var zero T
-	outputType := reflect.TypeOf(zero)
+	// Get the type of T. For interface types, we need to use TypeFor since
+	// reflect.TypeOf on a nil interface returns nil.
+	outputType := reflect.TypeFor[T]()
 
 	// Type-erase the factory for storage
 	erasedFactory := func(activityID ActivityID) any {
