@@ -459,6 +459,35 @@
             animation: spin 1s linear infinite;
             margin-right: 0.5rem;
         }
+
+        .debug-footer {
+            margin-top: 2rem;
+            padding: 0.75rem 1rem;
+            border-top: 1px solid var(--border-color);
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .debug-footer-title {
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+        }
+
+        .debug-links {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem 1rem;
+        }
+
+        .debug-links a {
+            color: var(--accent-blue);
+            text-decoration: none;
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+        }
+
+        .debug-links a:hover {
+            text-decoration: underline;
+        }
     </style>
 </head>
 <body>
@@ -623,6 +652,17 @@
                 </div>
             </div>
         </div>
+
+        <footer class="debug-footer">
+            <div class="debug-footer-title">Debug Endpoints</div>
+            <div class="debug-links">
+                <a href="/metrics">/metrics</a>
+                <a href="/api/status">/api/status</a>
+                <a href="/api/history">/api/history</a>
+                <a href="/api/workflows">/api/workflows</a>
+                <a href="/health">/health</a>
+            </div>
+        </footer>
     </div>
 
     <script>
