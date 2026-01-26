@@ -57,14 +57,8 @@ build-poweroff:
 
 # Install goback-server binary and systemd service (requires sudo)
 .PHONY: daemon-install
-daemon-install:
+daemon-install: build-server
 	@echo "Installing $(APP_NAME)-server..."
-	@# Check build binary exists
-	@if [ ! -f $(BUILD_DIR)/$(APP_NAME)-server ]; then \
-		echo "Error: $(BUILD_DIR)/$(APP_NAME)-server not found"; \
-		echo "Run 'make build-server' first"; \
-		exit 1; \
-	fi
 	@# Check goback user exists
 	@if ! id -u goback >/dev/null 2>&1; then \
 		echo "Error: goback user does not exist"; \
