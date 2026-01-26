@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/nomis52/goback/activity"
 	"github.com/nomis52/goback/clients/sshclient"
 	"github.com/nomis52/goback/config"
@@ -83,6 +85,7 @@ type BackupDirs struct {
 	Logger     *slog.Logger
 	PowerOnPBS *PowerOnPBS
 	StatusLine *activity.StatusLine
+	Registry   metrics.Registry
 
 	// Configuration
 	Files          config.FilesConfig `config:"files"`
@@ -91,11 +94,29 @@ type BackupDirs struct {
 	// SSH client for remote operations
 	sshClient *sshclient.SSHClient
 
-	// Metrics client for pushing metrics
-	MetricsClient *metrics.Client
+	// Metrics (initialized in Init)
+	lastBackupGauge metrics.GaugeVec
+	failureCounter  metrics.CounterVec
 }
 
 func (a *BackupDirs) Init() error {
+	var err error
+	a.lastBackupGauge, err = a.Registry.NewGaugeVec(prometheus.GaugeOpts{
+		Name: metricDirectoryLastBackup,
+		Help: "Unix timestamp of last successful directory backup",
+	}, []string{"target"})
+	if err != nil {
+		return fmt.Errorf("creating %s metric: %w", metricDirectoryLastBackup, err)
+	}
+
+	a.failureCounter, err = a.Registry.NewCounterVec(prometheus.CounterOpts{
+		Name: metricDirectoryBackupFailure,
+		Help: "Count of directory backup failures",
+	}, []string{"target"})
+	if err != nil {
+		return fmt.Errorf("creating %s metric: %w", metricDirectoryBackupFailure, err)
+	}
+
 	if a.Files.Target == "" {
 		return nil // nothing configured
 	}
@@ -184,32 +205,11 @@ func (a *BackupDirs) backupAllDirs(sources []string) error {
 
 	err := a.sshClient.RunWithWriter(cmd, stdoutLogger, stderrLogger)
 
-	// Push metrics if MetricsClient is set
-	if a.MetricsClient != nil {
-		// Create a consolidated metric for all sources
-		labels := make(map[string]string, len(sources)+1)
-		labels["target"] = target
-		// Add source count to labels
-		labels["source_count"] = fmt.Sprintf("%d", len(sources))
-
-		var metricName string
-		var metricValue float64
-		if err != nil {
-			metricName = metricDirectoryBackupFailure
-			metricValue = 1
-		} else {
-			metricName = metricDirectoryLastBackup
-			metricValue = float64(time.Now().Unix())
-		}
-		metric := metrics.Metric{
-			Name:      metricName,
-			Value:     metricValue,
-			Labels:    labels,
-			Timestamp: time.Now(),
-		}
-		if pushErr := a.MetricsClient.PushMetrics(context.Background(), metric); pushErr != nil {
-			a.Logger.Error("Failed to push backup metric", "error", pushErr)
-		}
+	labels := prometheus.Labels{"target": target}
+	if err != nil {
+		a.failureCounter.With(labels).Inc()
+	} else {
+		a.lastBackupGauge.With(labels).Set(float64(time.Now().Unix()))
 	}
 
 	return err

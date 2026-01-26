@@ -1,7 +1,6 @@
 package metrics
 
 import (
-	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,116 +9,101 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/snappy"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewClient(t *testing.T) {
+func TestNewPushRegistry(t *testing.T) {
 	tests := []struct {
-		name        string
-		url         string
-		opts        []Option
-		wantURL     string
-		wantPref    string
-		wantJob     string
-		wantInst    string
-		wantTimeout time.Duration
+		name string
+		cfg  PushConfig
 	}{
 		{
-			name:        "no options",
-			url:         "http://localhost:9090",
-			opts:        []Option{},
-			wantURL:     "http://localhost:9090/api/v1/write",
-			wantPref:    "",
-			wantJob:     "",
-			wantInst:    "",
-			wantTimeout: 30 * time.Second,
+			name: "minimal config",
+			cfg: PushConfig{
+				URL: "http://localhost:9090",
+			},
 		},
 		{
-			name:        "all options",
-			url:         "http://localhost:9090",
-			opts:        []Option{WithPrefix("test"), WithJob("testjob"), WithInstance("testinstance")},
-			wantURL:     "http://localhost:9090/api/v1/write",
-			wantPref:    "test",
-			wantJob:     "testjob",
-			wantInst:    "testinstance",
-			wantTimeout: 30 * time.Second,
-		},
-		{
-			name:        "partial options",
-			url:         "http://localhost:9090",
-			opts:        []Option{WithPrefix("test"), WithJob("testjob")},
-			wantURL:     "http://localhost:9090/api/v1/write",
-			wantPref:    "test",
-			wantJob:     "testjob",
-			wantInst:    "",
-			wantTimeout: 30 * time.Second,
-		},
-		{
-			name:        "custom timeout",
-			url:         "http://localhost:9090",
-			opts:        []Option{WithTimeout(5 * time.Second)},
-			wantURL:     "http://localhost:9090/api/v1/write",
-			wantPref:    "",
-			wantJob:     "",
-			wantInst:    "",
-			wantTimeout: 5 * time.Second,
+			name: "full config",
+			cfg: PushConfig{
+				URL:      "http://localhost:9090",
+				Prefix:   "test",
+				Job:      "testjob",
+				Instance: "testinstance",
+				Timeout:  5 * time.Second,
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := NewClient(tt.url, tt.opts...)
-
-			assert.Equal(t, tt.wantURL, client.url)
-			assert.Equal(t, tt.wantPref, client.prefix)
-			assert.Equal(t, tt.wantJob, client.job)
-			assert.Equal(t, tt.wantInst, client.instance)
-			assert.Equal(t, tt.wantTimeout, client.timeout)
-			assert.Equal(t, tt.wantTimeout, client.httpClient.Timeout)
+			registry := NewPushRegistry(tt.cfg)
+			require.NotNil(t, registry)
+			require.NotNil(t, registry.pusher)
 		})
 	}
 }
 
-func TestMetricToTimeSeries(t *testing.T) {
-	client := NewClient("http://localhost:9090",
-		WithPrefix("test"),
-		WithJob("testjob"),
-		WithInstance("testinstance"),
-	)
+func TestPushRegistry_NewGauge(t *testing.T) {
+	registry := NewPushRegistry(PushConfig{URL: "http://localhost:9090"})
 
-	metric := Metric{
-		Name:      "test_metric",
-		Value:     42.0,
-		Labels:    map[string]string{"custom": "label"},
-		Timestamp: time.Now(),
-	}
+	gauge, err := registry.NewGauge(prometheus.GaugeOpts{
+		Name: "test_gauge",
+		Help: "A test gauge",
+	})
 
-	ts := client.metricToTimeSeries(metric)
-
-	// Helper function to find a label value
-	findLabel := func(labels []prompb.Label, name string) string {
-		for _, l := range labels {
-			if l.Name == name {
-				return l.Value
-			}
-		}
-		return ""
-	}
-
-	// Check metric name with prefix
-	assert.Equal(t, "test_test_metric", findLabel(ts.Labels, "__name__"))
-	assert.Equal(t, "testjob", findLabel(ts.Labels, "job"))
-	assert.Equal(t, "testinstance", findLabel(ts.Labels, "instance"))
-	assert.Equal(t, "label", findLabel(ts.Labels, "custom"))
-
-	// Check sample value
-	require.Len(t, ts.Samples, 1)
-	assert.Equal(t, 42.0, ts.Samples[0].Value)
+	require.NoError(t, err)
+	require.NotNil(t, gauge)
 }
 
-func TestPushMetrics(t *testing.T) {
+func TestPushRegistry_NewGaugeVec(t *testing.T) {
+	registry := NewPushRegistry(PushConfig{URL: "http://localhost:9090"})
+
+	gaugeVec, err := registry.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "test_gauge_vec",
+		Help: "A test gauge vector",
+	}, []string{"label1", "label2"})
+
+	require.NoError(t, err)
+	require.NotNil(t, gaugeVec)
+
+	// Get a gauge with labels
+	gauge := gaugeVec.With(prometheus.Labels{"label1": "value1", "label2": "value2"})
+	require.NotNil(t, gauge)
+}
+
+func TestPushRegistry_NewCounter(t *testing.T) {
+	registry := NewPushRegistry(PushConfig{URL: "http://localhost:9090"})
+
+	counter, err := registry.NewCounter(prometheus.CounterOpts{
+		Name: "test_counter",
+		Help: "A test counter",
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, counter)
+}
+
+func TestPushRegistry_NewCounterVec(t *testing.T) {
+	registry := NewPushRegistry(PushConfig{URL: "http://localhost:9090"})
+
+	counterVec, err := registry.NewCounterVec(prometheus.CounterOpts{
+		Name: "test_counter_vec",
+		Help: "A test counter vector",
+	}, []string{"label1"})
+
+	require.NoError(t, err)
+	require.NotNil(t, counterVec)
+
+	// Get a counter with labels
+	counter := counterVec.With(prometheus.Labels{"label1": "value1"})
+	require.NotNil(t, counter)
+}
+
+func TestPushGauge_Set(t *testing.T) {
 	// Create a test server that will receive and verify the metrics
 	receivedMetrics := make(chan []prompb.TimeSeries, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -145,39 +129,27 @@ func TestPushMetrics(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// Create a client with test options
-	client := NewClient(server.URL,
-		WithPrefix("test"),
-		WithJob("testjob"),
-		WithInstance("testinstance"),
-	)
+	// Create registry with test options
+	registry := NewPushRegistry(PushConfig{
+		URL:      server.URL,
+		Prefix:   "test",
+		Job:      "testjob",
+		Instance: "testinstance",
+	})
 
-	// Create test metrics
-	now := time.Now()
-	metrics := []Metric{
-		{
-			Name:      "test_metric_1",
-			Value:     42.0,
-			Labels:    map[string]string{"custom": "label1"},
-			Timestamp: now,
-		},
-		{
-			Name:      "test_metric_2",
-			Value:     24.0,
-			Labels:    map[string]string{"custom": "label2"},
-			Timestamp: now,
-		},
-	}
+	// Create and set a gauge
+	gauge, err := registry.NewGauge(prometheus.GaugeOpts{
+		Name: "test_metric",
+		Help: "A test metric",
+	})
+	require.NoError(t, err)
+	gauge.Set(42.0)
 
-	// Push the metrics
-	ctx := context.Background()
-	require.NoError(t, client.PushMetrics(ctx, metrics...))
-
-	// Wait for the server to receive the metrics
+	// Wait for the server to receive the metric
 	select {
 	case received := <-receivedMetrics:
-		// Verify the received metrics
-		require.Len(t, received, 2)
+		require.Len(t, received, 1)
+		ts := received[0]
 
 		// Helper function to find a label value
 		findLabel := func(labels []prompb.Label, name string) string {
@@ -189,29 +161,153 @@ func TestPushMetrics(t *testing.T) {
 			return ""
 		}
 
-		// Verify each metric
-		for i, ts := range received {
-			// Check metric name
-			expectedName := "test_test_metric_" + string(rune('1'+i))
-			assert.Equal(t, expectedName, findLabel(ts.Labels, "__name__"))
-			assert.Equal(t, "testjob", findLabel(ts.Labels, "job"))
-			assert.Equal(t, "testinstance", findLabel(ts.Labels, "instance"))
+		// Check metric name with prefix
+		assert.Equal(t, "test_test_metric", findLabel(ts.Labels, "__name__"))
+		assert.Equal(t, "testjob", findLabel(ts.Labels, "job"))
+		assert.Equal(t, "testinstance", findLabel(ts.Labels, "instance"))
 
-			// Check custom label
-			expectedCustom := "label" + string(rune('1'+i))
-			assert.Equal(t, expectedCustom, findLabel(ts.Labels, "custom"))
-
-			// Check sample value
-			require.Len(t, ts.Samples, 1)
-			expectedValue := 42.0
-			if i == 1 {
-				expectedValue = 24.0
-			}
-			assert.Equal(t, expectedValue, ts.Samples[0].Value)
-			assert.Equal(t, now.UnixMilli(), ts.Samples[0].Timestamp)
-		}
+		// Check sample value
+		require.Len(t, ts.Samples, 1)
+		assert.Equal(t, 42.0, ts.Samples[0].Value)
 
 	case <-time.After(5 * time.Second):
 		t.Fatal("timeout waiting for metrics to be received")
 	}
+}
+
+func TestPushGaugeVec_WithLabels(t *testing.T) {
+	// Create a test server that will receive metrics
+	receivedMetrics := make(chan []prompb.TimeSeries, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+
+		decoded, err := snappy.Decode(nil, body)
+		require.NoError(t, err)
+
+		var writeReq prompb.WriteRequest
+		require.NoError(t, proto.Unmarshal(decoded, &writeReq))
+
+		receivedMetrics <- writeReq.Timeseries
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	registry := NewPushRegistry(PushConfig{URL: server.URL})
+
+	gaugeVec, err := registry.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "test_gauge_vec",
+		Help: "A test gauge vector",
+	}, []string{"vmid", "name"})
+	require.NoError(t, err)
+
+	// Set a gauge with labels
+	gaugeVec.With(prometheus.Labels{"vmid": "100", "name": "testvm"}).Set(123.0)
+
+	// Wait for the metric
+	select {
+	case received := <-receivedMetrics:
+		require.Len(t, received, 1)
+		ts := received[0]
+
+		findLabel := func(labels []prompb.Label, name string) string {
+			for _, l := range labels {
+				if l.Name == name {
+					return l.Value
+				}
+			}
+			return ""
+		}
+
+		assert.Equal(t, "test_gauge_vec", findLabel(ts.Labels, "__name__"))
+		assert.Equal(t, "100", findLabel(ts.Labels, "vmid"))
+		assert.Equal(t, "testvm", findLabel(ts.Labels, "name"))
+		require.Len(t, ts.Samples, 1)
+		assert.Equal(t, 123.0, ts.Samples[0].Value)
+
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for metrics to be received")
+	}
+}
+
+func TestPushCounter_Inc(t *testing.T) {
+	// Create a test server
+	receivedMetrics := make(chan []prompb.TimeSeries, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+
+		decoded, err := snappy.Decode(nil, body)
+		require.NoError(t, err)
+
+		var writeReq prompb.WriteRequest
+		require.NoError(t, proto.Unmarshal(decoded, &writeReq))
+
+		receivedMetrics <- writeReq.Timeseries
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	registry := NewPushRegistry(PushConfig{URL: server.URL})
+
+	counter, err := registry.NewCounter(prometheus.CounterOpts{
+		Name: "test_counter",
+		Help: "A test counter",
+	})
+	require.NoError(t, err)
+
+	// Increment counter twice
+	counter.Inc()
+	counter.Inc()
+
+	// We should receive two pushes
+	for i := 0; i < 2; i++ {
+		select {
+		case received := <-receivedMetrics:
+			require.Len(t, received, 1)
+			ts := received[0]
+			require.Len(t, ts.Samples, 1)
+			// Counter should increment: 1, then 2
+			assert.Equal(t, float64(i+1), ts.Samples[0].Value)
+		case <-time.After(5 * time.Second):
+			t.Fatalf("timeout waiting for metric %d", i+1)
+		}
+	}
+}
+
+func TestScrapeRegistry(t *testing.T) {
+	registry, err := NewScrapeRegistry()
+	require.NoError(t, err)
+	require.NotNil(t, registry)
+
+	// Create some metrics
+	gauge, err := registry.NewGauge(prometheus.GaugeOpts{
+		Name: "test_gauge",
+		Help: "A test gauge",
+	})
+	require.NoError(t, err)
+	gauge.Set(42.0)
+
+	counter, err := registry.NewCounter(prometheus.CounterOpts{
+		Name: "test_counter",
+		Help: "A test counter",
+	})
+	require.NoError(t, err)
+	counter.Inc()
+
+	// Get the HTTP handler
+	handler := registry.Handler()
+	require.NotNil(t, handler)
+
+	// Make a request to the handler
+	req := httptest.NewRequest("GET", "/metrics", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	// Check the response
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	body := w.Body.String()
+	assert.Contains(t, body, "test_gauge 42")
+	assert.Contains(t, body, "test_counter 1")
 }

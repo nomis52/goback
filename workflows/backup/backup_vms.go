@@ -8,9 +8,11 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/nomis52/goback/activity"
 	"github.com/nomis52/goback/clients/proxmoxclient"
 	"github.com/nomis52/goback/metrics"
-	"github.com/nomis52/goback/activity"
 )
 
 const (
@@ -25,11 +27,11 @@ const (
 // BackupVMs manages the execution of Proxmox backups
 type BackupVMs struct {
 	// Dependencies
-	ProxmoxClient  *proxmoxclient.Client
-	Logger         *slog.Logger
-	PowerOnPBS     *PowerOnPBS
-	MetricsClient  *metrics.Client
-	StatusLine *activity.StatusLine
+	ProxmoxClient *proxmoxclient.Client
+	Logger        *slog.Logger
+	PowerOnPBS    *PowerOnPBS
+	Registry      metrics.Registry
+	StatusLine    *activity.StatusLine
 
 	// Configuration
 	BackupTimeout time.Duration `config:"proxmox.backup_timeout"`
@@ -37,9 +39,30 @@ type BackupVMs struct {
 	MaxBackupAge  time.Duration `config:"compute.max_backup_age"`
 	Mode          string        `config:"compute.mode"`
 	Compress      string        `config:"compute.compress"`
+
+	// Metrics (initialized in Init)
+	lastBackupGauge metrics.GaugeVec
+	failureCounter  metrics.CounterVec
 }
 
 func (a *BackupVMs) Init() error {
+	var err error
+	a.lastBackupGauge, err = a.Registry.NewGaugeVec(prometheus.GaugeOpts{
+		Name: metricLastBackup,
+		Help: "Unix timestamp of last successful backup",
+	}, []string{"vmid", "name"})
+	if err != nil {
+		return fmt.Errorf("creating %s metric: %w", metricLastBackup, err)
+	}
+
+	a.failureCounter, err = a.Registry.NewCounterVec(prometheus.CounterOpts{
+		Name: metricBackupFailure,
+		Help: "Count of backup failures",
+	}, []string{"vmid", "name"})
+	if err != nil {
+		return fmt.Errorf("creating %s metric: %w", metricBackupFailure, err)
+	}
+
 	return nil
 }
 
@@ -120,34 +143,20 @@ func (a *BackupVMs) Execute(ctx context.Context) error {
 	})
 }
 
-// performBackupWithMetrics wraps performBackup and pushes metrics based on the result.
+// performBackupWithMetrics wraps performBackup and updates metrics based on the result.
 func (a *BackupVMs) performBackupWithMetrics(ctx context.Context, resource proxmoxclient.Resource) error {
 	err := a.performBackup(ctx, resource)
-	if a.MetricsClient != nil {
-		labels := map[string]string{
-			"vmid": fmt.Sprintf("%d", resource.VMID),
-			"name": resource.Name,
-		}
-		var metric metrics.Metric
-		if err != nil {
-			metric = metrics.Metric{
-				Name:      metricBackupFailure,
-				Value:     1,
-				Labels:    labels,
-				Timestamp: time.Now(),
-			}
-		} else {
-			metric = metrics.Metric{
-				Name:      metricLastBackup,
-				Value:     float64(time.Now().Unix()),
-				Labels:    labels,
-				Timestamp: time.Now(),
-			}
-		}
-		if pushErr := a.MetricsClient.PushMetrics(ctx, metric); pushErr != nil {
-			a.Logger.Error("Failed to push backup metric", "error", pushErr)
-		}
+
+	labels := prometheus.Labels{
+		"vmid": fmt.Sprintf("%d", resource.VMID),
+		"name": resource.Name,
 	}
+	if err != nil {
+		a.failureCounter.With(labels).Inc()
+	} else {
+		a.lastBackupGauge.With(labels).Set(float64(time.Now().Unix()))
+	}
+
 	return err
 }
 

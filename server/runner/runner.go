@@ -42,12 +42,16 @@ import (
 	"fmt"
 	"log/slog"
 	"sort"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/nomis52/goback/activity"
 	"github.com/nomis52/goback/config"
 	"github.com/nomis52/goback/logging"
+	"github.com/nomis52/goback/metrics"
 	"github.com/nomis52/goback/workflow"
 )
 
@@ -57,12 +61,14 @@ const defaultMaxHistorySize = 100
 var ErrRunInProgress = errors.New("backup run already in progress")
 
 // WorkflowFactory creates a workflow with the given configuration, logger, and workflow infrastructure.
-// The statusCollection is used to track activity status updates, and loggerFactory creates per-activity loggers.
+// The statusCollection is used to track activity status updates, loggerFactory creates per-activity loggers,
+// and registry is used for activity-level metrics.
 type WorkflowFactory func(
 	cfg *config.Config,
 	logger *slog.Logger,
 	statusCollection *activity.StatusHandler,
 	loggerFactory func(workflow.ActivityID) *slog.Logger,
+	registry metrics.Registry,
 ) (workflow.Workflow, error)
 
 // Runner manages backup run execution.
@@ -77,6 +83,12 @@ type Runner struct {
 	workflow         workflow.Workflow           // Current or last run's workflow
 	statusCollection *activity.StatusHandler     // Current run's status collection
 	logCollector     *logging.LogCollector       // Captures logs during workflow execution
+
+	// Metrics
+	registry                 metrics.Registry
+	workflowLastRunTimestamp metrics.GaugeVec
+	workflowLastRunDuration  metrics.GaugeVec
+	workflowLastRunSuccess   metrics.GaugeVec
 }
 
 // ConfigProvider provides access to the current configuration.
@@ -94,6 +106,13 @@ func WithStateStore(store StateStore) Option {
 	}
 }
 
+// WithMetricsRegistry configures the runner to report workflow metrics.
+func WithMetricsRegistry(registry metrics.Registry) Option {
+	return func(r *Runner) {
+		r.registry = registry
+	}
+}
+
 // New creates a new Runner.
 func New(logger *slog.Logger, provider ConfigProvider, factories map[string]WorkflowFactory, opts ...Option) *Runner {
 	r := &Runner{
@@ -107,6 +126,34 @@ func New(logger *slog.Logger, provider ConfigProvider, factories map[string]Work
 	// Apply options
 	for _, opt := range opts {
 		opt(r)
+	}
+
+	// Initialize workflow metrics if registry is provided
+	if r.registry != nil {
+		var err error
+		r.workflowLastRunTimestamp, err = r.registry.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "workflow_last_run_timestamp_seconds",
+			Help: "Unix timestamp of the last workflow run",
+		}, []string{"workflow"})
+		if err != nil {
+			r.logger.Error("failed to create workflow_last_run_timestamp_seconds metric", "error", err)
+		}
+
+		r.workflowLastRunDuration, err = r.registry.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "workflow_last_run_duration_seconds",
+			Help: "Duration of the last workflow run in seconds",
+		}, []string{"workflow"})
+		if err != nil {
+			r.logger.Error("failed to create workflow_last_run_duration_seconds metric", "error", err)
+		}
+
+		r.workflowLastRunSuccess, err = r.registry.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "workflow_last_run_success",
+			Help: "Whether the last workflow run succeeded (1) or failed (0)",
+		}, []string{"workflow"})
+		if err != nil {
+			r.logger.Error("failed to create workflow_last_run_success metric", "error", err)
+		}
 	}
 
 	return r
@@ -248,6 +295,21 @@ func (r *Runner) finish(err error) {
 		r.logger.Info("backup run completed", "duration", duration)
 	}
 
+	// Update workflow metrics
+	if r.workflowLastRunTimestamp != nil {
+		workflowName := strings.Join(r.runStatus.Workflows, ",")
+		labels := prometheus.Labels{"workflow": workflowName}
+
+		r.workflowLastRunTimestamp.With(labels).Set(float64(endTime.Unix()))
+		r.workflowLastRunDuration.With(labels).Set(duration.Seconds())
+
+		if err != nil {
+			r.workflowLastRunSuccess.With(labels).Set(0)
+		} else {
+			r.workflowLastRunSuccess.With(labels).Set(1)
+		}
+	}
+
 	// Build activity executions with logs and status messages
 	if r.workflow != nil && r.logCollector != nil {
 		r.runStatus.ActivityExecutions = r.buildActivityExecutions()
@@ -330,7 +392,7 @@ func (r *Runner) executeRun(ctx context.Context, workflowNames []string) error {
 	workflows := make([]workflow.Workflow, 0, len(workflowNames))
 	for _, name := range workflowNames {
 		factory := r.factories[name] // Already validated in Run()
-		wf, err := factory(cfg, r.logger, statusCollection, loggerFactory)
+		wf, err := factory(cfg, r.logger, statusCollection, loggerFactory, r.registry)
 		if err != nil {
 			return fmt.Errorf("failed to create workflow %q: %w", name, err)
 		}

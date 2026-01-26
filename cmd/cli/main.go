@@ -9,6 +9,7 @@ import (
 	"github.com/nomis52/goback/buildinfo"
 	"github.com/nomis52/goback/config"
 	"github.com/nomis52/goback/logging"
+	"github.com/nomis52/goback/metrics"
 	"github.com/nomis52/goback/workflow"
 	"github.com/nomis52/goback/workflows/backup"
 	"github.com/nomis52/goback/workflows/poweroff"
@@ -72,8 +73,23 @@ func run() error {
 		"config_path", args.ConfigPath,
 	)
 
+	// Get hostname for metrics
+	hostname, err := os.Hostname()
+	if err != nil {
+		return fmt.Errorf("failed to get hostname: %w", err)
+	}
+
+	// Create push-based metrics registry for CLI mode
+	registry := metrics.NewPushRegistry(metrics.PushConfig{
+		URL:      cfg.Monitoring.VictoriaMetricsURL,
+		Prefix:   cfg.Monitoring.MetricsPrefix,
+		Job:      cfg.Monitoring.JobName,
+		Instance: hostname,
+	})
+
 	// Create backup workflow (PowerOnPBS → BackupDirs → BackupVMs)
-	backupWorkflow, err := backup.NewWorkflow(&cfg, logger)
+	backupWorkflow, err := backup.NewWorkflow(&cfg, logger,
+		backup.WithMetricsRegistry(registry))
 	if err != nil {
 		return fmt.Errorf("failed to create backup workflow: %w", err)
 	}

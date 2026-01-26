@@ -48,10 +48,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/nomis52/goback/activity"
 	"github.com/nomis52/goback/buildinfo"
 	"github.com/nomis52/goback/clients/ipmiclient"
 	"github.com/nomis52/goback/config"
+	"github.com/nomis52/goback/metrics"
 	serverconfig "github.com/nomis52/goback/server/config"
 	"github.com/nomis52/goback/server/cron"
 	"github.com/nomis52/goback/server/handlers"
@@ -94,6 +97,10 @@ type Server struct {
 	tlsCert         string
 	tlsKey          string
 	buildProperties buildinfo.Properties
+
+	// Metrics
+	startTime       time.Time
+	metricsRegistry *metrics.ScrapeRegistry
 }
 
 // Option is a functional option for configuring the Server.
@@ -131,15 +138,38 @@ func New(cfg *serverconfig.ServerConfig, opts ...Option) (*Server, error) {
 		addr = cfg.Listener.Addr
 	}
 
+	// Create metrics registry and server-level metrics
+	metricsRegistry, err := metrics.NewScrapeRegistry()
+	if err != nil {
+		return nil, fmt.Errorf("creating metrics registry: %w", err)
+	}
+	startTime := time.Now()
+
+	// Register server uptime as a GaugeFunc for dynamic calculation on scrape
+	uptimeGauge := prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Name: "server_uptime_seconds",
+			Help: "Number of seconds since the server started",
+		},
+		func() float64 {
+			return time.Since(startTime).Seconds()
+		},
+	)
+	if err := metricsRegistry.PrometheusRegistry().Register(uptimeGauge); err != nil {
+		return nil, fmt.Errorf("registering uptime gauge: %w", err)
+	}
+
 	s := &Server{
-		addr:       addr,
-		configPath: cfg.WorkflowConfig,
-		stateDir:   cfg.StateDir,
-		logger:     logger,
-		logLevel:   logLevel,
-		cronConfig: cfg.Cron,
-		tlsCert:    cfg.Listener.TLSCert,
-		tlsKey:     cfg.Listener.TLSKey,
+		addr:            addr,
+		configPath:      cfg.WorkflowConfig,
+		stateDir:        cfg.StateDir,
+		logger:          logger,
+		logLevel:        logLevel,
+		cronConfig:      cfg.Cron,
+		tlsCert:         cfg.Listener.TLSCert,
+		tlsKey:          cfg.Listener.TLSKey,
+		startTime:       startTime,
+		metricsRegistry: metricsRegistry,
 	}
 
 	// Apply options
@@ -153,25 +183,29 @@ func New(cfg *serverconfig.ServerConfig, opts ...Option) (*Server, error) {
 
 	// Create workflow factory map
 	factories := map[string]runner.WorkflowFactory{
-		"backup": func(cfg *config.Config, logger *slog.Logger, statusCollection *activity.StatusHandler, loggerFactory func(workflow.ActivityID) *slog.Logger) (workflow.Workflow, error) {
+		"backup": func(cfg *config.Config, logger *slog.Logger, statusCollection *activity.StatusHandler, loggerFactory func(workflow.ActivityID) *slog.Logger, registry metrics.Registry) (workflow.Workflow, error) {
 			return backup.NewWorkflow(cfg, logger,
 				backup.WithStatusCollection(statusCollection),
-				backup.WithLoggerFactory(loggerFactory))
+				backup.WithLoggerFactory(loggerFactory),
+				backup.WithMetricsRegistry(registry))
 		},
-		"poweroff": func(cfg *config.Config, logger *slog.Logger, statusCollection *activity.StatusHandler, loggerFactory func(workflow.ActivityID) *slog.Logger) (workflow.Workflow, error) {
+		"poweroff": func(cfg *config.Config, logger *slog.Logger, statusCollection *activity.StatusHandler, loggerFactory func(workflow.ActivityID) *slog.Logger, registry metrics.Registry) (workflow.Workflow, error) {
 			return poweroff.NewWorkflow(cfg, logger,
 				poweroff.WithStatusCollection(statusCollection),
-				poweroff.WithLoggerFactory(loggerFactory))
+				poweroff.WithLoggerFactory(loggerFactory),
+				poweroff.WithMetricsRegistry(registry))
 		},
-		"test": func(cfg *config.Config, logger *slog.Logger, statusCollection *activity.StatusHandler, loggerFactory func(workflow.ActivityID) *slog.Logger) (workflow.Workflow, error) {
+		"test": func(cfg *config.Config, logger *slog.Logger, statusCollection *activity.StatusHandler, loggerFactory func(workflow.ActivityID) *slog.Logger, registry metrics.Registry) (workflow.Workflow, error) {
 			return test.NewWorkflow(logger,
 				test.WithStatusCollection(statusCollection),
 				test.WithLoggerFactory(loggerFactory))
 		},
 	}
 
-	// Create runner with optional disk store
-	var runnerOpts []runner.Option
+	// Create runner with optional disk store and metrics
+	runnerOpts := []runner.Option{
+		runner.WithMetricsRegistry(metricsRegistry),
+	}
 	if s.stateDir != "" {
 		store, err := runner.NewDiskStore(s.stateDir, 100, logger)
 		if err != nil {
@@ -245,6 +279,11 @@ func (s *Server) IPMIController() *ipmiclient.IPMIController {
 // BuildProperties returns the build properties.
 func (s *Server) BuildProperties() buildinfo.Properties {
 	return s.buildProperties
+}
+
+// MetricsRegistry returns the metrics registry.
+func (s *Server) MetricsRegistry() *metrics.ScrapeRegistry {
+	return s.metricsRegistry
 }
 
 // NextRun returns the next scheduled run time, or nil if no cron is configured.
@@ -371,6 +410,9 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /config", configHandler)
 	mux.Handle("POST /reload", reloadHandler)
 	mux.Handle("POST /run", runHandler)
+
+	// Prometheus metrics endpoint
+	mux.Handle("GET /metrics", s.metricsRegistry.Handler())
 
 	// Static files (web UI)
 	staticFS, err := fs.Sub(staticFiles, "static")

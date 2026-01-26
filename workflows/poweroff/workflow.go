@@ -35,6 +35,14 @@ func WithStatusCollection(collection *activity.StatusHandler) WorkflowOption {
 	}
 }
 
+// WithMetricsRegistry is a no-op option for API consistency with the backup workflow.
+// The poweroff workflow doesn't report activity-level metrics.
+func WithMetricsRegistry(_ interface{}) WorkflowOption {
+	return func(_ *workflowOptions) {
+		// No-op - poweroff workflow doesn't use activity metrics
+	}
+}
+
 // NewWorkflow creates a workflow that gracefully powers off PBS.
 // The workflow executes: PowerOffPBS
 func NewWorkflow(cfg *config.Config, logger *slog.Logger, opts ...WorkflowOption) (workflow.Workflow, error) {

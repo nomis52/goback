@@ -5,14 +5,13 @@ package backup
 import (
 	"fmt"
 	"log/slog"
-	"os"
 
+	"github.com/nomis52/goback/activity"
 	"github.com/nomis52/goback/clients/ipmiclient"
 	"github.com/nomis52/goback/clients/pbsclient"
 	"github.com/nomis52/goback/clients/proxmoxclient"
 	"github.com/nomis52/goback/config"
 	"github.com/nomis52/goback/metrics"
-	"github.com/nomis52/goback/activity"
 	"github.com/nomis52/goback/workflow"
 )
 
@@ -22,6 +21,7 @@ type WorkflowOption func(*workflowOptions)
 type workflowOptions struct {
 	loggerFactory    workflow.Factory[*slog.Logger]
 	statusCollection *activity.StatusHandler
+	registry         metrics.Registry
 }
 
 // WithLoggerFactory sets a logger factory for creating activity-specific loggers.
@@ -36,6 +36,14 @@ func WithLoggerFactory(factory workflow.Factory[*slog.Logger]) WorkflowOption {
 func WithStatusCollection(collection *activity.StatusHandler) WorkflowOption {
 	return func(opts *workflowOptions) {
 		opts.statusCollection = collection
+	}
+}
+
+// WithMetricsRegistry sets the metrics registry for activities.
+// If not provided, activities will not report metrics.
+func WithMetricsRegistry(registry metrics.Registry) WorkflowOption {
+	return func(opts *workflowOptions) {
+		opts.registry = registry
 	}
 }
 
@@ -68,9 +76,9 @@ func NewWorkflow(cfg *config.Config, logger *slog.Logger, opts ...WorkflowOption
 	workflow.Provide(o, workflow.Shared(deps.pbsClient))
 	workflow.Provide(o, workflow.Shared(deps.proxmoxClient))
 
-	// Metrics client (optional - might be nil)
-	if deps.metricsClient != nil {
-		workflow.Provide(o, workflow.Shared(deps.metricsClient))
+	// Metrics registry (optional - activities check for nil)
+	if options.registry != nil {
+		workflow.Provide(o, workflow.Shared(options.registry))
 	}
 
 	// Logger factory (per-activity, defaults to shared logger)
@@ -99,16 +107,10 @@ type deps struct {
 	ipmiController *ipmiclient.IPMIController
 	pbsClient      *pbsclient.Client
 	proxmoxClient  *proxmoxclient.Client
-	metricsClient  *metrics.Client
 }
 
 // buildDeps creates all dependencies needed for backup workflows.
 func buildDeps(cfg *config.Config, logger *slog.Logger) (*deps, error) {
-	hostname, err := os.Hostname()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get hostname: %w", err)
-	}
-
 	ctrl := ipmiclient.NewIPMIController(
 		cfg.PBS.IPMI.Host,
 		ipmiclient.WithUsername(cfg.PBS.IPMI.Username),
@@ -126,17 +128,9 @@ func buildDeps(cfg *config.Config, logger *slog.Logger) (*deps, error) {
 		return nil, fmt.Errorf("failed to create Proxmox client: %w", err)
 	}
 
-	metricsClient := metrics.NewClient(
-		cfg.Monitoring.VictoriaMetricsURL,
-		metrics.WithPrefix(cfg.Monitoring.MetricsPrefix),
-		metrics.WithJob(cfg.Monitoring.JobName),
-		metrics.WithInstance(hostname),
-	)
-
 	return &deps{
 		ipmiController: ctrl,
 		pbsClient:      pbsClient,
 		proxmoxClient:  proxmoxClient,
-		metricsClient:  metricsClient,
 	}, nil
 }
