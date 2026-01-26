@@ -352,6 +352,8 @@ func (s *Server) Run(ctx context.Context) error {
 	// Start server in goroutine
 	errCh := make(chan error, 1)
 	go func() {
+		defer close(errCh)
+
 		s.logger.Info("starting server",
 			"addr", s.addr,
 			"config_path", s.configPath,
@@ -379,7 +381,6 @@ func (s *Server) Run(ctx context.Context) error {
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
 		}
-		close(errCh)
 	}()
 
 	// Wait for context cancellation or server error
@@ -423,13 +424,14 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 }
 
 func validateCronWorkflows(triggers []serverconfig.CronTrigger, availableWorkflows map[string]bool) error {
+	availableList := make([]string, 0, len(availableWorkflows))
+	for k := range availableWorkflows {
+		availableList = append(availableList, k)
+	}
+
 	for i, cfg := range triggers {
 		for _, w := range cfg.Workflows {
 			if !availableWorkflows[w] {
-				availableList := make([]string, 0, len(availableWorkflows))
-				for k := range availableWorkflows {
-					availableList = append(availableList, k)
-				}
 				return fmt.Errorf("trigger %d: unknown workflow '%s' (available: %v)", i, w, availableList)
 			}
 		}
