@@ -23,23 +23,23 @@ func (a *Step1) Init() error {
 // Execute performs the activity work.
 func (a *Step1) Execute(ctx context.Context) error {
 	return activity.CaptureError(a.StatusLine, func() error {
-		a.Logger.Info("starting demo step 1")
+		a.Logger.Info("starting step 1")
 
-		a.StatusLine.Set("starting demo step 1")
+		a.StatusLine.Set("starting step 1")
 		select {
 		case <-time.After(2 * time.Second):
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 
-		a.StatusLine.Set("halfway through demo step 1")
+		a.StatusLine.Set("halfway through step 1")
 		select {
 		case <-time.After(2 * time.Second):
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 
-		a.StatusLine.Set("completed demo step 1")
+		a.StatusLine.Set("completed step 1")
 		return nil
 	})
 }
