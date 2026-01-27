@@ -1,4 +1,4 @@
-package test
+package demo
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"github.com/nomis52/goback/workflow"
 )
 
-// Step3 is the third test activity that runs after Step2 completes.
+// Step3 is the third demo activity that runs after Step2 completes.
 type Step3 struct {
 	Logger         *slog.Logger
 	StatusLine *activity.StatusLine
@@ -24,23 +24,23 @@ func (a *Step3) Init() error {
 // Execute performs the activity work.
 func (a *Step3) Execute(ctx context.Context) error {
 	return activity.CaptureError(a.StatusLine, func() error {
-		a.Logger.Info("starting step 3")
+		a.Logger.Info("starting demo step 3")
 
-		a.StatusLine.Set("starting step 3")
+		a.StatusLine.Set("starting demo step 3")
 		select {
 		case <-time.After(2 * time.Second):
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 
-		a.StatusLine.Set("halfway through step 3")
+		a.StatusLine.Set("halfway through demo step 3")
 		select {
 		case <-time.After(2 * time.Second):
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 
-		a.StatusLine.Set("completed step 3")
+		a.StatusLine.Set("completed demo step 3")
 		return nil
 	})
 }
