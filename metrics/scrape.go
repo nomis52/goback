@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -49,36 +50,72 @@ func (r *ScrapeRegistry) PrometheusRegistry() *prometheus.Registry {
 }
 
 // NewGauge creates and registers a new Gauge.
+// If a gauge with the same name is already registered, the existing one is returned.
 func (r *ScrapeRegistry) NewGauge(opts prometheus.GaugeOpts) (Gauge, error) {
 	g := prometheus.NewGauge(opts)
 	if err := r.prom.Register(g); err != nil {
+		var alreadyRegistered prometheus.AlreadyRegisteredError
+		if errors.As(err, &alreadyRegistered) {
+			existing, ok := alreadyRegistered.ExistingCollector.(prometheus.Gauge)
+			if !ok {
+				return nil, fmt.Errorf("existing collector %q is not a Gauge", opts.Name)
+			}
+			return &scrapeGauge{gauge: existing}, nil
+		}
 		return nil, fmt.Errorf("registering gauge %q: %w", opts.Name, err)
 	}
 	return &scrapeGauge{gauge: g}, nil
 }
 
 // NewGaugeVec creates and registers a new GaugeVec.
+// If a gauge vec with the same name is already registered, the existing one is returned.
 func (r *ScrapeRegistry) NewGaugeVec(opts prometheus.GaugeOpts, labels []string) (GaugeVec, error) {
 	g := prometheus.NewGaugeVec(opts, labels)
 	if err := r.prom.Register(g); err != nil {
+		var alreadyRegistered prometheus.AlreadyRegisteredError
+		if errors.As(err, &alreadyRegistered) {
+			existing, ok := alreadyRegistered.ExistingCollector.(*prometheus.GaugeVec)
+			if !ok {
+				return nil, fmt.Errorf("existing collector %q is not a GaugeVec", opts.Name)
+			}
+			return &scrapeGaugeVec{gaugeVec: existing}, nil
+		}
 		return nil, fmt.Errorf("registering gauge vec %q: %w", opts.Name, err)
 	}
 	return &scrapeGaugeVec{gaugeVec: g}, nil
 }
 
 // NewCounter creates and registers a new Counter.
+// If a counter with the same name is already registered, the existing one is returned.
 func (r *ScrapeRegistry) NewCounter(opts prometheus.CounterOpts) (Counter, error) {
 	c := prometheus.NewCounter(opts)
 	if err := r.prom.Register(c); err != nil {
+		var alreadyRegistered prometheus.AlreadyRegisteredError
+		if errors.As(err, &alreadyRegistered) {
+			existing, ok := alreadyRegistered.ExistingCollector.(prometheus.Counter)
+			if !ok {
+				return nil, fmt.Errorf("existing collector %q is not a Counter", opts.Name)
+			}
+			return &scrapeCounter{counter: existing}, nil
+		}
 		return nil, fmt.Errorf("registering counter %q: %w", opts.Name, err)
 	}
 	return &scrapeCounter{counter: c}, nil
 }
 
 // NewCounterVec creates and registers a new CounterVec.
+// If a counter vec with the same name is already registered, the existing one is returned.
 func (r *ScrapeRegistry) NewCounterVec(opts prometheus.CounterOpts, labels []string) (CounterVec, error) {
 	c := prometheus.NewCounterVec(opts, labels)
 	if err := r.prom.Register(c); err != nil {
+		var alreadyRegistered prometheus.AlreadyRegisteredError
+		if errors.As(err, &alreadyRegistered) {
+			existing, ok := alreadyRegistered.ExistingCollector.(*prometheus.CounterVec)
+			if !ok {
+				return nil, fmt.Errorf("existing collector %q is not a CounterVec", opts.Name)
+			}
+			return &scrapeCounterVec{counterVec: existing}, nil
+		}
 		return nil, fmt.Errorf("registering counter vec %q: %w", opts.Name, err)
 	}
 	return &scrapeCounterVec{counterVec: c}, nil

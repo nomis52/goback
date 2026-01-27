@@ -311,3 +311,109 @@ func TestScrapeRegistry(t *testing.T) {
 	assert.Contains(t, body, "test_gauge 42")
 	assert.Contains(t, body, "test_counter 1")
 }
+
+func TestScrapeRegistry_DuplicateRegistration(t *testing.T) {
+	registry, err := NewScrapeRegistry()
+	require.NoError(t, err)
+
+	t.Run("Gauge", func(t *testing.T) {
+		gauge1, err := registry.NewGauge(prometheus.GaugeOpts{
+			Name: "duplicate_gauge",
+			Help: "A test gauge",
+		})
+		require.NoError(t, err)
+		gauge1.Set(10.0)
+
+		// Register again - should return existing gauge without error
+		gauge2, err := registry.NewGauge(prometheus.GaugeOpts{
+			Name: "duplicate_gauge",
+			Help: "A test gauge",
+		})
+		require.NoError(t, err)
+
+		// Both should reference the same underlying metric
+		gauge2.Set(20.0)
+
+		// Verify the value is 20 (from gauge2)
+		handler := registry.Handler()
+		req := httptest.NewRequest("GET", "/metrics", nil)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		assert.Contains(t, w.Body.String(), "duplicate_gauge 20")
+	})
+
+	t.Run("GaugeVec", func(t *testing.T) {
+		gaugeVec1, err := registry.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "duplicate_gauge_vec",
+			Help: "A test gauge vec",
+		}, []string{"label"})
+		require.NoError(t, err)
+		gaugeVec1.With(prometheus.Labels{"label": "a"}).Set(100.0)
+
+		// Register again - should return existing gauge vec without error
+		gaugeVec2, err := registry.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "duplicate_gauge_vec",
+			Help: "A test gauge vec",
+		}, []string{"label"})
+		require.NoError(t, err)
+
+		// Both should reference the same underlying metric
+		gaugeVec2.With(prometheus.Labels{"label": "a"}).Set(200.0)
+
+		handler := registry.Handler()
+		req := httptest.NewRequest("GET", "/metrics", nil)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		assert.Contains(t, w.Body.String(), `duplicate_gauge_vec{label="a"} 200`)
+	})
+
+	t.Run("Counter", func(t *testing.T) {
+		counter1, err := registry.NewCounter(prometheus.CounterOpts{
+			Name: "duplicate_counter",
+			Help: "A test counter",
+		})
+		require.NoError(t, err)
+		counter1.Inc()
+
+		// Register again - should return existing counter without error
+		counter2, err := registry.NewCounter(prometheus.CounterOpts{
+			Name: "duplicate_counter",
+			Help: "A test counter",
+		})
+		require.NoError(t, err)
+
+		// Both should reference the same underlying metric
+		counter2.Inc()
+
+		handler := registry.Handler()
+		req := httptest.NewRequest("GET", "/metrics", nil)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		assert.Contains(t, w.Body.String(), "duplicate_counter 2")
+	})
+
+	t.Run("CounterVec", func(t *testing.T) {
+		counterVec1, err := registry.NewCounterVec(prometheus.CounterOpts{
+			Name: "duplicate_counter_vec",
+			Help: "A test counter vec",
+		}, []string{"label"})
+		require.NoError(t, err)
+		counterVec1.With(prometheus.Labels{"label": "b"}).Inc()
+
+		// Register again - should return existing counter vec without error
+		counterVec2, err := registry.NewCounterVec(prometheus.CounterOpts{
+			Name: "duplicate_counter_vec",
+			Help: "A test counter vec",
+		}, []string{"label"})
+		require.NoError(t, err)
+
+		// Both should reference the same underlying metric
+		counterVec2.With(prometheus.Labels{"label": "b"}).Add(2)
+
+		handler := registry.Handler()
+		req := httptest.NewRequest("GET", "/metrics", nil)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		assert.Contains(t, w.Body.String(), `duplicate_counter_vec{label="b"} 3`)
+	})
+}
