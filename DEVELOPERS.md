@@ -32,8 +32,8 @@ goback/
 ├── systemd/            # Systemd service definition
 └── workflows/          # Application-specific workflows
     ├── backup/         # Backup workflow and activities
-    ├── poweroff/       # Power-off workflow
-    └── test/           # Test workflow
+    ├── demo/           # Demo workflow
+    └── poweroff/       # Power-off workflow
 ```
 
 ### Package Descriptions
@@ -51,8 +51,8 @@ goback/
 |---------|-------------|
 | `workflows/` | Contains `Params` struct for workflow construction and dependency injection. |
 | `workflows/backup/` | Backup workflow: PowerOnPBS → BackupDirs → BackupVMs activities. |
+| `workflows/demo/` | Demo workflow for development/testing purposes. |
 | `workflows/poweroff/` | Power-off workflow: PowerOffPBS activity. |
-| `workflows/test/` | Test workflow for development/testing purposes. |
 
 #### Client Packages
 

@@ -61,8 +61,8 @@ import (
 	"github.com/nomis52/goback/server/runner"
 	"github.com/nomis52/goback/workflow"
 	"github.com/nomis52/goback/workflows/backup"
+	"github.com/nomis52/goback/workflows/demo"
 	"github.com/nomis52/goback/workflows/poweroff"
-	"github.com/nomis52/goback/workflows/test"
 )
 
 //go:embed static
@@ -75,12 +75,12 @@ const (
 	defaultListenAddr      = ":8080"
 )
 
-// defaultWorkflowFactories returns the standard workflow factories for backup, poweroff, and test workflows.
+// defaultWorkflowFactories returns the standard workflow factories for backup, poweroff, and demo workflows.
 func defaultWorkflowFactories() map[string]runner.WorkflowFactory {
 	return map[string]runner.WorkflowFactory{
 		"backup":   backup.NewWorkflow,
 		"poweroff": poweroff.NewWorkflow,
-		"test":     test.NewWorkflow,
+		"demo":     demo.NewWorkflow,
 	}
 }
 
