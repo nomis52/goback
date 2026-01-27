@@ -944,12 +944,12 @@
                 pbsStatus.textContent = pbsState.charAt(0).toUpperCase() + pbsState.slice(1);
                 pbsStatus.className = 'status-value ' + (pbsState === 'on' ? 'on' : pbsState === 'off' ? 'off' : '');
 
-                // Update build info and uptime
+                // Update build info, uptime, and hostname
                 const buildInfo = document.getElementById('buildInfo');
                 let buildText = '';
-                if (data.build && data.build.build_time !== 'unknown') {
+                if (data.server && data.server.build && data.server.build.build_time !== 'unknown') {
                     // Parse build time (format: YYYY-MM-DD_HH:MM:SS) and format for AU
-                    const buildDate = data.build.build_time.replace('_', 'T');
+                    const buildDate = data.server.build.build_time.replace('_', 'T');
                     const date = new Date(buildDate);
                     const formatted = date.toLocaleDateString('en-AU', {
                         day: 'numeric',
@@ -959,11 +959,11 @@
                         minute: '2-digit',
                         hour12: false
                     });
-                    const commit = data.build.git_commit || 'unknown';
+                    const commit = data.server.build.git_commit || 'unknown';
                     buildText = `Built ${formatted} (${commit})`;
                 }
-                if (data.started_at) {
-                    const startDate = new Date(data.started_at);
+                if (data.server && data.server.started_at) {
+                    const startDate = new Date(data.server.started_at);
                     const startFormatted = startDate.toLocaleDateString('en-AU', {
                         day: 'numeric',
                         month: 'short',
@@ -973,6 +973,9 @@
                         hour12: false
                     });
                     buildText += buildText ? ` · Started ${startFormatted}` : `Started ${startFormatted}`;
+                }
+                if (data.server && data.server.hostname) {
+                    buildText += buildText ? ` · ${data.server.hostname}` : data.server.hostname;
                 }
                 buildInfo.textContent = buildText;
 

@@ -103,12 +103,11 @@ type Server struct {
 	store           *runner.DiskStore
 	cronTrigger     *cron.CronTriggerManager
 	cronConfig      []serverconfig.CronTrigger
-	tlsCert         string
-	tlsKey          string
-	buildProperties buildinfo.Properties
+	tlsCert    string
+	tlsKey     string
+	properties ServerProperties
 
 	// Metrics
-	startTime       time.Time
 	metricsRegistry *metrics.ScrapeRegistry
 
 	// Static files
@@ -121,7 +120,7 @@ type Option func(*Server)
 // WithBuildProperties sets the build properties for the server.
 func WithBuildProperties(props buildinfo.Properties) Option {
 	return func(s *Server) {
-		s.buildProperties = props
+		s.properties.Build = props
 	}
 }
 
@@ -157,6 +156,12 @@ func New(cfg *serverconfig.ServerConfig, opts ...Option) (*Server, error) {
 	}
 	startTime := time.Now()
 
+	// Get hostname for server properties
+	hostname, err := os.Hostname()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get hostname: %w", err)
+	}
+
 	// Register server uptime as a GaugeFunc for dynamic calculation on scrape
 	uptimeGauge := prometheus.NewGaugeFunc(
 		prometheus.GaugeOpts{
@@ -178,15 +183,18 @@ func New(cfg *serverconfig.ServerConfig, opts ...Option) (*Server, error) {
 	}
 
 	s := &Server{
-		addr:            addr,
-		configPath:      cfg.WorkflowConfig,
-		stateDir:        cfg.StateDir,
-		logger:          logger,
-		logLevel:        logLevel,
-		cronConfig:      cfg.Cron,
-		tlsCert:         cfg.Listener.TLSCert,
-		tlsKey:          cfg.Listener.TLSKey,
-		startTime:       startTime,
+		addr:       addr,
+		configPath: cfg.WorkflowConfig,
+		stateDir:   cfg.StateDir,
+		logger:     logger,
+		logLevel:   logLevel,
+		cronConfig: cfg.Cron,
+		tlsCert:    cfg.Listener.TLSCert,
+		tlsKey:     cfg.Listener.TLSKey,
+		properties: ServerProperties{
+			StartedAt: startTime,
+			Hostname:  hostname,
+		},
 		metricsRegistry: metricsRegistry,
 		staticFS:        staticFS,
 	}
@@ -274,14 +282,9 @@ func (s *Server) IPMIController() *ipmiclient.IPMIController {
 	return s.deps.Load().ipmiController
 }
 
-// BuildProperties returns the build properties.
-func (s *Server) BuildProperties() buildinfo.Properties {
-	return s.buildProperties
-}
-
-// StartTime returns the server start time.
-func (s *Server) StartTime() time.Time {
-	return s.startTime
+// Properties returns the server properties (build info, start time, hostname).
+func (s *Server) Properties() ServerProperties {
+	return s.properties
 }
 
 // MetricsRegistry returns the metrics registry.
