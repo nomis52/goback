@@ -1,0 +1,20 @@
+load("@rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "power_off_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/nomis52/goback/cmd/power_off",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//config",
+        "//logging",
+        "//workflows",
+        "//workflows/poweroff",
+    ],
+)
+
+go_binary(
+    name = "power_off",
+    embed = [":power_off_lib"],
+    visibility = ["//visibility:public"],
+)

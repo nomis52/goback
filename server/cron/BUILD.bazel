@@ -1,0 +1,29 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "cron",
+    srcs = [
+        "manager.go",
+        "trigger.go",
+    ],
+    importpath = "github.com/nomis52/goback/server/cron",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//server/config",
+        "@com_github_robfig_cron_v3//:cron",
+    ],
+)
+
+go_test(
+    name = "cron_test",
+    srcs = [
+        "manager_test.go",
+        "trigger_test.go",
+    ],
+    embed = [":cron"],
+    deps = [
+        "//server/config",
+        "@com_github_stretchr_testify//assert",
+        "@com_github_stretchr_testify//require",
+    ],
+)

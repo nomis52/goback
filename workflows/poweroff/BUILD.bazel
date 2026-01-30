@@ -1,0 +1,17 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "poweroff",
+    srcs = [
+        "power_off_pbs.go",
+        "workflow.go",
+    ],
+    importpath = "github.com/nomis52/goback/workflows/poweroff",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//activity",
+        "//clients/ipmiclient",
+        "//workflow",
+        "//workflows",
+    ],
+)

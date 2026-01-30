@@ -4,3 +4,7 @@ goback-poweroff
 build/
 config.yaml
 state
+
+# Bazel artifacts
+/bazel-*
+.bazel-cache

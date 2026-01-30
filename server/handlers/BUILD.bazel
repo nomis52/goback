@@ -1,0 +1,44 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "handlers",
+    srcs = [
+        "api_status.go",
+        "available_workflows.go",
+        "config.go",
+        "health.go",
+        "history.go",
+        "interfaces.go",
+        "power.go",
+        "reload.go",
+        "run.go",
+        "store_reload.go",
+        "util.go",
+    ],
+    importpath = "github.com/nomis52/goback/server/handlers",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//clients/ipmiclient",
+        "//config",
+        "//server/cron",
+        "//server/runner",
+        "//server/types",
+        "@in_gopkg_yaml_v3//:yaml_v3",
+    ],
+)
+
+go_test(
+    name = "handlers_test",
+    srcs = [
+        "config_test.go",
+        "health_test.go",
+        "reload_test.go",
+    ],
+    embed = [":handlers"],
+    deps = [
+        "//config",
+        "@com_github_stretchr_testify//assert",
+        "@com_github_stretchr_testify//require",
+        "@in_gopkg_yaml_v3//:yaml_v3",
+    ],
+)

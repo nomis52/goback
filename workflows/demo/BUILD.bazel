@@ -1,0 +1,18 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "demo",
+    srcs = [
+        "step1.go",
+        "step2.go",
+        "step3.go",
+        "workflow.go",
+    ],
+    importpath = "github.com/nomis52/goback/workflows/demo",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//activity",
+        "//workflow",
+        "//workflows",
+    ],
+)
