@@ -1,13 +1,13 @@
-// Package test provides a simple test workflow with 3 sequential activities
+// Package demo provides a simple demo workflow with 3 sequential activities
 // for testing the orchestrator's status reporting and execution flow.
-package test
+package demo
 
 import (
 	"github.com/nomis52/goback/workflow"
 	"github.com/nomis52/goback/workflows"
 )
 
-// NewWorkflow creates a test workflow with 3 sequential activities.
+// NewWorkflow creates a demo workflow with 3 sequential activities.
 // Each activity sets status messages and sleeps to simulate work.
 func NewWorkflow(params workflows.Params) (workflow.Workflow, error) {
 	cfg := params.Config
