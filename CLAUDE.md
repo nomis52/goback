@@ -42,27 +42,31 @@ make clean
 
 ```bash
 # CLI mode (one-time backup run)
-./build/goback --config config.yaml
+./build/goback --config cfg/test.yaml
 
-# Server mode with web UI
-./build/goback-server --config config.yaml
-./build/goback-server --config config.yaml --listen :9090
-./build/goback-server --config config.yaml --cron "backup,poweroff:0 2 * * *"
-./build/goback-server --config config.yaml --cron "backup,poweroff:0 2 * * *;test:0 3 * * *"
-./build/goback-server --config config.yaml --cron "backup:0 2 * * *"
+# Server mode with web UI (takes server config, not workflow config)
+./build/goback-server --config cfg/test.yaml
 
 # Or run directly with go
-go run ./cmd/server --config config.yaml
+go run ./cmd/server --config cfg/test.yaml
 
 # Power-off utility (testing/manual)
-./build/goback-poweroff --config config.yaml
+./build/goback-poweroff --config cfg/test.yaml
 
 # Validate configuration
-./build/goback --config config.yaml --validate
+./build/goback --config cfg/test.yaml --validate
 
 # Show version
 ./build/goback --version
 ```
+
+The server uses a separate config file (`server.yaml`) that references the workflow config. See `cfg/test.yaml` for an example. Server config includes:
+- `listener.addr` - HTTP listen address (default `:8080`)
+- `listener.tls_cert` / `listener.tls_key` - Optional TLS
+- `cron` - List of scheduled workflow triggers
+- `state_dir` - Directory for run history persistence
+- `log_level` - Server log level
+- `workflow_config` - Path to the workflow config file
 
 ## Architecture
 
