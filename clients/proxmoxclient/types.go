@@ -111,6 +111,17 @@ func WithCompress(compress string) BackupOption {
 	}
 }
 
+// WithMailNotification sets the mail notification mode
+// Valid values: "always", "failure", or empty string to disable
+func WithMailNotification(mode string) BackupOption {
+	return func(p *backupParams) {
+		if p.params == nil {
+			p.params = make(map[string]string)
+		}
+		p.params["mailnotification"] = mode
+	}
+}
+
 // TaskStatusResponse represents the response from the task status endpoint
 // See: GET /api2/json/nodes/{node}/tasks/{upid}/status
 // Example fields: status, exitstatus, starttime, endtime, etc.
