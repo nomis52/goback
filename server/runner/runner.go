@@ -213,6 +213,46 @@ func (r *Runner) History() []RunStatus {
 	return r.store.Runs()
 }
 
+// GetRun returns a specific run by its start time (RFC3339 format).
+func (r *Runner) GetRun(id string) (*RunStatus, error) {
+	// Try parsing the ID to a time.Time for more robust comparison
+	targetTime, err := time.Parse(time.RFC3339Nano, id)
+	if err != nil {
+		targetTime, err = time.Parse(time.RFC3339, id)
+	}
+
+	match := func(t *time.Time) bool {
+		if t == nil {
+			return false
+		}
+		// Try exact string match first (as it appears in JSON)
+		if t.Format(time.RFC3339Nano) == id || t.Format(time.RFC3339) == id {
+			return true
+		}
+		// If ID was successfully parsed, compare time objects
+		if err == nil && t.Equal(targetTime) {
+			return true
+		}
+		return false
+	}
+
+	// First check if it's the current run
+	status := r.Status()
+	if match(status.StartedAt) {
+		return &status, nil
+	}
+
+	// Then check history
+	history := r.History()
+	for i := range history {
+		if match(history[i].StartedAt) {
+			return &history[i], nil
+		}
+	}
+
+	return nil, fmt.Errorf("run not found: %s", id)
+}
+
 // AvailableWorkflows returns a map of all available workflow names.
 // The map keys are workflow names, values are always true.
 func (r *Runner) AvailableWorkflows() map[string]bool {
