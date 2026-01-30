@@ -1,16 +1,16 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to agents when working with code in this repository.
 
 ## Project Overview
 
-Goback is a PBS (Proxmox Backup Server) backup automation system written in Go. It orchestrates the complete backup workflow: powering on the PBS server via IPMI, backing up VMs/LXCs from Proxmox and file-based backups via SSH, then powering down PBS to save energy. It includes both a CLI tool for one-time runs and an HTTP server with web UI for monitoring and scheduling.
+Goback is a PBS (Proxmox Backup Server) backup automation system written in Go. It orchestrates the backup workflow: powering on the PBS server via IPMI, backing up VMs/LXCs from Proxmox and file-based backups via SSH, then powering down PBS to save energy. It includes both a CLI tool for one-time runs and an HTTP server with web UI for monitoring and scheduling.
 
 ## Build and Test Commands
 
 ```bash
 # Build all binaries
-make build
+make build  # Uses git tags for version
 
 # Build individual binaries
 go build -o build/goback ./cmd/cli
@@ -19,6 +19,9 @@ go build -o build/goback-poweroff ./cmd/power_off
 
 # Run all tests
 make test
+
+or
+
 go test ./...
 
 # Run tests for a specific package
@@ -30,9 +33,6 @@ go test -v -run TestBackupVMs ./workflows/backup
 
 # Format code
 make fmt
-
-# Build with version information
-make build  # Uses git tags for version
 
 # Clean build artifacts
 make clean
@@ -60,7 +60,7 @@ go run ./cmd/server --config cfg/test.yaml
 ./build/goback --version
 ```
 
-The server uses a separate config file (`server.yaml`) that references the workflow config. See `cfg/test.yaml` for an example. Server config includes:
+The server uses a separate config file that references the workflow config. See `cfg/test.yaml` for an example. Server config includes:
 - `listener.addr` - HTTP listen address (default `:8080`)
 - `listener.tls_cert` / `listener.tls_key` - Optional TLS
 - `cron` - List of scheduled workflow triggers
@@ -158,20 +158,6 @@ Configuration is in YAML format. See config.yaml for example. Key sections:
 - `logging` - Log level, format (json/text), output (stdout/stderr/file)
 
 The config package (config/config.go:1) provides validation, defaults, and loading.
-
-## HTTP Endpoints
-
-- `GET /` - Web UI dashboard
-- `GET /health` - Health check
-- `GET /api/status` - **Consolidated status endpoint** (PBS state, run status, next run, results) - used by the web UI
-- `GET /api/history` - Completed run history
-- `GET /config` - Current configuration as YAML
-- `POST /reload` - Reload configuration from disk
-- `POST /run` - Trigger a backup run
-
-The web UI uses `/api/status` for efficient polling (single request) and `/api/history` separately for historical data.
-
-See server/README.md for more details.
 
 ## Testing Strategy
 
