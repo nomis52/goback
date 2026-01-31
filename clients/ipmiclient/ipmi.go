@@ -3,7 +3,6 @@ package ipmiclient
 import (
 	"fmt"
 	"log/slog"
-	"os/exec"
 	"strings"
 )
 
@@ -35,17 +34,19 @@ func WithPassword(password string) Option {
 
 // IPMIController manages IPMI operations
 type IPMIController struct {
-	host     string
-	username string
-	password string
-	logger   *slog.Logger
+	host      string
+	username  string
+	password  string
+	logger    *slog.Logger
+	cmdRunner CommandRunner
 }
 
 // NewIPMIController creates a new IPMI controller
 func NewIPMIController(host string, opts ...Option) *IPMIController {
 	c := &IPMIController{
-		host:   host,
-		logger: slog.Default(),
+		host:      host,
+		logger:    slog.Default(),
+		cmdRunner: &execCommandRunner{},
 	}
 
 	for _, opt := range opts {
@@ -62,18 +63,7 @@ func (c *IPMIController) Status() (PowerState, error) {
 		return PowerStateUnknown, fmt.Errorf("failed to get chassis status: %w", err)
 	}
 
-	lines := strings.Split(string(output), "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if strings.Contains(line, "System Power") {
-			parts := strings.Split(line, ":")
-			if len(parts) > 1 {
-				return ParsePowerState(strings.TrimSpace(parts[1])), nil
-			}
-		}
-	}
-
-	return PowerStateUnknown, fmt.Errorf("failed to read status")
+	return parseChassisStatus(output)
 }
 
 // PowerOn turns on the remote system
@@ -112,13 +102,28 @@ func (c *IPMIController) Reset() error {
 	return nil
 }
 
+// parseChassisStatus extracts the power state from IPMI chassis status output
+func parseChassisStatus(output []byte) (PowerState, error) {
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.Contains(line, "System Power") {
+			parts := strings.Split(line, ":")
+			if len(parts) > 1 {
+				return ParsePowerState(strings.TrimSpace(parts[1])), nil
+			}
+		}
+	}
+
+	return PowerStateUnknown, fmt.Errorf("failed to read status")
+}
+
 // runIPMICommand executes an IPMI command with the configured credentials
 func (c *IPMIController) runIPMICommand(args ...string) ([]byte, error) {
 	cmdArgs := []string{"-H", c.host, "-U", c.username, "-P", c.password}
 	cmdArgs = append(cmdArgs, args...)
 
-	cmd := exec.Command(IPMI_TOOL, cmdArgs...)
-	output, err := cmd.CombinedOutput()
+	output, err := c.cmdRunner.Run(IPMI_TOOL, cmdArgs...)
 
 	// Log command details (with redacted password)
 	logArgs := []string{"-H", c.host, "-U", c.username, "-P", "[REDACTED]"}

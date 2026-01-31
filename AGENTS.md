@@ -145,6 +145,10 @@ The **runner** (server/runner/) prevents concurrent runs, tracks current status,
    - Separate `types.go` for return types (public types first, internal types at end)
 9. **Use Options pattern** for constructors with multiple parameters (e.g., `WithTimeout()`, `WithLogger()`)
 10. **Use standard library constants** instead of strings (e.g., `http.MethodPost` not `"POST"`)
+11. **Exported methods precede unexported methods** - Within a file, all exported functions/methods should come before unexported ones
+12. **Test helper types at end of file** - In test files, helper types (mocks, stubs, test fixtures) and their methods should be placed at the end of the file after all test functions
+13. **Never test unexported fields** - Tests should only verify behavior through exported APIs, never inspect unexported struct fields (fragile and tests implementation not behavior)
+14. **Assert exact values, not partial matches** - Use `assert.Equal` with complete expected values rather than `assert.Contains` for fragments. Partial matches can pass with incorrect results and are harder to debug
 
 ## Configuration
 
