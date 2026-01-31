@@ -161,6 +161,8 @@ The config package (config/config.go:1) provides validation, defaults, and loadi
 
 ## Testing Strategy
 
+- Use table-driven tests for all logic.
+- For error cases, use a single `errMsg` field in the test struct instead of a boolean `wantErr`. If `errMsg` is non-empty, an error is expected and its message should be verified.
 - Use testify for all assertions (`require` for critical, `assert` for non-critical)
 - Place test files in same directory as implementation
 - Test files use same package name as code they test

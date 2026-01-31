@@ -16,41 +16,37 @@ func TestNew(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	tests := []struct {
-		name    string
-		host    string
-		opts    []Option
-		wantErr bool
-		errMsg  string
+		name   string
+		host   string
+		opts   []Option
+		errMsg string
 	}{
 		{
-			name:    "valid https host",
-			host:    "https://pbs.example.com",
-			opts:    []Option{WithLogger(logger)},
-			wantErr: false,
+			name: "valid https host",
+			host: "https://pbs.example.com",
+			opts: []Option{WithLogger(logger)},
 		},
 		{
-			name:    "valid http host",
-			host:    "http://192.168.1.100:8007",
-			wantErr: false, // Should use default logger
+			name: "valid http host",
+			host: "http://192.168.1.100:8007",
+			// Should use default logger
 		},
 		{
-			name:    "missing scheme",
-			host:    "pbs.example.com",
-			wantErr: true,
-			errMsg:  "host URL must include scheme",
+			name:   "missing scheme",
+			host:   "pbs.example.com",
+			errMsg: "host URL must include scheme",
 		},
 		{
-			name:    "invalid url",
-			host:    "http://:invalid",
-			wantErr: true,
-			errMsg:  "invalid host URL",
+			name:   "invalid url",
+			host:   "http://:invalid",
+			errMsg: "invalid host URL",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			client, err := New(tt.host, tt.opts...)
-			if tt.wantErr {
+			if tt.errMsg != "" {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errMsg)
 				assert.Nil(t, client)
@@ -77,12 +73,11 @@ func TestPing(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	tests := []struct {
-		name       string
-		handler    http.HandlerFunc
+		name         string
+		handler      http.HandlerFunc
 		modifyClient func(*Client)
-		wantResp   string
-		wantErr    bool
-		errMsg     string
+		wantResp     string
+		errMsg       string
 	}{
 		{
 			name: "success",
@@ -92,7 +87,6 @@ func TestPing(t *testing.T) {
 				w.Write([]byte(`{"data":"pong"}`))
 			},
 			wantResp: `{"data":"pong"}`,
-			wantErr:  false,
 		},
 		{
 			name: "non-200 status",
@@ -100,17 +94,15 @@ func TestPing(t *testing.T) {
 				assert.Equal(t, "/api2/json/ping", r.URL.Path)
 				w.WriteHeader(http.StatusUnauthorized)
 			},
-			wantErr: true,
-			errMsg:  "PBS server returned status 401",
+			errMsg: "PBS server returned status 401",
 		},
 		{
-			name: "connection error",
+			name:    "connection error",
 			handler: func(w http.ResponseWriter, r *http.Request) {},
 			modifyClient: func(c *Client) {
 				c.Host = "http://localhost:1" // Invalid port should trigger connection error
 			},
-			wantErr: true,
-			errMsg:  "failed to ping PBS server",
+			errMsg: "failed to ping PBS server",
 		},
 	}
 
@@ -127,11 +119,9 @@ func TestPing(t *testing.T) {
 			}
 
 			resp, err := client.Ping()
-			if tt.wantErr {
+			if tt.errMsg != "" {
 				assert.Error(t, err)
-				if tt.errMsg != "" {
-					assert.Contains(t, err.Error(), tt.errMsg)
-				}
+				assert.Contains(t, err.Error(), tt.errMsg)
 				assert.Empty(t, resp)
 			} else {
 				assert.NoError(t, err)
