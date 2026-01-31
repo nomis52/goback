@@ -149,6 +149,9 @@ The **runner** (server/runner/) prevents concurrent runs, tracks current status,
 12. **Test helper types at end of file** - In test files, helper types (mocks, stubs, test fixtures) and their methods should be placed at the end of the file after all test functions
 13. **Never test unexported fields** - Tests should only verify behavior through exported APIs, never inspect unexported struct fields (fragile and tests implementation not behavior)
 14. **Assert exact values, not partial matches** - Use `assert.Equal` with complete expected values rather than `assert.Contains` for fragments. Partial matches can pass with incorrect results and are harder to debug
+15. **Make external dependencies injectable** - Wrap external calls (exec.Command) in interfaces that can be injected via options, enabling tests to use mocks without real external calls
+16. **Use table-driven tests** - Organize tests as a slice of test cases with name, inputs, and expected outputs. Makes adding cases easy and keeps tests consistent
+17. **Use `require` for preconditions, `assert` for verifications** - Use `require.NoError`/`require.Error` to fail fast on setup or critical checks; use `assert` for the actual test verifications
 
 ## Configuration
 
