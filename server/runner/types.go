@@ -76,8 +76,9 @@ type RunSummary struct {
 	Error string `json:"error,omitempty"`
 }
 
-// RunStatus contains all information about a run, including activity executions.
-type RunStatus struct {
+// runStatus contains all information about a run, including activity executions.
+// It is used internally for state management and persistence.
+type runStatus struct {
 	RunSummary
 	// ActivityExecutions contains detailed execution records for each activity in the workflow.
 	ActivityExecutions []ActivityExecution `json:"activity_executions,omitempty"`

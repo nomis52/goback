@@ -315,8 +315,8 @@ func (s *Server) NextTrigger() *cron.NextTriggerInfo {
 	return &info
 }
 
-// Status returns the current run status by delegating to the runner.
-func (s *Server) Status() runner.RunStatus {
+// Status returns the current run summary and activity executions by delegating to the runner.
+func (s *Server) Status() (runner.RunSummary, []runner.ActivityExecution) {
 	return s.runner.Status()
 }
 

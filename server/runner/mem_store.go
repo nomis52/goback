@@ -4,29 +4,29 @@ import "sync"
 
 // MemoryStore keeps run history in memory only (no persistence).
 type MemoryStore struct {
-	runs []RunStatus
+	runs []runStatus
 	mu   sync.Mutex
 }
 
 // NewMemoryStore creates a new in-memory store.
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
-		runs: make([]RunStatus, 0),
+		runs: make([]runStatus, 0),
 	}
 }
 
 // Runs returns a copy of all runs.
-func (s *MemoryStore) Runs() []RunStatus {
+func (s *MemoryStore) Runs() []runStatus {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	result := make([]RunStatus, len(s.runs))
+	result := make([]runStatus, len(s.runs))
 	copy(result, s.runs)
 	return result
 }
 
 // Save stores a run in memory.
-func (s *MemoryStore) Save(run RunStatus) error {
+func (s *MemoryStore) Save(run runStatus) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -36,6 +36,6 @@ func (s *MemoryStore) Save(run RunStatus) error {
 	}
 
 	// Prepend to keep most recent first
-	s.runs = append([]RunStatus{run}, s.runs...)
+	s.runs = append([]runStatus{run}, s.runs...)
 	return nil
 }

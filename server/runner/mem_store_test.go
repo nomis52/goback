@@ -21,7 +21,7 @@ func TestMemoryStore_Save(t *testing.T) {
 	store := NewMemoryStore()
 
 	now := time.Now()
-	run := RunStatus{
+	run := runStatus{
 		RunSummary: RunSummary{
 			State:     RunStateIdle,
 			StartedAt: &now,
@@ -47,7 +47,7 @@ func TestMemoryStore_SaveMultiple(t *testing.T) {
 	now := time.Now()
 	for i := 0; i < 5; i++ {
 		runTime := now.Add(time.Duration(i) * time.Hour)
-		run := RunStatus{
+		run := runStatus{
 			RunSummary: RunSummary{
 				State:     RunStateIdle,
 				StartedAt: &runTime,
@@ -71,7 +71,7 @@ func TestMemoryStore_Runs_ReturnsCopy(t *testing.T) {
 	store := NewMemoryStore()
 
 	now := time.Now()
-	run := RunStatus{
+	run := runStatus{
 		RunSummary: RunSummary{
 			State:     RunStateIdle,
 			StartedAt: &now,
@@ -110,7 +110,7 @@ func TestMemoryStore_Concurrent(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 			now := time.Now()
-			run := RunStatus{
+			run := runStatus{
 				RunSummary: RunSummary{
 					State:     RunStateIdle,
 					StartedAt: &now,
@@ -136,7 +136,7 @@ func TestMemoryStore_NoLimit(t *testing.T) {
 	now := time.Now()
 	for i := 0; i < 100; i++ {
 		runTime := now.Add(time.Duration(i) * time.Second)
-		run := RunStatus{
+		run := runStatus{
 			RunSummary: RunSummary{
 				State:     RunStateIdle,
 				StartedAt: &runTime,

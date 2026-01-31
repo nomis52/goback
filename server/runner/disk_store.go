@@ -15,7 +15,7 @@ type DiskStore struct {
 	dir      string
 	logger   *slog.Logger
 	maxCount int
-	runs     []RunStatus // protected by mu
+	runs     []runStatus // protected by mu
 	mu       sync.Mutex
 }
 
@@ -26,7 +26,7 @@ func NewDiskStore(dir string, maxCount int, logger *slog.Logger) (*DiskStore, er
 		dir:      dir,
 		logger:   logger,
 		maxCount: maxCount,
-		runs:     make([]RunStatus, 0),
+		runs:     make([]runStatus, 0),
 	}
 
 	// Create directory if it doesn't exist
@@ -47,17 +47,17 @@ func NewDiskStore(dir string, maxCount int, logger *slog.Logger) (*DiskStore, er
 }
 
 // Runs returns a copy of all loaded runs.
-func (s *DiskStore) Runs() []RunStatus {
+func (s *DiskStore) Runs() []runStatus {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	result := make([]RunStatus, len(s.runs))
+	result := make([]runStatus, len(s.runs))
 	copy(result, s.runs)
 	return result
 }
 
 // Save persists a run to disk and updates the in-memory representation.
-func (s *DiskStore) Save(run RunStatus) error {
+func (s *DiskStore) Save(run runStatus) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -84,7 +84,7 @@ func (s *DiskStore) Save(run RunStatus) error {
 	}
 
 	// Add to in-memory representation (prepend to keep most recent first)
-	s.runs = append([]RunStatus{run}, s.runs...)
+	s.runs = append([]runStatus{run}, s.runs...)
 
 	// Enforce max count limit
 	if len(s.runs) > s.maxCount {
@@ -110,7 +110,7 @@ func (s *DiskStore) Reload() error {
 }
 
 // load loads all runs from disk.
-func (s *DiskStore) load() ([]RunStatus, error) {
+func (s *DiskStore) load() ([]runStatus, error) {
 	files, err := os.ReadDir(s.dir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read state directory: %w", err)
@@ -129,7 +129,7 @@ func (s *DiskStore) load() ([]RunStatus, error) {
 	if capacity > s.maxCount {
 		capacity = s.maxCount
 	}
-	runs := make([]RunStatus, 0, capacity)
+	runs := make([]runStatus, 0, capacity)
 
 	for _, file := range files {
 		if file.IsDir() || filepath.Ext(file.Name()) != ".json" {
@@ -143,7 +143,7 @@ func (s *DiskStore) load() ([]RunStatus, error) {
 			continue
 		}
 
-		var run RunStatus
+		var run runStatus
 		if err := json.Unmarshal(data, &run); err != nil {
 			s.logger.Warn("failed to parse run file", "file", path, "error", err)
 			continue

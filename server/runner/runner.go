@@ -69,7 +69,7 @@ type Runner struct {
 	store          StateStore
 
 	mu               sync.Mutex
-	runStatus        RunStatus
+	runStatus        runStatus
 	workflow         workflow.Workflow           // Current or last run's workflow
 	statusCollection *activity.StatusHandler     // Current run's status collection
 	logCollector     *logging.LogCollector       // Captures logs during workflow execution
@@ -110,7 +110,7 @@ func New(logger *slog.Logger, provider ConfigProvider, factories map[string]Work
 		configProvider: provider,
 		factories:      factories,
 		store:          NewMemoryStore(),
-		runStatus:      RunStatus{RunSummary: RunSummary{State: RunStateIdle}},
+		runStatus:      runStatus{RunSummary: RunSummary{State: RunStateIdle}},
 	}
 
 	// Apply options
@@ -183,22 +183,23 @@ func (r *Runner) Run(workflows []string) error {
 	return nil
 }
 
-// Status returns the current run status with live activity executions and logs.
+// Status returns the current run summary and activity executions.
 // If a run is in progress, includes real-time activity executions with captured logs and status messages.
-// If idle, returns the last completed run status (already includes activity executions).
-func (r *Runner) Status() RunStatus {
+// If idle, returns the last completed run summary and executions.
+func (r *Runner) Status() (RunSummary, []ActivityExecution) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	// Make a copy of the base status
-	status := r.runStatus
+	// Make a copy of the base summary
+	summary := r.runStatus.RunSummary
+	executions := r.runStatus.ActivityExecutions
 
 	// If running, build live activity executions with current logs and status messages
 	if r.runStatus.State == RunStateRunning && r.workflow != nil && r.logCollector != nil {
-		status.ActivityExecutions = r.buildActivityExecutions()
+		executions = r.buildActivityExecutions()
 	}
 
-	return status
+	return summary, executions
 }
 
 // IsRunning returns true if a backup run is in progress.
@@ -221,9 +222,9 @@ func (r *Runner) History() []RunSummary {
 // GetLogs returns the activity executions for a specific run.
 func (r *Runner) GetLogs(id string) ([]ActivityExecution, error) {
 	// First check if it's the current run
-	status := r.Status()
-	if status.ID == id {
-		return status.ActivityExecutions, nil
+	summary, logs := r.Status()
+	if summary.ID == id {
+		return logs, nil
 	}
 
 	// Then check history
@@ -282,7 +283,7 @@ func (r *Runner) tryStart(workflows []string) bool {
 	}
 
 	now := time.Now()
-	r.runStatus = RunStatus{
+	r.runStatus = runStatus{
 		RunSummary: RunSummary{
 			State:     RunStateRunning,
 			Workflows: workflows,

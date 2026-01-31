@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// assertRunStatusEqual compares RunStatus structs handling time.Time properly.
-func assertRunStatusEqual(t *testing.T, expected, actual RunStatus, msgAndArgs ...interface{}) {
+// assertrunStatusEqual compares runStatus structs handling time.Time properly.
+func assertrunStatusEqual(t *testing.T, expected, actual runStatus, msgAndArgs ...interface{}) {
 	t.Helper()
 
 	// Ensure IDs match if expected ID is set, otherwise check if actual ID is populated
@@ -60,7 +60,7 @@ func TestDiskStore_Save(t *testing.T) {
 	require.NoError(t, err)
 
 	now := time.Now()
-	run := RunStatus{
+	run := runStatus{
 		RunSummary: RunSummary{
 			State:     RunStateIdle,
 			StartedAt: &now,
@@ -89,7 +89,7 @@ func TestDiskStore_SaveWithoutStartTime(t *testing.T) {
 	store, err := NewDiskStore(tmpDir, 10, logger)
 	require.NoError(t, err)
 
-	run := RunStatus{
+	run := runStatus{
 		RunSummary: RunSummary{
 			State:     RunStateIdle,
 			StartedAt: nil, // No start time
@@ -113,7 +113,7 @@ func TestDiskStore_Reload(t *testing.T) {
 	now := time.Now()
 	for i := 0; i < 3; i++ {
 		runTime := now.Add(time.Duration(i) * time.Hour)
-		run := RunStatus{
+		run := runStatus{
 			RunSummary: RunSummary{
 				State:     RunStateIdle,
 				StartedAt: &runTime,
@@ -146,7 +146,7 @@ func TestDiskStore_MaxCount(t *testing.T) {
 	now := time.Now()
 	for i := 0; i < 10; i++ {
 		runTime := now.Add(time.Duration(i) * time.Hour)
-		run := RunStatus{
+		run := runStatus{
 			RunSummary: RunSummary{
 				State:     RunStateIdle,
 				StartedAt: &runTime,
@@ -176,7 +176,7 @@ func TestDiskStore_LoadsExistingRuns(t *testing.T) {
 
 	// Create a run file manually
 	now := time.Now()
-	run := RunStatus{
+	run := runStatus{
 		RunSummary: RunSummary{
 			State:     RunStateIdle,
 			StartedAt: &now,
@@ -197,7 +197,7 @@ func TestDiskStore_LoadsExistingRuns(t *testing.T) {
 
 	runs := store2.Runs()
 	assert.Len(t, runs, 1)
-	assertRunStatusEqual(t, run, runs[0])
+	assertrunStatusEqual(t, run, runs[0])
 }
 
 func TestDiskStore_IgnoresNonJSONFiles(t *testing.T) {
@@ -226,7 +226,7 @@ func TestDiskStore_Runs_ReturnsCopy(t *testing.T) {
 	require.NoError(t, err)
 
 	now := time.Now()
-	run := RunStatus{
+	run := runStatus{
 		RunSummary: RunSummary{
 			State:     RunStateIdle,
 			StartedAt: &now,
@@ -250,5 +250,5 @@ func TestDiskStore_Runs_ReturnsCopy(t *testing.T) {
 
 	// Modifying one shouldn't affect the other
 	runs1[0].Error = "modified"
-	assertRunStatusEqual(t, run, runs2[0], "modifying one slice should not affect the other")
+	assertrunStatusEqual(t, run, runs2[0], "modifying one slice should not affect the other")
 }
