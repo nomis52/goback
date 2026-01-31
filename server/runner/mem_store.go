@@ -30,6 +30,11 @@ func (s *MemoryStore) Save(run RunStatus) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// Ensure ID is populated
+	if run.ID == "" {
+		run.ID = run.CalculateID()
+	}
+
 	// Prepend to keep most recent first
 	s.runs = append([]RunStatus{run}, s.runs...)
 	return nil

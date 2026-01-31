@@ -69,6 +69,11 @@ func (s *DiskStore) Save(run RunStatus) error {
 	filename := run.StartedAt.Format("2006-01-02T15-04-05") + ".json"
 	path := filepath.Join(s.dir, filename)
 
+	// Ensure ID is populated
+	if run.ID == "" {
+		run.ID = run.CalculateID()
+	}
+
 	data, err := json.MarshalIndent(run, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal run: %w", err)
@@ -142,6 +147,11 @@ func (s *DiskStore) load() ([]RunStatus, error) {
 		if err := json.Unmarshal(data, &run); err != nil {
 			s.logger.Warn("failed to parse run file", "file", path, "error", err)
 			continue
+		}
+
+		// Ensure ID is populated
+		if run.ID == "" {
+			run.ID = run.CalculateID()
 		}
 
 		runs = append(runs, run)

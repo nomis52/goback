@@ -14,6 +14,14 @@ import (
 // assertRunStatusEqual compares RunStatus structs handling time.Time properly.
 func assertRunStatusEqual(t *testing.T, expected, actual RunStatus, msgAndArgs ...interface{}) {
 	t.Helper()
+
+	// Ensure IDs match if expected ID is set, otherwise check if actual ID is populated
+	if expected.ID != "" {
+		assert.Equal(t, expected.ID, actual.ID, msgAndArgs...)
+	} else if expected.StartedAt != nil {
+		assert.NotEmpty(t, actual.ID, msgAndArgs...)
+	}
+
 	assert.Equal(t, expected.State, actual.State, msgAndArgs...)
 	assert.Equal(t, expected.Error, actual.Error, msgAndArgs...)
 

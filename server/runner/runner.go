@@ -213,39 +213,18 @@ func (r *Runner) History() []RunStatus {
 	return r.store.Runs()
 }
 
-// GetRun returns a specific run by its start time (RFC3339 format).
+// GetRun returns a specific run by its ID.
 func (r *Runner) GetRun(id string) (*RunStatus, error) {
-	// Try parsing the ID to a time.Time for more robust comparison
-	targetTime, err := time.Parse(time.RFC3339Nano, id)
-	if err != nil {
-		targetTime, err = time.Parse(time.RFC3339, id)
-	}
-
-	match := func(t *time.Time) bool {
-		if t == nil {
-			return false
-		}
-		// Try exact string match first (as it appears in JSON)
-		if t.Format(time.RFC3339Nano) == id || t.Format(time.RFC3339) == id {
-			return true
-		}
-		// If ID was successfully parsed, compare time objects
-		if err == nil && t.Equal(targetTime) {
-			return true
-		}
-		return false
-	}
-
 	// First check if it's the current run
 	status := r.Status()
-	if match(status.StartedAt) {
+	if status.ID == id {
 		return &status, nil
 	}
 
 	// Then check history
 	history := r.History()
 	for i := range history {
-		if match(history[i].StartedAt) {
+		if history[i].ID == id {
 			return &history[i], nil
 		}
 	}
@@ -303,6 +282,7 @@ func (r *Runner) tryStart(workflows []string) bool {
 		Workflows: workflows,
 		StartedAt: &now,
 	}
+	r.runStatus.ID = r.runStatus.CalculateID()
 	return true
 }
 

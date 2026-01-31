@@ -33,6 +33,9 @@ func TestMemoryStore_Save(t *testing.T) {
 
 	runs := store.Runs()
 	require.Len(t, runs, 1)
+
+	// ID should have been populated
+	run.ID = run.CalculateID()
 	assert.Equal(t, run, runs[0])
 }
 
@@ -82,7 +85,11 @@ func TestMemoryStore_Runs_ReturnsCopy(t *testing.T) {
 
 	// Modifying one shouldn't affect the other
 	runs1[0].Error = "modified"
-	assert.Equal(t, run, runs2[0], "modifying one slice should not affect the other")
+
+	// Expected run should have its ID populated
+	expectedRun := run
+	expectedRun.ID = expectedRun.CalculateID()
+	assert.Equal(t, expectedRun, runs2[0], "modifying one slice should not affect the other")
 }
 
 func TestMemoryStore_Concurrent(t *testing.T) {

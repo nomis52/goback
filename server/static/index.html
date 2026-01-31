@@ -802,7 +802,7 @@
         async function fetchLogs(runId) {
             if (activeFetches.has(runId)) return null;
 
-            const run = historyData.find(r => r.started_at === runId);
+            const run = historyData.find(r => r.id === runId);
             if (!run) return null;
 
             // Use cached logs if available and run is not running
@@ -872,7 +872,7 @@
                 return '<div class="empty-state" style="padding: 1rem;">No activity details available</div>';
             }
 
-            const runId = run.started_at;
+            const runId = run.id;
 
             return `
                 <table style="background-color: var(--bg-primary); margin: 0; width: 100%;">
@@ -1187,7 +1187,7 @@
                         badgeText = 'Failed';
                     }
 
-                    const runId = run.started_at;
+                    const runId = run.id;
                     const isExpanded = expandedHistoryRows.has(runId);
                     const workflows = run.workflows && run.workflows.length > 0
                         ? run.workflows.join(', ')
