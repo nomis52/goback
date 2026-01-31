@@ -22,10 +22,12 @@ func TestMemoryStore_Save(t *testing.T) {
 
 	now := time.Now()
 	run := RunStatus{
-		State:     RunStateIdle,
-		StartedAt: &now,
-		EndedAt:   &now,
-		Error:     "",
+		RunSummary: RunSummary{
+			State:     RunStateIdle,
+			StartedAt: &now,
+			EndedAt:   &now,
+			Error:     "",
+		},
 	}
 
 	err := store.Save(run)
@@ -46,9 +48,11 @@ func TestMemoryStore_SaveMultiple(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		runTime := now.Add(time.Duration(i) * time.Hour)
 		run := RunStatus{
-			State:     RunStateIdle,
-			StartedAt: &runTime,
-			EndedAt:   &runTime,
+			RunSummary: RunSummary{
+				State:     RunStateIdle,
+				StartedAt: &runTime,
+				EndedAt:   &runTime,
+			},
 		}
 		err := store.Save(run)
 		require.NoError(t, err)
@@ -68,10 +72,12 @@ func TestMemoryStore_Runs_ReturnsCopy(t *testing.T) {
 
 	now := time.Now()
 	run := RunStatus{
-		State:     RunStateIdle,
-		StartedAt: &now,
-		EndedAt:   &now,
-		Error:     "",
+		RunSummary: RunSummary{
+			State:     RunStateIdle,
+			StartedAt: &now,
+			EndedAt:   &now,
+			Error:     "",
+		},
 	}
 	err := store.Save(run)
 	require.NoError(t, err)
@@ -105,9 +111,11 @@ func TestMemoryStore_Concurrent(t *testing.T) {
 			defer wg.Done()
 			now := time.Now()
 			run := RunStatus{
-				State:     RunStateIdle,
-				StartedAt: &now,
-				EndedAt:   &now,
+				RunSummary: RunSummary{
+					State:     RunStateIdle,
+					StartedAt: &now,
+					EndedAt:   &now,
+				},
 			}
 			err := store.Save(run)
 			assert.NoError(t, err)
@@ -129,9 +137,11 @@ func TestMemoryStore_NoLimit(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		runTime := now.Add(time.Duration(i) * time.Second)
 		run := RunStatus{
-			State:     RunStateIdle,
-			StartedAt: &runTime,
-			EndedAt:   &runTime,
+			RunSummary: RunSummary{
+				State:     RunStateIdle,
+				StartedAt: &runTime,
+				EndedAt:   &runTime,
+			},
 		}
 		err := store.Save(run)
 		require.NoError(t, err)

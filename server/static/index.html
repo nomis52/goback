@@ -812,9 +812,9 @@
 
             activeFetches.add(runId);
             try {
-                const fullRun = await fetchJSON(`/api/history/logs?id=${runId}`);
-                logsCache.set(runId, fullRun);
-                return fullRun;
+                const executions = await fetchJSON(`/api/history/logs?id=${runId}`);
+                logsCache.set(runId, executions);
+                return executions;
             } catch (err) {
                 console.error(`Failed to fetch logs for run ${runId}:`, err);
                 return null;
@@ -842,9 +842,9 @@
                     contentWrapper.innerHTML = '<div class="empty-state">Loading logs...</div>';
                 }
 
-                const fullRun = await fetchLogs(runId);
-                if (fullRun) {
-                    contentWrapper.innerHTML = renderHistoryActivityDetails(fullRun);
+                const executions = await fetchLogs(runId);
+                if (executions) {
+                    contentWrapper.innerHTML = renderHistoryActivityDetails(runId, executions);
                 }
             }
         }
@@ -865,14 +865,10 @@
             }
         }
 
-        function renderHistoryActivityDetails(run) {
-            const executions = run.activity_executions || [];
-
-            if (executions.length === 0) {
+        function renderHistoryActivityDetails(runId, executions) {
+            if (!executions || executions.length === 0) {
                 return '<div class="empty-state" style="padding: 1rem;">No activity details available</div>';
             }
-
-            const runId = run.id;
 
             return `
                 <table style="background-color: var(--bg-primary); margin: 0; width: 100%;">
@@ -1158,7 +1154,7 @@
 
         async function updateHistory() {
             try {
-                const data = await fetchJSON('/api/history?no_logs=true');
+                const data = await fetchJSON('/api/history');
                 historyData = data;
                 const tbody = document.getElementById('historyBody');
                 const count = document.getElementById('historyCount');
@@ -1196,15 +1192,15 @@
                     let content = '';
                     if (isExpanded) {
                         const cached = logsCache.get(runId);
-                        content = cached ? renderHistoryActivityDetails(cached) : '<div class="empty-state">Loading logs...</div>';
+                        content = cached ? renderHistoryActivityDetails(runId, cached) : '<div class="empty-state">Loading logs...</div>';
 
                         // If it's expanded and running, we might want to refresh logs
                         if (runIsRunning) {
-                            fetchLogs(runId).then(fullRun => {
+                            fetchLogs(runId).then(executions => {
                                 const wrapper = document.getElementById(`history-content-${runId}`);
-                                if (wrapper && fullRun) {
+                                if (wrapper && executions) {
                                     const innerScrollPos = saveScrollPositions();
-                                    wrapper.innerHTML = renderHistoryActivityDetails(fullRun);
+                                    wrapper.innerHTML = renderHistoryActivityDetails(runId, executions);
                                     restoreScrollPositions(innerScrollPos);
                                 }
                             });

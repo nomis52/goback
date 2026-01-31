@@ -61,10 +61,12 @@ func TestDiskStore_Save(t *testing.T) {
 
 	now := time.Now()
 	run := RunStatus{
-		State:     RunStateIdle,
-		StartedAt: &now,
-		EndedAt:   &now,
-		Error:     "",
+		RunSummary: RunSummary{
+			State:     RunStateIdle,
+			StartedAt: &now,
+			EndedAt:   &now,
+			Error:     "",
+		},
 	}
 
 	err = store.Save(run)
@@ -88,9 +90,11 @@ func TestDiskStore_SaveWithoutStartTime(t *testing.T) {
 	require.NoError(t, err)
 
 	run := RunStatus{
-		State:     RunStateIdle,
-		StartedAt: nil, // No start time
-		Error:     "",
+		RunSummary: RunSummary{
+			State:     RunStateIdle,
+			StartedAt: nil, // No start time
+			Error:     "",
+		},
 	}
 
 	err = store.Save(run)
@@ -110,9 +114,11 @@ func TestDiskStore_Reload(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		runTime := now.Add(time.Duration(i) * time.Hour)
 		run := RunStatus{
-			State:     RunStateIdle,
-			StartedAt: &runTime,
-			EndedAt:   &runTime,
+			RunSummary: RunSummary{
+				State:     RunStateIdle,
+				StartedAt: &runTime,
+				EndedAt:   &runTime,
+			},
 		}
 		err = store.Save(run)
 		require.NoError(t, err)
@@ -141,9 +147,11 @@ func TestDiskStore_MaxCount(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		runTime := now.Add(time.Duration(i) * time.Hour)
 		run := RunStatus{
-			State:     RunStateIdle,
-			StartedAt: &runTime,
-			EndedAt:   &runTime,
+			RunSummary: RunSummary{
+				State:     RunStateIdle,
+				StartedAt: &runTime,
+				EndedAt:   &runTime,
+			},
 		}
 		err = store.Save(run)
 		require.NoError(t, err)
@@ -169,10 +177,12 @@ func TestDiskStore_LoadsExistingRuns(t *testing.T) {
 	// Create a run file manually
 	now := time.Now()
 	run := RunStatus{
-		State:     RunStateIdle,
-		StartedAt: &now,
-		EndedAt:   &now,
-		Error:     "",
+		RunSummary: RunSummary{
+			State:     RunStateIdle,
+			StartedAt: &now,
+			EndedAt:   &now,
+			Error:     "",
+		},
 	}
 
 	// Save using first store
@@ -217,9 +227,11 @@ func TestDiskStore_Runs_ReturnsCopy(t *testing.T) {
 
 	now := time.Now()
 	run := RunStatus{
-		State:     RunStateIdle,
-		StartedAt: &now,
-		EndedAt:   &now,
+		RunSummary: RunSummary{
+			State:     RunStateIdle,
+			StartedAt: &now,
+			EndedAt:   &now,
+		},
 	}
 	err = store.Save(run)
 	require.NoError(t, err)

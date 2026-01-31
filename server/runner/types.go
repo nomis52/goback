@@ -60,8 +60,8 @@ func (s *RunState) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// RunStatus contains information about the current or last run.
-type RunStatus struct {
+// RunSummary contains summary information about a backup run.
+type RunSummary struct {
 	// ID is a stable identifier for the run.
 	ID string `json:"id,omitempty"`
 	// State is the current state of the run.
@@ -74,12 +74,17 @@ type RunStatus struct {
 	EndedAt *time.Time `json:"ended_at,omitempty"`
 	// Error contains the error message if the run failed. Empty on success.
 	Error string `json:"error,omitempty"`
+}
+
+// RunStatus contains all information about a run, including activity executions.
+type RunStatus struct {
+	RunSummary
 	// ActivityExecutions contains detailed execution records for each activity in the workflow.
 	ActivityExecutions []ActivityExecution `json:"activity_executions,omitempty"`
 }
 
 // CalculateID generates a stable ID for the run based on its start time and workflows.
-func (s *RunStatus) CalculateID() string {
+func (s *RunSummary) CalculateID() string {
 	if s.StartedAt == nil {
 		return ""
 	}

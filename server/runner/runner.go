@@ -110,7 +110,7 @@ func New(logger *slog.Logger, provider ConfigProvider, factories map[string]Work
 		configProvider: provider,
 		factories:      factories,
 		store:          NewMemoryStore(),
-		runStatus:      RunStatus{State: RunStateIdle},
+		runStatus:      RunStatus{RunSummary: RunSummary{State: RunStateIdle}},
 	}
 
 	// Apply options
@@ -209,23 +209,28 @@ func (r *Runner) IsRunning() bool {
 }
 
 // History returns the history of completed runs, most recent first.
-func (r *Runner) History() []RunStatus {
-	return r.store.Runs()
+func (r *Runner) History() []RunSummary {
+	runs := r.store.Runs()
+	summaries := make([]RunSummary, len(runs))
+	for i, run := range runs {
+		summaries[i] = run.RunSummary
+	}
+	return summaries
 }
 
-// GetRun returns a specific run by its ID.
-func (r *Runner) GetRun(id string) (*RunStatus, error) {
+// GetLogs returns the activity executions for a specific run.
+func (r *Runner) GetLogs(id string) ([]ActivityExecution, error) {
 	// First check if it's the current run
 	status := r.Status()
 	if status.ID == id {
-		return &status, nil
+		return status.ActivityExecutions, nil
 	}
 
 	// Then check history
-	history := r.History()
+	history := r.store.Runs()
 	for i := range history {
 		if history[i].ID == id {
-			return &history[i], nil
+			return history[i].ActivityExecutions, nil
 		}
 	}
 
@@ -278,9 +283,11 @@ func (r *Runner) tryStart(workflows []string) bool {
 
 	now := time.Now()
 	r.runStatus = RunStatus{
-		State:     RunStateRunning,
-		Workflows: workflows,
-		StartedAt: &now,
+		RunSummary: RunSummary{
+			State:     RunStateRunning,
+			Workflows: workflows,
+			StartedAt: &now,
+		},
 	}
 	r.runStatus.ID = r.runStatus.CalculateID()
 	return true
