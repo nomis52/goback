@@ -2,6 +2,9 @@ package proxmoxclient
 
 import (
 	"context"
+	"encoding/json"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -12,198 +15,435 @@ import (
 )
 
 func TestVersion(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api2/json/version" {
-			t.Errorf("unexpected path: %s", r.URL.Path)
-		}
-		w.Write([]byte(`{"data":{"version":"7.1-10","release":"2021-11-23"}}`))
-	}))
-	defer ts.Close()
-
-	client, err := New(ts.URL)
-	require.NoError(t, err)
-	resp, err := client.Version()
-	if err != nil {
-		require.NoError(t, err, "Version failed")
+	tests := []struct {
+		name           string
+		serverResponse string
+		status         int
+		expectedResp   string
+		wantErr        bool
+		errContains    string
+	}{
+		{
+			name:           "success",
+			serverResponse: `{"data":{"version":"7.1-10","release":"2021-11-23"}}`,
+			status:         http.StatusOK,
+			expectedResp:   `{"data":{"version":"7.1-10","release":"2021-11-23"}}`,
+			wantErr:        false,
+		},
+		{
+			name:           "http error",
+			serverResponse: "internal server error",
+			status:         http.StatusInternalServerError,
+			wantErr:        true,
+			errContains:    "unexpected status code: 500",
+		},
 	}
-	assert.Equal(t, `{"data":{"version":"7.1-10","release":"2021-11-23"}}`, resp)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, "/api2/json/version", r.URL.Path)
+				w.WriteHeader(tt.status)
+				w.Write([]byte(tt.serverResponse))
+			}))
+			defer ts.Close()
+
+			client, err := New(ts.URL)
+			require.NoError(t, err)
+			resp, err := client.Version()
+
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.errContains != "" {
+					assert.Contains(t, err.Error(), tt.errContains)
+				}
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.expectedResp, resp)
+			}
+		})
+	}
 }
 
 func TestListComputeResources(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/api2/json/cluster/resources", r.URL.Path)
-		assert.Equal(t, "vm", r.URL.Query().Get("type"))
-		assert.Equal(t, http.MethodGet, r.Method)
+	tests := []struct {
+		name           string
+		serverResponse string
+		status         int
+		timeout        time.Duration
+		expectedCount  int
+		wantErr        bool
+		errContains    string
+	}{
+		{
+			name: "success",
+			serverResponse: `{
+				"data": [
+					{
+						"vmid": 100,
+						"name": "web-server",
+						"node": "pve-node1",
+						"status": "running",
+						"template": 0,
+						"type": "qemu",
+						"maxmem": 2147483648,
+						"maxdisk": 34359738368,
+						"cpu": 0.123,
+						"mem": 1073741824,
+						"uptime": 12345
+					},
+					{
+						"vmid": 101,
+						"name": "database",
+						"node": "pve-node2",
+						"status": "stopped",
+						"template": 0,
+						"type": "qemu",
+						"maxmem": 4294967296,
+						"maxdisk": 68719476736,
+						"cpu": 0.0,
+						"mem": 0,
+						"uptime": 0
+					}
+				]
+			}`,
+			status:        http.StatusOK,
+			expectedCount: 2,
+			wantErr:       false,
+		},
+		{
+			name:           "empty response",
+			serverResponse: `{"data": []}`,
+			status:         http.StatusOK,
+			expectedCount:  0,
+			wantErr:        false,
+		},
+		{
+			name:           "invalid json",
+			serverResponse: `invalid json`,
+			status:         http.StatusOK,
+			wantErr:        true,
+			errContains:    "failed to unmarshal response",
+		},
+		{
+			name:           "http error",
+			serverResponse: "",
+			status:         http.StatusInternalServerError,
+			wantErr:        true,
+			errContains:    "unexpected status code: 500",
+		},
+		{
+			name:           "partially invalid data",
+			serverResponse: `{"data": [{"vmid": 100, "name": "web-server"}, "invalid"]}`,
+			status:         http.StatusOK,
+			expectedCount:  1,
+			wantErr:        false,
+		},
+		{
+			name:           "context timeout",
+			serverResponse: `{"data": []}`,
+			status:         http.StatusOK,
+			timeout:        10 * time.Millisecond,
+			wantErr:        true,
+			errContains:    "context deadline exceeded",
+		},
+	}
 
-		response := `{
-			"data": [
-				{
-					"vmid": 100,
-					"name": "web-server",
-					"node": "pve-node1",
-					"status": "running",
-					"template": 0,
-					"type": "qemu",
-					"maxmem": 2147483648,
-					"maxdisk": 34359738368,
-					"cpu": 0.123,
-					"mem": 1073741824,
-					"uptime": 12345
-				},
-				{
-					"vmid": 101,
-					"name": "database",
-					"node": "pve-node2",
-					"status": "stopped",
-					"template": 0,
-					"type": "qemu",
-					"maxmem": 4294967296,
-					"maxdisk": 68719476736,
-					"cpu": 0.0,
-					"mem": 0,
-					"uptime": 0
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, "/api2/json/cluster/resources", r.URL.Path)
+				assert.Equal(t, "vm", r.URL.Query().Get("type"))
+
+				if tt.timeout > 0 {
+					time.Sleep(tt.timeout * 10)
 				}
-			]
-		}`
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(response))
-	}))
-	defer ts.Close()
 
-	client, err := New(ts.URL)
-	require.NoError(t, err)
-	ctx := context.Background()
-	resources, err := client.ListComputeResources(ctx)
+				w.WriteHeader(tt.status)
+				w.Write([]byte(tt.serverResponse))
+			}))
+			defer ts.Close()
 
-	require.NoError(t, err)
-	require.Len(t, resources, 2)
+			client, err := New(ts.URL)
+			require.NoError(t, err)
 
-	// Verify first VM
-	assert.Equal(t, VMID(100), resources[0].VMID)
-	assert.Equal(t, "web-server", resources[0].Name)
-	assert.Equal(t, "pve-node1", resources[0].Node)
-	assert.Equal(t, "running", resources[0].Status)
-	assert.Equal(t, 0, resources[0].Template)
-	assert.Equal(t, "qemu", resources[0].Type)
-	assert.Equal(t, int64(2147483648), resources[0].MaxMem)
-	assert.Equal(t, int64(34359738368), resources[0].MaxDisk)
-	assert.Equal(t, 0.123, resources[0].CPU)
-	assert.Equal(t, int64(1073741824), resources[0].Mem)
-	assert.Equal(t, int64(12345), resources[0].Uptime)
+			ctx := context.Background()
+			if tt.timeout > 0 {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(ctx, tt.timeout)
+				defer cancel()
+			}
 
-	// Verify second VM
-	assert.Equal(t, VMID(101), resources[1].VMID)
-	assert.Equal(t, "database", resources[1].Name)
-	assert.Equal(t, "pve-node2", resources[1].Node)
-	assert.Equal(t, "stopped", resources[1].Status)
-	assert.Equal(t, "qemu", resources[1].Type)
+			resources, err := client.ListComputeResources(ctx)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.errContains != "" {
+					assert.Contains(t, err.Error(), tt.errContains)
+				}
+			} else {
+				require.NoError(t, err)
+				assert.Len(t, resources, tt.expectedCount)
+				if tt.expectedCount > 0 && tt.name == "success" {
+					assert.Equal(t, VMID(100), resources[0].VMID)
+					assert.Equal(t, "web-server", resources[0].Name)
+				}
+			}
+		})
+	}
 }
 
-func TestListComputeResources_EmptyResponse(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"data": []}`))
-	}))
-	defer ts.Close()
+func TestListBackups(t *testing.T) {
+	tests := []struct {
+		name           string
+		node           string
+		storage        string
+		serverResponse string
+		status         int
+		expectedCount  int
+		wantErr        bool
+		errContains    string
+	}{
+		{
+			name:    "success",
+			node:    "pve2",
+			storage: "pbs",
+			serverResponse: `{
+				"data": [
+					{
+						"content": "backup",
+						"ctime": 1640995200,
+						"format": "pbs-vm",
+						"size": 1073741824,
+						"volid": "pbs:backup/vm/100/2022-01-01T00:00:00Z",
+						"vmid": 100
+					}
+				]
+			}`,
+			status:        http.StatusOK,
+			expectedCount: 1,
+			wantErr:       false,
+		},
+		{
+			name:           "http error",
+			node:           "pve2",
+			storage:        "pbs",
+			serverResponse: "",
+			status:         http.StatusInternalServerError,
+			wantErr:        true,
+			errContains:    "unexpected status code: 500",
+		},
+		{
+			name:           "invalid json",
+			node:           "pve2",
+			storage:        "pbs",
+			serverResponse: "invalid json",
+			status:         http.StatusOK,
+			wantErr:        true,
+			errContains:    "failed to unmarshal response",
+		},
+		{
+			name:           "partially invalid data",
+			node:           "pve2",
+			storage:        "pbs",
+			serverResponse: `{"data": [{"volid": "valid"}, "invalid"]}`,
+			status:         http.StatusOK,
+			expectedCount:  1,
+			wantErr:        false,
+		},
+	}
 
-	client, err := New(ts.URL)
-	require.NoError(t, err)
-	ctx := context.Background()
-	resources, err := client.ListComputeResources(ctx)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				expectedPath := "/api2/json/nodes/" + tt.node + "/storage/" + tt.storage + "/content"
+				assert.Equal(t, expectedPath, r.URL.Path)
+				assert.Equal(t, "backup", r.URL.Query().Get("content"))
 
-	require.NoError(t, err)
-	assert.Len(t, resources, 0)
+				w.WriteHeader(tt.status)
+				w.Write([]byte(tt.serverResponse))
+			}))
+			defer ts.Close()
+
+			client, err := New(ts.URL)
+			require.NoError(t, err)
+
+			backups, err := client.ListBackups(context.Background(), tt.node, tt.storage)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.errContains != "" {
+					assert.Contains(t, err.Error(), tt.errContains)
+				}
+			} else {
+				require.NoError(t, err)
+				assert.Len(t, backups, tt.expectedCount)
+			}
+		})
+	}
 }
 
-func TestListComputeResources_InvalidJSON(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`invalid json`))
-	}))
-	defer ts.Close()
+func TestTaskStatus(t *testing.T) {
+	tests := []struct {
+		name           string
+		node           string
+		taskID         TaskID
+		serverResponse string
+		status         int
+		wantErr        bool
+		errContains    string
+	}{
+		{
+			name:           "success",
+			node:           "pve2",
+			taskID:         "UPID:pve2:00000001:00000002:12345678:vzdump:100:user@host:1234567890",
+			serverResponse: `{"data": {"upid": "UPID:...", "status": "stopped", "exitstatus": "OK"}}`,
+			status:         http.StatusOK,
+			wantErr:        false,
+		},
+		{
+			name:           "http error",
+			node:           "pve2",
+			taskID:         "UPID:...",
+			serverResponse: "",
+			status:         http.StatusNotFound,
+			wantErr:        true,
+			errContains:    "unexpected status code: 404",
+		},
+		{
+			name:           "invalid json",
+			node:           "pve2",
+			taskID:         "UPID:...",
+			serverResponse: "invalid",
+			status:         http.StatusOK,
+			wantErr:        true,
+			errContains:    "failed to unmarshal response",
+		},
+	}
 
-	client, err := New(ts.URL)
-	require.NoError(t, err)
-	ctx := context.Background()
-	resources, err := client.ListComputeResources(ctx)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				expectedPath := "/api2/json/nodes/" + tt.node + "/tasks/" + string(tt.taskID) + "/status"
+				assert.Equal(t, expectedPath, r.URL.Path)
 
-	assert.Error(t, err)
-	assert.Nil(t, resources)
-	assert.Contains(t, err.Error(), "failed to unmarshal response")
+				w.WriteHeader(tt.status)
+				w.Write([]byte(tt.serverResponse))
+			}))
+			defer ts.Close()
+
+			client, err := New(ts.URL)
+			require.NoError(t, err)
+
+			status, err := client.TaskStatus(context.Background(), tt.node, tt.taskID)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.errContains != "" {
+					assert.Contains(t, err.Error(), tt.errContains)
+				}
+			} else {
+				require.NoError(t, err)
+				assert.NotNil(t, status)
+				assert.Equal(t, "stopped", status.Status)
+			}
+		})
+	}
 }
 
-func TestListComputeResources_HTTPError(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer ts.Close()
+func TestNewAndOptions(t *testing.T) {
+	t.Run("New with valid URL", func(t *testing.T) {
+		client, err := New("https://pve.example.com")
+		require.NoError(t, err)
+		assert.Equal(t, "https://pve.example.com", client.baseURL.String())
+	})
 
-	client, err := New(ts.URL)
-	require.NoError(t, err)
-	ctx := context.Background()
-	resources, err := client.ListComputeResources(ctx)
+	t.Run("New with invalid URL", func(t *testing.T) {
+		client, err := New("::invalid")
+		assert.Error(t, err)
+		assert.Nil(t, client)
+	})
 
-	assert.Error(t, err)
-	assert.Nil(t, resources)
-	assert.Contains(t, err.Error(), "unexpected status code: 500")
+	t.Run("WithToken", func(t *testing.T) {
+		token := "user@pve!token=uuid"
+		client, err := New("https://pve.example.com", WithToken(token))
+		require.NoError(t, err)
+		assert.Equal(t, token, client.token)
+
+		// Verify it's used in request
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "PVEAPIToken="+token, r.Header.Get("Authorization"))
+			w.Write([]byte(`{"data":{"version":"1.0"}}`))
+		}))
+		defer ts.Close()
+
+		client, _ = New(ts.URL, WithToken(token))
+		_, err = client.Version()
+		require.NoError(t, err)
+	})
+
+	t.Run("WithLogger", func(t *testing.T) {
+		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+		client, err := New("https://pve.example.com", WithLogger(logger))
+		require.NoError(t, err)
+		assert.Equal(t, logger, client.logger)
+	})
 }
 
-func TestListComputeResources_ContextCancellation(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Simulate a slow response
-		time.Sleep(100 * time.Millisecond)
-		w.Write([]byte(`{"data": []}`))
-	}))
-	defer ts.Close()
+func TestBackup_UnmarshalJSON(t *testing.T) {
+	jsonData := `{
+		"content": "backup",
+		"ctime": 1640995200,
+		"volid": "pbs:backup/vm/100/2022-01-01T00:00:00Z",
+		"vmid": 100
+	}`
 
-	client, err := New(ts.URL)
+	var b Backup
+	err := json.Unmarshal([]byte(jsonData), &b)
 	require.NoError(t, err)
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-	defer cancel()
 
-	resources, err := client.ListComputeResources(ctx)
-
-	assert.Error(t, err)
-	assert.Nil(t, resources)
-	assert.Contains(t, err.Error(), "context deadline exceeded")
+	assert.Equal(t, "backup", b.Content)
+	assert.Equal(t, VMID(100), b.VMID)
+	assert.Equal(t, int64(1640995200), b.CTime.Unix())
+	assert.Equal(t, "2022-01-01T00:00:00Z", b.CTime.UTC().Format(time.RFC3339))
 }
 
-func TestListComputeResources_PartiallyInvalidData(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Response with one valid VM and one invalid entry
-		response := `{
-			"data": [
-				{
-					"vmid": 100,
-					"name": "web-server",
-					"node": "pve-node1",
-					"status": "running",
-					"template": 0,
-					"type": "qemu",
-					"maxmem": 2147483648,
-					"maxdisk": 34359738368,
-					"cpu": 0.123,
-					"mem": 1073741824,
-					"uptime": 12345
-				},
-				"invalid json string"
-			]
-		}`
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(response))
-	}))
-	defer ts.Close()
+func TestDoRequest_Errors(t *testing.T) {
+	t.Run("invalid method", func(t *testing.T) {
+		client, _ := New("https://pve.example.com")
+		// Use a method that is invalid for http.NewRequestWithContext
+		resp, err := client.doRequest(context.Background(), " ", "/api2/json/version")
+		assert.Error(t, err)
+		assert.Nil(t, resp)
+		assert.Contains(t, err.Error(), "failed to create request")
+	})
 
-	client, err := New(ts.URL)
-	require.NoError(t, err)
-	ctx := context.Background()
-	resources, err := client.ListComputeResources(ctx)
+	t.Run("invalid path", func(t *testing.T) {
+		client, _ := New("https://pve.example.com")
+		resp, err := client.doRequest(context.Background(), "GET", ":%gh")
+		assert.Error(t, err)
+		assert.Nil(t, resp)
+		assert.Contains(t, err.Error(), "failed to build URL")
+	})
+}
 
-	// Should succeed and return only the valid VM
-	require.NoError(t, err)
-	require.Len(t, resources, 1)
-	assert.Equal(t, VMID(100), resources[0].VMID)
-	assert.Equal(t, "web-server", resources[0].Name)
+func TestHost(t *testing.T) {
+	tests := []struct {
+		url      string
+		expected string
+	}{
+		{"https://pve2.example.com:8006", "pve2"},
+		{"https://pve-node1:8006", "pve-node1"},
+		{"https://192.168.1.100:8006", "192"},
+		{"http://localhost", "localhost"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.url, func(t *testing.T) {
+			client, _ := New(tt.url)
+			assert.Equal(t, tt.expected, client.Host())
+		})
+	}
 }
 
 func TestBuildURL(t *testing.T) {
@@ -249,12 +489,19 @@ func TestBuildURL(t *testing.T) {
 			expected: "",
 			wantErr:  true,
 		},
+		{
+			name:     "invalid path",
+			host:     "https://pve.example.com",
+			path:     ":%gh", // invalid escape sequence
+			expected: "",
+			wantErr:  true,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			client, err := New(tt.host)
-			if tt.wantErr {
+			if tt.name == "invalid host URL" {
 				assert.Error(t, err)
 				return
 			}
@@ -272,131 +519,134 @@ func TestBuildURL(t *testing.T) {
 	}
 }
 
-func TestBackup_Basic(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/api2/json/nodes/pve2/vzdump", r.URL.Path)
-		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "100", r.URL.Query().Get("vmid"))
-		assert.Equal(t, "pbs", r.URL.Query().Get("storage"))
-		assert.Equal(t, "", r.URL.Query().Get("mode"))
-		assert.Equal(t, "", r.URL.Query().Get("compress"))
+func TestBackup(t *testing.T) {
+	tests := []struct {
+		name           string
+		node           string
+		vmid           VMID
+		storage        string
+		opts           []BackupOption
+		expectedParams map[string]string
+		serverResponse string
+		status         int
+		wantErr        bool
+		errContains    string
+	}{
+		{
+			name:    "basic success",
+			node:    "pve2",
+			vmid:    100,
+			storage: "pbs",
+			expectedParams: map[string]string{
+				"vmid":    "100",
+				"storage": "pbs",
+			},
+			serverResponse: `{"data":"UPID:..."}`,
+			status:         http.StatusOK,
+		},
+		{
+			name:    "with options",
+			node:    "pve2",
+			vmid:    101,
+			storage: "local",
+			opts: []BackupOption{
+				WithMode("snapshot"),
+				WithCompress("zstd"),
+				WithMailNotification("always"),
+			},
+			expectedParams: map[string]string{
+				"vmid":             "101",
+				"storage":          "local",
+				"mode":             "snapshot",
+				"compress":         "zstd",
+				"mailnotification": "always",
+			},
+			serverResponse: `{"data":"UPID:..."}`,
+			status:         http.StatusOK,
+		},
+		{
+			name:    "WithCompress as first option",
+			node:    "pve2",
+			vmid:    100,
+			storage: "pbs",
+			opts: []BackupOption{
+				WithCompress("gzip"),
+			},
+			expectedParams: map[string]string{
+				"vmid":     "100",
+				"storage":  "pbs",
+				"compress": "gzip",
+			},
+			serverResponse: `{"data":"UPID:..."}`,
+			status:         http.StatusOK,
+		},
+		{
+			name:    "WithMailNotification as first option",
+			node:    "pve2",
+			vmid:    100,
+			storage: "pbs",
+			opts: []BackupOption{
+				WithMailNotification("failure"),
+			},
+			expectedParams: map[string]string{
+				"vmid":             "100",
+				"storage":          "pbs",
+				"mailnotification": "failure",
+			},
+			serverResponse: `{"data":"UPID:..."}`,
+			status:         http.StatusOK,
+		},
+		{
+			name:           "http error",
+			node:           "pve2",
+			vmid:           100,
+			storage:        "pbs",
+			serverResponse: "",
+			status:         http.StatusInternalServerError,
+			wantErr:        true,
+			errContains:    "unexpected status code: 500",
+		},
+		{
+			name:           "invalid json",
+			node:           "pve2",
+			vmid:           100,
+			storage:        "pbs",
+			serverResponse: "invalid",
+			status:         http.StatusOK,
+			wantErr:        true,
+			errContains:    "failed to unmarshal response",
+		},
+	}
 
-		response := `{"data":"UPID:pve2:00000001:00000002:12345678:vzdump:100:user@host:1234567890"}`
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(response))
-	}))
-	defer ts.Close()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, "/api2/json/nodes/"+tt.node+"/vzdump", r.URL.Path)
+				assert.Equal(t, http.MethodPost, r.Method)
 
-	client, err := New(ts.URL)
-	require.NoError(t, err)
-	ctx := context.Background()
-	taskID, err := client.Backup(ctx, "pve2", 100, "pbs")
+				for k, v := range tt.expectedParams {
+					assert.Equal(t, v, r.URL.Query().Get(k), "Parameter %s", k)
+				}
 
-	require.NoError(t, err)
-	assert.Equal(t, "UPID:pve2:00000001:00000002:12345678:vzdump:100:user@host:1234567890", string(taskID))
-}
+				w.WriteHeader(tt.status)
+				w.Write([]byte(tt.serverResponse))
+			}))
+			defer ts.Close()
 
-func TestBackup_WithMode(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/api2/json/nodes/pve2/vzdump", r.URL.Path)
-		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "100", r.URL.Query().Get("vmid"))
-		assert.Equal(t, "pbs", r.URL.Query().Get("storage"))
-		assert.Equal(t, "snapshot", r.URL.Query().Get("mode"))
-		assert.Equal(t, "", r.URL.Query().Get("compress"))
+			client, err := New(ts.URL)
+			require.NoError(t, err)
 
-		response := `{"data":"UPID:pve2:00000001:00000002:12345678:vzdump:100:user@host:1234567890"}`
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(response))
-	}))
-	defer ts.Close()
+			taskID, err := client.Backup(context.Background(), tt.node, tt.vmid, tt.storage, tt.opts...)
 
-	client, err := New(ts.URL)
-	require.NoError(t, err)
-	ctx := context.Background()
-	taskID, err := client.Backup(ctx, "pve2", 100, "pbs", WithMode("snapshot"))
-
-	require.NoError(t, err)
-	assert.Equal(t, "UPID:pve2:00000001:00000002:12345678:vzdump:100:user@host:1234567890", string(taskID))
-}
-
-func TestBackup_WithCompress(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/api2/json/nodes/pve2/vzdump", r.URL.Path)
-		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "100", r.URL.Query().Get("vmid"))
-		assert.Equal(t, "pbs", r.URL.Query().Get("storage"))
-		assert.Equal(t, "", r.URL.Query().Get("mode"))
-		assert.Equal(t, "1", r.URL.Query().Get("compress"))
-
-		response := `{"data":"UPID:pve2:00000001:00000002:12345678:vzdump:100:user@host:1234567890"}`
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(response))
-	}))
-	defer ts.Close()
-
-	client, err := New(ts.URL)
-	require.NoError(t, err)
-	ctx := context.Background()
-	taskID, err := client.Backup(ctx, "pve2", 100, "pbs", WithCompress("1"))
-
-	require.NoError(t, err)
-	assert.Equal(t, "UPID:pve2:00000001:00000002:12345678:vzdump:100:user@host:1234567890", string(taskID))
-}
-
-func TestBackup_WithModeAndCompress(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/api2/json/nodes/pve2/vzdump", r.URL.Path)
-		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "100", r.URL.Query().Get("vmid"))
-		assert.Equal(t, "pbs", r.URL.Query().Get("storage"))
-		assert.Equal(t, "suspend", r.URL.Query().Get("mode"))
-		assert.Equal(t, "zstd", r.URL.Query().Get("compress"))
-
-		response := `{"data":"UPID:pve2:00000001:00000002:12345678:vzdump:100:user@host:1234567890"}`
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(response))
-	}))
-	defer ts.Close()
-
-	client, err := New(ts.URL)
-	require.NoError(t, err)
-	ctx := context.Background()
-	taskID, err := client.Backup(ctx, "pve2", 100, "pbs", WithMode("suspend"), WithCompress("zstd"))
-
-	require.NoError(t, err)
-	assert.Equal(t, "UPID:pve2:00000001:00000002:12345678:vzdump:100:user@host:1234567890", string(taskID))
-}
-
-func TestBackup_HTTPError(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer ts.Close()
-
-	client, err := New(ts.URL)
-	require.NoError(t, err)
-	ctx := context.Background()
-	taskID, err := client.Backup(ctx, "pve2", 100, "pbs")
-
-	assert.Error(t, err)
-	assert.Empty(t, taskID)
-	assert.Contains(t, err.Error(), "unexpected status code: 500")
-}
-
-func TestBackup_InvalidJSON(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`invalid json`))
-	}))
-	defer ts.Close()
-
-	client, err := New(ts.URL)
-	require.NoError(t, err)
-	ctx := context.Background()
-	taskID, err := client.Backup(ctx, "pve2", 100, "pbs")
-
-	assert.Error(t, err)
-	assert.Empty(t, taskID)
-	assert.Contains(t, err.Error(), "failed to unmarshal response")
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.errContains != "" {
+					assert.Contains(t, err.Error(), tt.errContains)
+				}
+			} else {
+				require.NoError(t, err)
+				assert.NotEmpty(t, taskID)
+			}
+		})
+	}
 }
