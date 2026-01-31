@@ -69,7 +69,7 @@ func buildDeps(cfg *config.Config, logger *slog.Logger) (*deps, error) {
 		ipmiclient.WithLogger(logger),
 	)
 
-	pbsClient, err := pbsclient.New(cfg.PBS.Host, logger)
+	pbsClient, err := pbsclient.New(cfg.PBS.Host, pbsclient.WithLogger(logger))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create PBS client: %w", err)
 	}

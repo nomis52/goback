@@ -2,7 +2,7 @@
 //
 // Example usage:
 //
-//	client := pbsclient.New("https://pbs.example.com")
+//	client, _ := pbsclient.New("https://pbs.example.com")
 //	resp, err := client.Ping()
 //
 // Currently, only the Ping method is implemented.
@@ -23,6 +23,16 @@ const (
 	defaultHTTPTimeout = 10 * time.Second
 )
 
+// Option is a function that configures a Client
+type Option func(*Client)
+
+// WithLogger sets a custom logger for the Client
+func WithLogger(logger *slog.Logger) Option {
+	return func(c *Client) {
+		c.Logger = logger
+	}
+}
+
 // Client represents a Proxmox Backup Server API client.
 // Use New() to create a new client for a given PBS host.
 type Client struct {
@@ -33,7 +43,7 @@ type Client struct {
 
 // New creates a new Client for the given Proxmox Backup Server host.
 // The host should include the scheme (e.g., "https://pbs.example.com").
-func New(host string, logger *slog.Logger) (*Client, error) {
+func New(host string, opts ...Option) (*Client, error) {
 	// Ensure host has a scheme
 	if !strings.HasPrefix(host, "http://") && !strings.HasPrefix(host, "https://") {
 		return nil, fmt.Errorf("host URL must include scheme (http:// or https://): %s", host)
@@ -45,13 +55,26 @@ func New(host string, logger *slog.Logger) (*Client, error) {
 		return nil, fmt.Errorf("invalid host URL: %w", err)
 	}
 
-	return &Client{
-		Host:   host,
-		Logger: logger.With("component", "pbsclient"),
+	c := &Client{
+		Host: host,
 		client: &http.Client{
 			Timeout: defaultHTTPTimeout,
 		},
-	}, nil
+	}
+
+	for _, opt := range opts {
+		opt(c)
+	}
+
+	// Set default logger if not provided
+	if c.Logger == nil {
+		c.Logger = slog.Default()
+	}
+
+	// Ensure all logs from this client are tagged with the component name
+	c.Logger = c.Logger.With("component", "pbsclient")
+
+	return c, nil
 }
 
 // Ping checks the connectivity to the Proxmox Backup Server by calling the /api2/json/ping endpoint.
