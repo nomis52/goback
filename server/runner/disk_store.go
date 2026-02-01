@@ -81,7 +81,7 @@ func (s *DiskStore) Save(summary RunSummary, logs []ActivityExecution) error {
 		return fmt.Errorf("cannot save run without start time")
 	}
 
-	run := runStatus{
+	run := runRecord{
 		RunSummary:         summary,
 		ActivityExecutions: logs,
 	}
@@ -156,7 +156,7 @@ func (s *DiskStore) load() ([]RunSummary, map[string][]ActivityExecution, error)
 	if capacity > s.maxCount {
 		capacity = s.maxCount
 	}
-	runs := make([]runStatus, 0, capacity)
+	runs := make([]runRecord, 0, capacity)
 
 	for _, file := range files {
 		if file.IsDir() || filepath.Ext(file.Name()) != ".json" {
@@ -170,7 +170,7 @@ func (s *DiskStore) load() ([]RunSummary, map[string][]ActivityExecution, error)
 			continue
 		}
 
-		var run runStatus
+		var run runRecord
 		if err := json.Unmarshal(data, &run); err != nil {
 			s.logger.Warn("failed to parse run file", "file", path, "error", err)
 			continue

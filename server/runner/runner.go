@@ -194,11 +194,9 @@ func (r *Runner) Status() (RunSummary, []ActivityExecution) {
 	summary := r.runStatus.RunSummary
 	var executions []ActivityExecution
 
-	// If running, build live activity executions with current logs and status messages
-	if r.runStatus.State == RunStateRunning && r.workflow != nil && r.logCollector != nil {
+	// Build activity executions with current/latest logs and status messages if workflow is available
+	if r.workflow != nil && r.logCollector != nil {
 		executions = r.buildActivityExecutions()
-	} else {
-		executions = r.runStatus.ActivityExecutions
 	}
 
 	return summary, executions
@@ -324,12 +322,13 @@ func (r *Runner) finish(err error) {
 	}
 
 	// Build activity executions with logs and status messages
+	var executions []ActivityExecution
 	if r.workflow != nil && r.logCollector != nil {
-		r.runStatus.ActivityExecutions = r.buildActivityExecutions()
+		executions = r.buildActivityExecutions()
 	}
 
 	// Save to store
-	if err := r.store.Save(r.runStatus.RunSummary, r.runStatus.ActivityExecutions); err != nil {
+	if err := r.store.Save(r.runStatus.RunSummary, executions); err != nil {
 		r.logger.Error("failed to save run to store", "error", err)
 	}
 }

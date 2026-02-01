@@ -76,11 +76,14 @@ type RunSummary struct {
 	Error string `json:"error,omitempty"`
 }
 
-// runStatus contains all information about a run, including activity executions.
-// It is used internally for state management and persistence.
+// runStatus is an internal type that manages the state of the current or last run.
 type runStatus struct {
 	RunSummary
-	// ActivityExecutions contains detailed execution records for each activity in the workflow.
+}
+
+// runRecord is an internal type used for JSON serialization of a run to/from disk.
+type runRecord struct {
+	RunSummary
 	ActivityExecutions []ActivityExecution `json:"activity_executions,omitempty"`
 }
 

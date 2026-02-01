@@ -60,16 +60,14 @@ func TestDiskStore_Save(t *testing.T) {
 	require.NoError(t, err)
 
 	now := time.Now()
-	run := runStatus{
-		RunSummary: RunSummary{
-			State:     RunStateIdle,
-			StartedAt: &now,
-			EndedAt:   &now,
-			Error:     "",
-		},
+	summary := RunSummary{
+		State:     RunStateIdle,
+		StartedAt: &now,
+		EndedAt:   &now,
+		Error:     "",
 	}
 
-	err = store.Save(run.RunSummary, run.ActivityExecutions)
+	err = store.Save(summary, nil)
 	require.NoError(t, err)
 
 	// Check file was created
@@ -89,15 +87,13 @@ func TestDiskStore_SaveWithoutStartTime(t *testing.T) {
 	store, err := NewDiskStore(tmpDir, 10, logger)
 	require.NoError(t, err)
 
-	run := runStatus{
-		RunSummary: RunSummary{
-			State:     RunStateIdle,
-			StartedAt: nil, // No start time
-			Error:     "",
-		},
+	summary := RunSummary{
+		State:     RunStateIdle,
+		StartedAt: nil, // No start time
+		Error:     "",
 	}
 
-	err = store.Save(run.RunSummary, run.ActivityExecutions)
+	err = store.Save(summary, nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "cannot save run without start time")
 }
@@ -113,14 +109,12 @@ func TestDiskStore_Reload(t *testing.T) {
 	now := time.Now()
 	for i := 0; i < 3; i++ {
 		runTime := now.Add(time.Duration(i) * time.Hour)
-		run := runStatus{
-			RunSummary: RunSummary{
-				State:     RunStateIdle,
-				StartedAt: &runTime,
-				EndedAt:   &runTime,
-			},
+		summary := RunSummary{
+			State:     RunStateIdle,
+			StartedAt: &runTime,
+			EndedAt:   &runTime,
 		}
-		err = store.Save(run.RunSummary, run.ActivityExecutions)
+		err = store.Save(summary, nil)
 		require.NoError(t, err)
 	}
 
@@ -146,14 +140,12 @@ func TestDiskStore_MaxCount(t *testing.T) {
 	now := time.Now()
 	for i := 0; i < 10; i++ {
 		runTime := now.Add(time.Duration(i) * time.Hour)
-		run := runStatus{
-			RunSummary: RunSummary{
-				State:     RunStateIdle,
-				StartedAt: &runTime,
-				EndedAt:   &runTime,
-			},
+		summary := RunSummary{
+			State:     RunStateIdle,
+			StartedAt: &runTime,
+			EndedAt:   &runTime,
 		}
-		err = store.Save(run.RunSummary, run.ActivityExecutions)
+		err = store.Save(summary, nil)
 		require.NoError(t, err)
 	}
 
@@ -176,19 +168,17 @@ func TestDiskStore_LoadsExistingRuns(t *testing.T) {
 
 	// Create a run file manually
 	now := time.Now()
-	run := runStatus{
-		RunSummary: RunSummary{
-			State:     RunStateIdle,
-			StartedAt: &now,
-			EndedAt:   &now,
-			Error:     "",
-		},
+	summary := RunSummary{
+		State:     RunStateIdle,
+		StartedAt: &now,
+		EndedAt:   &now,
+		Error:     "",
 	}
 
 	// Save using first store
 	store1, err := NewDiskStore(tmpDir, 10, logger)
 	require.NoError(t, err)
-	err = store1.Save(run.RunSummary, run.ActivityExecutions)
+	err = store1.Save(summary, nil)
 	require.NoError(t, err)
 
 	// Create new store - should load existing run
@@ -197,7 +187,7 @@ func TestDiskStore_LoadsExistingRuns(t *testing.T) {
 
 	history := store2.History()
 	assert.Len(t, history, 1)
-	assertRunSummaryEqual(t, run.RunSummary, history[0])
+	assertRunSummaryEqual(t, summary, history[0])
 }
 
 func TestDiskStore_IgnoresNonJSONFiles(t *testing.T) {
@@ -226,14 +216,12 @@ func TestDiskStore_History_ReturnsCopy(t *testing.T) {
 	require.NoError(t, err)
 
 	now := time.Now()
-	run := runStatus{
-		RunSummary: RunSummary{
-			State:     RunStateIdle,
-			StartedAt: &now,
-			EndedAt:   &now,
-		},
+	summary := RunSummary{
+		State:     RunStateIdle,
+		StartedAt: &now,
+		EndedAt:   &now,
 	}
-	err = store.Save(run.RunSummary, run.ActivityExecutions)
+	err = store.Save(summary, nil)
 	require.NoError(t, err)
 
 	err = store.Reload()
@@ -250,5 +238,5 @@ func TestDiskStore_History_ReturnsCopy(t *testing.T) {
 
 	// Modifying one shouldn't affect the other
 	history1[0].Error = "modified"
-	assertRunSummaryEqual(t, run.RunSummary, history2[0], "modifying one slice should not affect the other")
+	assertRunSummaryEqual(t, summary, history2[0], "modifying one slice should not affect the other")
 }
