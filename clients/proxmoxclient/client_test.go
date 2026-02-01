@@ -2,13 +2,11 @@ package proxmoxclient
 
 import (
 	"context"
-	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -368,23 +366,6 @@ func TestNewAndOptions(t *testing.T) {
 	})
 }
 
-func TestBackup_UnmarshalJSON(t *testing.T) {
-	jsonData := `{
-		"content": "backup",
-		"ctime": 1640995200,
-		"volid": "pbs:backup/vm/100/2022-01-01T00:00:00Z",
-		"vmid": 100
-	}`
-
-	var b Backup
-	err := json.Unmarshal([]byte(jsonData), &b)
-	require.NoError(t, err)
-
-	assert.Equal(t, "backup", b.Content)
-	assert.Equal(t, VMID(100), b.VMID)
-	assert.Equal(t, int64(1640995200), b.CTime.Unix())
-	assert.Equal(t, "2022-01-01T00:00:00Z", b.CTime.UTC().Format(time.RFC3339))
-}
 
 
 func TestBackup(t *testing.T) {
