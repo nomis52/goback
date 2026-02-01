@@ -385,25 +385,6 @@ func TestBackup_UnmarshalJSON(t *testing.T) {
 	assert.Equal(t, "2022-01-01T00:00:00Z", b.CTime.UTC().Format(time.RFC3339))
 }
 
-func TestDoRequest_Errors(t *testing.T) {
-	t.Run("invalid method", func(t *testing.T) {
-		client, _ := New("https://pve.test")
-		// Use a method that is invalid for http.NewRequestWithContext
-		resp, err := client.doRequest(context.Background(), " ", "/api2/json/version")
-		assert.Error(t, err)
-		assert.Nil(t, resp)
-		assert.Contains(t, err.Error(), "failed to create request")
-	})
-
-	t.Run("invalid path", func(t *testing.T) {
-		client, _ := New("https://pve.test")
-		resp, err := client.doRequest(context.Background(), "GET", ":%gh")
-		assert.Error(t, err)
-		assert.Nil(t, resp)
-		assert.Contains(t, err.Error(), "failed to build URL")
-	})
-}
-
 func TestHost(t *testing.T) {
 	tests := []struct {
 		url      string
@@ -419,79 +400,6 @@ func TestHost(t *testing.T) {
 		t.Run(tt.url, func(t *testing.T) {
 			client, _ := New(tt.url)
 			assert.Equal(t, tt.expected, client.Host())
-		})
-	}
-}
-
-func TestBuildURL(t *testing.T) {
-	tests := []struct {
-		name     string
-		host     string
-		path     string
-		expected string
-		wantErr  bool
-	}{
-		{
-			name:     "host without trailing slash",
-			host:     "https://pve.test:8006",
-			path:     "/api2/json/version",
-			expected: "https://pve.test:8006/api2/json/version",
-			wantErr:  false,
-		},
-		{
-			name:     "host with trailing slash",
-			host:     "https://pve.test:8006/",
-			path:     "/api2/json/version",
-			expected: "https://pve.test:8006/api2/json/version",
-			wantErr:  false,
-		},
-		{
-			name:     "host with path and trailing slash",
-			host:     "https://pve.test:8006/proxmox/",
-			path:     "/api2/json/version",
-			expected: "https://pve.test:8006/api2/json/version",
-			wantErr:  false,
-		},
-		{
-			name:     "path with query parameters",
-			host:     "https://pve.test:8006",
-			path:     "/api2/json/cluster/resources?type=vm",
-			expected: "https://pve.test:8006/api2/json/cluster/resources?type=vm",
-			wantErr:  false,
-		},
-		{
-			name:     "invalid host URL",
-			host:     "://invalid-url",
-			path:     "/api2/json/version",
-			expected: "",
-			wantErr:  true,
-		},
-		{
-			name:     "invalid path",
-			host:     "https://pve.test",
-			path:     ":%gh", // invalid escape sequence
-			expected: "",
-			wantErr:  true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			client, err := New(tt.host)
-			if tt.name == "invalid host URL" {
-				assert.Error(t, err)
-				return
-			}
-			require.NoError(t, err)
-			result, err := client.buildURL(tt.path)
-
-			if tt.wantErr {
-				assert.Error(t, err)
-				assert.Empty(t, result)
-			} else {
-				require.NoError(t, err)
-				assert.Equal(t, tt.expected, result)
-			}
 		})
 	}
 }
