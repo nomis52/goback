@@ -19,14 +19,16 @@ func TestVersion(t *testing.T) {
 		name           string
 		serverResponse string
 		status         int
-		expectedResp   string
 		wantErr        string
+		verifyFn       func(t *testing.T, resp string)
 	}{
 		{
 			name:           "success",
 			serverResponse: `{"data":{"version":"7.1-10","release":"2021-11-23"}}`,
 			status:         http.StatusOK,
-			expectedResp:   `{"data":{"version":"7.1-10","release":"2021-11-23"}}`,
+			verifyFn: func(t *testing.T, resp string) {
+				assert.Equal(t, `{"data":{"version":"7.1-10","release":"2021-11-23"}}`, resp)
+			},
 		},
 		{
 			name:           "http error",
@@ -54,7 +56,9 @@ func TestVersion(t *testing.T) {
 				assert.Contains(t, err.Error(), tt.wantErr)
 			} else {
 				require.NoError(t, err)
-				assert.Equal(t, tt.expectedResp, resp)
+				if tt.verifyFn != nil {
+					tt.verifyFn(t, resp)
+				}
 			}
 		})
 	}
@@ -65,8 +69,8 @@ func TestListComputeResources(t *testing.T) {
 		name           string
 		serverResponse string
 		status         int
-		expectedCount  int
 		wantErr        string
+		verifyFn       func(t *testing.T, resources []Resource)
 	}{
 		{
 			name: "success",
@@ -100,14 +104,20 @@ func TestListComputeResources(t *testing.T) {
 					}
 				]
 			}`,
-			status:        http.StatusOK,
-			expectedCount: 2,
+			status: http.StatusOK,
+			verifyFn: func(t *testing.T, resources []Resource) {
+				require.Len(t, resources, 2)
+				assert.Equal(t, VMID(100), resources[0].VMID)
+				assert.Equal(t, "web-server", resources[0].Name)
+			},
 		},
 		{
 			name:           "empty response",
 			serverResponse: `{"data": []}`,
 			status:         http.StatusOK,
-			expectedCount:  0,
+			verifyFn: func(t *testing.T, resources []Resource) {
+				assert.Empty(t, resources)
+			},
 		},
 		{
 			name:           "invalid json",
@@ -125,7 +135,10 @@ func TestListComputeResources(t *testing.T) {
 			name:           "partially invalid data",
 			serverResponse: `{"data": [{"vmid": 100, "name": "web-server"}, "invalid"]}`,
 			status:         http.StatusOK,
-			expectedCount:  1,
+			verifyFn: func(t *testing.T, resources []Resource) {
+				assert.Len(t, resources, 1)
+				assert.Equal(t, VMID(100), resources[0].VMID)
+			},
 		},
 	}
 
@@ -150,10 +163,8 @@ func TestListComputeResources(t *testing.T) {
 				assert.Contains(t, err.Error(), tt.wantErr)
 			} else {
 				require.NoError(t, err)
-				assert.Len(t, resources, tt.expectedCount)
-				if tt.expectedCount > 0 && tt.name == "success" {
-					assert.Equal(t, VMID(100), resources[0].VMID)
-					assert.Equal(t, "web-server", resources[0].Name)
+				if tt.verifyFn != nil {
+					tt.verifyFn(t, resources)
 				}
 			}
 		})
@@ -167,8 +178,8 @@ func TestListBackups(t *testing.T) {
 		storage        string
 		serverResponse string
 		status         int
-		expectedCount  int
 		wantErr        string
+		verifyFn       func(t *testing.T, backups []Backup)
 	}{
 		{
 			name:    "success",
@@ -186,8 +197,10 @@ func TestListBackups(t *testing.T) {
 					}
 				]
 			}`,
-			status:        http.StatusOK,
-			expectedCount: 1,
+			status: http.StatusOK,
+			verifyFn: func(t *testing.T, backups []Backup) {
+				assert.Len(t, backups, 1)
+			},
 		},
 		{
 			name:           "http error",
@@ -211,7 +224,9 @@ func TestListBackups(t *testing.T) {
 			storage:        "pbs",
 			serverResponse: `{"data": [{"volid": "valid"}, "invalid"]}`,
 			status:         http.StatusOK,
-			expectedCount:  1,
+			verifyFn: func(t *testing.T, backups []Backup) {
+				assert.Len(t, backups, 1)
+			},
 		},
 	}
 
@@ -237,7 +252,9 @@ func TestListBackups(t *testing.T) {
 				assert.Contains(t, err.Error(), tt.wantErr)
 			} else {
 				require.NoError(t, err)
-				assert.Len(t, backups, tt.expectedCount)
+				if tt.verifyFn != nil {
+					tt.verifyFn(t, backups)
+				}
 			}
 		})
 	}
@@ -251,6 +268,7 @@ func TestTaskStatus(t *testing.T) {
 		serverResponse string
 		status         int
 		wantErr        string
+		verifyFn       func(t *testing.T, status *TaskStatus)
 	}{
 		{
 			name:           "success",
@@ -258,6 +276,10 @@ func TestTaskStatus(t *testing.T) {
 			taskID:         "UPID:pve2:00000001:00000002:12345678:vzdump:100:user@host:1234567890",
 			serverResponse: `{"data": {"upid": "UPID:...", "status": "stopped", "exitstatus": "OK"}}`,
 			status:         http.StatusOK,
+			verifyFn: func(t *testing.T, status *TaskStatus) {
+				require.NotNil(t, status)
+				assert.Equal(t, "stopped", status.Status)
+			},
 		},
 		{
 			name:           "http error",
@@ -298,8 +320,9 @@ func TestTaskStatus(t *testing.T) {
 				assert.Contains(t, err.Error(), tt.wantErr)
 			} else {
 				require.NoError(t, err)
-				assert.NotNil(t, status)
-				assert.Equal(t, "stopped", status.Status)
+				if tt.verifyFn != nil {
+					tt.verifyFn(t, status)
+				}
 			}
 		})
 	}
@@ -484,6 +507,7 @@ func TestBackup(t *testing.T) {
 		serverResponse string
 		status         int
 		wantErr        string
+		verifyFn       func(t *testing.T, taskID TaskID)
 	}{
 		{
 			name:    "basic success",
@@ -496,6 +520,9 @@ func TestBackup(t *testing.T) {
 			},
 			serverResponse: `{"data":"UPID:..."}`,
 			status:         http.StatusOK,
+			verifyFn: func(t *testing.T, taskID TaskID) {
+				assert.NotEmpty(t, taskID)
+			},
 		},
 		{
 			name:    "with options",
@@ -516,6 +543,9 @@ func TestBackup(t *testing.T) {
 			},
 			serverResponse: `{"data":"UPID:..."}`,
 			status:         http.StatusOK,
+			verifyFn: func(t *testing.T, taskID TaskID) {
+				assert.NotEmpty(t, taskID)
+			},
 		},
 		{
 			name:    "WithCompress as first option",
@@ -532,6 +562,9 @@ func TestBackup(t *testing.T) {
 			},
 			serverResponse: `{"data":"UPID:..."}`,
 			status:         http.StatusOK,
+			verifyFn: func(t *testing.T, taskID TaskID) {
+				assert.NotEmpty(t, taskID)
+			},
 		},
 		{
 			name:    "WithMailNotification as first option",
@@ -548,6 +581,9 @@ func TestBackup(t *testing.T) {
 			},
 			serverResponse: `{"data":"UPID:..."}`,
 			status:         http.StatusOK,
+			verifyFn: func(t *testing.T, taskID TaskID) {
+				assert.NotEmpty(t, taskID)
+			},
 		},
 		{
 			name:           "http error",
@@ -594,7 +630,9 @@ func TestBackup(t *testing.T) {
 				assert.Contains(t, err.Error(), tt.wantErr)
 			} else {
 				require.NoError(t, err)
-				assert.NotEmpty(t, taskID)
+				if tt.verifyFn != nil {
+					tt.verifyFn(t, taskID)
+				}
 			}
 		})
 	}
