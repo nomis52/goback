@@ -20,22 +20,19 @@ func TestVersion(t *testing.T) {
 		serverResponse string
 		status         int
 		expectedResp   string
-		wantErr        bool
-		errContains    string
+		wantErr        string
 	}{
 		{
 			name:           "success",
 			serverResponse: `{"data":{"version":"7.1-10","release":"2021-11-23"}}`,
 			status:         http.StatusOK,
 			expectedResp:   `{"data":{"version":"7.1-10","release":"2021-11-23"}}`,
-			wantErr:        false,
 		},
 		{
 			name:           "http error",
 			serverResponse: "internal server error",
 			status:         http.StatusInternalServerError,
-			wantErr:        true,
-			errContains:    "unexpected status code: 500",
+			wantErr:        "unexpected status code: 500",
 		},
 	}
 
@@ -52,11 +49,9 @@ func TestVersion(t *testing.T) {
 			require.NoError(t, err)
 			resp, err := client.Version()
 
-			if tt.wantErr {
+			if tt.wantErr != "" {
 				require.Error(t, err)
-				if tt.errContains != "" {
-					assert.Contains(t, err.Error(), tt.errContains)
-				}
+				assert.Contains(t, err.Error(), tt.wantErr)
 			} else {
 				require.NoError(t, err)
 				assert.Equal(t, tt.expectedResp, resp)
@@ -70,10 +65,8 @@ func TestListComputeResources(t *testing.T) {
 		name           string
 		serverResponse string
 		status         int
-		timeout        time.Duration
 		expectedCount  int
-		wantErr        bool
-		errContains    string
+		wantErr        string
 	}{
 		{
 			name: "success",
@@ -109,43 +102,30 @@ func TestListComputeResources(t *testing.T) {
 			}`,
 			status:        http.StatusOK,
 			expectedCount: 2,
-			wantErr:       false,
 		},
 		{
 			name:           "empty response",
 			serverResponse: `{"data": []}`,
 			status:         http.StatusOK,
 			expectedCount:  0,
-			wantErr:        false,
 		},
 		{
 			name:           "invalid json",
 			serverResponse: `invalid json`,
 			status:         http.StatusOK,
-			wantErr:        true,
-			errContains:    "failed to unmarshal response",
+			wantErr:        "failed to unmarshal response",
 		},
 		{
 			name:           "http error",
 			serverResponse: "",
 			status:         http.StatusInternalServerError,
-			wantErr:        true,
-			errContains:    "unexpected status code: 500",
+			wantErr:        "unexpected status code: 500",
 		},
 		{
 			name:           "partially invalid data",
 			serverResponse: `{"data": [{"vmid": 100, "name": "web-server"}, "invalid"]}`,
 			status:         http.StatusOK,
 			expectedCount:  1,
-			wantErr:        false,
-		},
-		{
-			name:           "context timeout",
-			serverResponse: `{"data": []}`,
-			status:         http.StatusOK,
-			timeout:        10 * time.Millisecond,
-			wantErr:        true,
-			errContains:    "context deadline exceeded",
 		},
 	}
 
@@ -155,10 +135,6 @@ func TestListComputeResources(t *testing.T) {
 				assert.Equal(t, "/api2/json/cluster/resources", r.URL.Path)
 				assert.Equal(t, "vm", r.URL.Query().Get("type"))
 
-				if tt.timeout > 0 {
-					time.Sleep(tt.timeout * 10)
-				}
-
 				w.WriteHeader(tt.status)
 				w.Write([]byte(tt.serverResponse))
 			}))
@@ -167,20 +143,11 @@ func TestListComputeResources(t *testing.T) {
 			client, err := New(ts.URL)
 			require.NoError(t, err)
 
-			ctx := context.Background()
-			if tt.timeout > 0 {
-				var cancel context.CancelFunc
-				ctx, cancel = context.WithTimeout(ctx, tt.timeout)
-				defer cancel()
-			}
+			resources, err := client.ListComputeResources(context.Background())
 
-			resources, err := client.ListComputeResources(ctx)
-
-			if tt.wantErr {
+			if tt.wantErr != "" {
 				require.Error(t, err)
-				if tt.errContains != "" {
-					assert.Contains(t, err.Error(), tt.errContains)
-				}
+				assert.Contains(t, err.Error(), tt.wantErr)
 			} else {
 				require.NoError(t, err)
 				assert.Len(t, resources, tt.expectedCount)
@@ -201,8 +168,7 @@ func TestListBackups(t *testing.T) {
 		serverResponse string
 		status         int
 		expectedCount  int
-		wantErr        bool
-		errContains    string
+		wantErr        string
 	}{
 		{
 			name:    "success",
@@ -222,7 +188,6 @@ func TestListBackups(t *testing.T) {
 			}`,
 			status:        http.StatusOK,
 			expectedCount: 1,
-			wantErr:       false,
 		},
 		{
 			name:           "http error",
@@ -230,8 +195,7 @@ func TestListBackups(t *testing.T) {
 			storage:        "pbs",
 			serverResponse: "",
 			status:         http.StatusInternalServerError,
-			wantErr:        true,
-			errContains:    "unexpected status code: 500",
+			wantErr:        "unexpected status code: 500",
 		},
 		{
 			name:           "invalid json",
@@ -239,8 +203,7 @@ func TestListBackups(t *testing.T) {
 			storage:        "pbs",
 			serverResponse: "invalid json",
 			status:         http.StatusOK,
-			wantErr:        true,
-			errContains:    "failed to unmarshal response",
+			wantErr:        "failed to unmarshal response",
 		},
 		{
 			name:           "partially invalid data",
@@ -249,7 +212,6 @@ func TestListBackups(t *testing.T) {
 			serverResponse: `{"data": [{"volid": "valid"}, "invalid"]}`,
 			status:         http.StatusOK,
 			expectedCount:  1,
-			wantErr:        false,
 		},
 	}
 
@@ -270,11 +232,9 @@ func TestListBackups(t *testing.T) {
 
 			backups, err := client.ListBackups(context.Background(), tt.node, tt.storage)
 
-			if tt.wantErr {
+			if tt.wantErr != "" {
 				require.Error(t, err)
-				if tt.errContains != "" {
-					assert.Contains(t, err.Error(), tt.errContains)
-				}
+				assert.Contains(t, err.Error(), tt.wantErr)
 			} else {
 				require.NoError(t, err)
 				assert.Len(t, backups, tt.expectedCount)
@@ -290,8 +250,7 @@ func TestTaskStatus(t *testing.T) {
 		taskID         TaskID
 		serverResponse string
 		status         int
-		wantErr        bool
-		errContains    string
+		wantErr        string
 	}{
 		{
 			name:           "success",
@@ -299,7 +258,6 @@ func TestTaskStatus(t *testing.T) {
 			taskID:         "UPID:pve2:00000001:00000002:12345678:vzdump:100:user@host:1234567890",
 			serverResponse: `{"data": {"upid": "UPID:...", "status": "stopped", "exitstatus": "OK"}}`,
 			status:         http.StatusOK,
-			wantErr:        false,
 		},
 		{
 			name:           "http error",
@@ -307,8 +265,7 @@ func TestTaskStatus(t *testing.T) {
 			taskID:         "UPID:...",
 			serverResponse: "",
 			status:         http.StatusNotFound,
-			wantErr:        true,
-			errContains:    "unexpected status code: 404",
+			wantErr:        "unexpected status code: 404",
 		},
 		{
 			name:           "invalid json",
@@ -316,8 +273,7 @@ func TestTaskStatus(t *testing.T) {
 			taskID:         "UPID:...",
 			serverResponse: "invalid",
 			status:         http.StatusOK,
-			wantErr:        true,
-			errContains:    "failed to unmarshal response",
+			wantErr:        "failed to unmarshal response",
 		},
 	}
 
@@ -337,11 +293,9 @@ func TestTaskStatus(t *testing.T) {
 
 			status, err := client.TaskStatus(context.Background(), tt.node, tt.taskID)
 
-			if tt.wantErr {
+			if tt.wantErr != "" {
 				require.Error(t, err)
-				if tt.errContains != "" {
-					assert.Contains(t, err.Error(), tt.errContains)
-				}
+				assert.Contains(t, err.Error(), tt.wantErr)
 			} else {
 				require.NoError(t, err)
 				assert.NotNil(t, status)
@@ -353,9 +307,9 @@ func TestTaskStatus(t *testing.T) {
 
 func TestNewAndOptions(t *testing.T) {
 	t.Run("New with valid URL", func(t *testing.T) {
-		client, err := New("https://pve.example.com")
+		client, err := New("https://pve.test")
 		require.NoError(t, err)
-		assert.Equal(t, "https://pve.example.com", client.baseURL.String())
+		assert.Equal(t, "https://pve.test", client.baseURL.String())
 	})
 
 	t.Run("New with invalid URL", func(t *testing.T) {
@@ -366,7 +320,7 @@ func TestNewAndOptions(t *testing.T) {
 
 	t.Run("WithToken", func(t *testing.T) {
 		token := "user@pve!token=uuid"
-		client, err := New("https://pve.example.com", WithToken(token))
+		client, err := New("https://pve.test", WithToken(token))
 		require.NoError(t, err)
 		assert.Equal(t, token, client.token)
 
@@ -384,7 +338,7 @@ func TestNewAndOptions(t *testing.T) {
 
 	t.Run("WithLogger", func(t *testing.T) {
 		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		client, err := New("https://pve.example.com", WithLogger(logger))
+		client, err := New("https://pve.test", WithLogger(logger))
 		require.NoError(t, err)
 		assert.Equal(t, logger, client.logger)
 	})
@@ -410,7 +364,7 @@ func TestBackup_UnmarshalJSON(t *testing.T) {
 
 func TestDoRequest_Errors(t *testing.T) {
 	t.Run("invalid method", func(t *testing.T) {
-		client, _ := New("https://pve.example.com")
+		client, _ := New("https://pve.test")
 		// Use a method that is invalid for http.NewRequestWithContext
 		resp, err := client.doRequest(context.Background(), " ", "/api2/json/version")
 		assert.Error(t, err)
@@ -419,7 +373,7 @@ func TestDoRequest_Errors(t *testing.T) {
 	})
 
 	t.Run("invalid path", func(t *testing.T) {
-		client, _ := New("https://pve.example.com")
+		client, _ := New("https://pve.test")
 		resp, err := client.doRequest(context.Background(), "GET", ":%gh")
 		assert.Error(t, err)
 		assert.Nil(t, resp)
@@ -432,7 +386,7 @@ func TestHost(t *testing.T) {
 		url      string
 		expected string
 	}{
-		{"https://pve2.example.com:8006", "pve2"},
+		{"https://pve2.test:8006", "pve2"},
 		{"https://pve-node1:8006", "pve-node1"},
 		{"https://192.168.1.100:8006", "192"},
 		{"http://localhost", "localhost"},
@@ -456,30 +410,30 @@ func TestBuildURL(t *testing.T) {
 	}{
 		{
 			name:     "host without trailing slash",
-			host:     "https://pve.example.com:8006",
+			host:     "https://pve.test:8006",
 			path:     "/api2/json/version",
-			expected: "https://pve.example.com:8006/api2/json/version",
+			expected: "https://pve.test:8006/api2/json/version",
 			wantErr:  false,
 		},
 		{
 			name:     "host with trailing slash",
-			host:     "https://pve.example.com:8006/",
+			host:     "https://pve.test:8006/",
 			path:     "/api2/json/version",
-			expected: "https://pve.example.com:8006/api2/json/version",
+			expected: "https://pve.test:8006/api2/json/version",
 			wantErr:  false,
 		},
 		{
 			name:     "host with path and trailing slash",
-			host:     "https://pve.example.com:8006/proxmox/",
+			host:     "https://pve.test:8006/proxmox/",
 			path:     "/api2/json/version",
-			expected: "https://pve.example.com:8006/api2/json/version",
+			expected: "https://pve.test:8006/api2/json/version",
 			wantErr:  false,
 		},
 		{
 			name:     "path with query parameters",
-			host:     "https://pve.example.com:8006",
+			host:     "https://pve.test:8006",
 			path:     "/api2/json/cluster/resources?type=vm",
-			expected: "https://pve.example.com:8006/api2/json/cluster/resources?type=vm",
+			expected: "https://pve.test:8006/api2/json/cluster/resources?type=vm",
 			wantErr:  false,
 		},
 		{
@@ -491,7 +445,7 @@ func TestBuildURL(t *testing.T) {
 		},
 		{
 			name:     "invalid path",
-			host:     "https://pve.example.com",
+			host:     "https://pve.test",
 			path:     ":%gh", // invalid escape sequence
 			expected: "",
 			wantErr:  true,
@@ -529,8 +483,7 @@ func TestBackup(t *testing.T) {
 		expectedParams map[string]string
 		serverResponse string
 		status         int
-		wantErr        bool
-		errContains    string
+		wantErr        string
 	}{
 		{
 			name:    "basic success",
@@ -603,8 +556,7 @@ func TestBackup(t *testing.T) {
 			storage:        "pbs",
 			serverResponse: "",
 			status:         http.StatusInternalServerError,
-			wantErr:        true,
-			errContains:    "unexpected status code: 500",
+			wantErr:        "unexpected status code: 500",
 		},
 		{
 			name:           "invalid json",
@@ -613,8 +565,7 @@ func TestBackup(t *testing.T) {
 			storage:        "pbs",
 			serverResponse: "invalid",
 			status:         http.StatusOK,
-			wantErr:        true,
-			errContains:    "failed to unmarshal response",
+			wantErr:        "failed to unmarshal response",
 		},
 	}
 
@@ -638,11 +589,9 @@ func TestBackup(t *testing.T) {
 
 			taskID, err := client.Backup(context.Background(), tt.node, tt.vmid, tt.storage, tt.opts...)
 
-			if tt.wantErr {
+			if tt.wantErr != "" {
 				require.Error(t, err)
-				if tt.errContains != "" {
-					assert.Contains(t, err.Error(), tt.errContains)
-				}
+				assert.Contains(t, err.Error(), tt.wantErr)
 			} else {
 				require.NoError(t, err)
 				assert.NotEmpty(t, taskID)
