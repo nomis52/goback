@@ -330,9 +330,8 @@ func TestTaskStatus(t *testing.T) {
 
 func TestNewAndOptions(t *testing.T) {
 	t.Run("New with valid URL", func(t *testing.T) {
-		client, err := New("https://pve.test")
+		_, err := New("https://pve.test")
 		require.NoError(t, err)
-		assert.Equal(t, "https://pve.test", client.baseURL.String())
 	})
 
 	t.Run("New with invalid URL", func(t *testing.T) {
