@@ -211,12 +211,7 @@ func (r *Runner) IsRunning() bool {
 
 // History returns the history of completed runs, most recent first.
 func (r *Runner) History() []RunSummary {
-	runs := r.store.Runs()
-	summaries := make([]RunSummary, len(runs))
-	for i, run := range runs {
-		summaries[i] = run.RunSummary
-	}
-	return summaries
+	return r.store.History()
 }
 
 // GetLogs returns the activity executions for a specific run.
@@ -228,11 +223,9 @@ func (r *Runner) GetLogs(id string) ([]ActivityExecution, error) {
 	}
 
 	// Then check history
-	history := r.store.Runs()
-	for i := range history {
-		if history[i].ID == id {
-			return history[i].ActivityExecutions, nil
-		}
+	logs = r.store.Logs(id)
+	if logs != nil {
+		return logs, nil
 	}
 
 	return nil, fmt.Errorf("run not found: %s", id)
@@ -334,7 +327,7 @@ func (r *Runner) finish(err error) {
 	}
 
 	// Save to store
-	if err := r.store.Save(r.runStatus); err != nil {
+	if err := r.store.Save(r.runStatus.RunSummary, r.runStatus.ActivityExecutions); err != nil {
 		r.logger.Error("failed to save run to store", "error", err)
 	}
 }

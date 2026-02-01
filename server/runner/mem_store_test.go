@@ -14,7 +14,7 @@ func TestNewMemoryStore(t *testing.T) {
 	require.NotNil(t, store)
 
 	// Should start with empty runs
-	assert.Empty(t, store.Runs())
+	assert.Empty(t, store.History())
 }
 
 func TestMemoryStore_Save(t *testing.T) {
@@ -30,15 +30,15 @@ func TestMemoryStore_Save(t *testing.T) {
 		},
 	}
 
-	err := store.Save(run)
+	err := store.Save(run.RunSummary, run.ActivityExecutions)
 	require.NoError(t, err)
 
-	runs := store.Runs()
-	require.Len(t, runs, 1)
+	history := store.History()
+	require.Len(t, history, 1)
 
 	// ID should have been populated
 	run.ID = run.CalculateID()
-	assert.Equal(t, run, runs[0])
+	assert.Equal(t, run.RunSummary, history[0])
 }
 
 func TestMemoryStore_SaveMultiple(t *testing.T) {
@@ -54,20 +54,20 @@ func TestMemoryStore_SaveMultiple(t *testing.T) {
 				EndedAt:   &runTime,
 			},
 		}
-		err := store.Save(run)
+		err := store.Save(run.RunSummary, run.ActivityExecutions)
 		require.NoError(t, err)
 	}
 
-	runs := store.Runs()
-	assert.Len(t, runs, 5)
+	history := store.History()
+	assert.Len(t, history, 5)
 
 	// Should be in reverse order (most recent first)
-	for i := 0; i < len(runs)-1; i++ {
-		assert.True(t, runs[i].StartedAt.After(*runs[i+1].StartedAt))
+	for i := 0; i < len(history)-1; i++ {
+		assert.True(t, history[i].StartedAt.After(*history[i+1].StartedAt))
 	}
 }
 
-func TestMemoryStore_Runs_ReturnsCopy(t *testing.T) {
+func TestMemoryStore_History_ReturnsCopy(t *testing.T) {
 	store := NewMemoryStore()
 
 	now := time.Now()
@@ -79,23 +79,23 @@ func TestMemoryStore_Runs_ReturnsCopy(t *testing.T) {
 			Error:     "",
 		},
 	}
-	err := store.Save(run)
+	err := store.Save(run.RunSummary, run.ActivityExecutions)
 	require.NoError(t, err)
 
-	// Get runs twice
-	runs1 := store.Runs()
-	runs2 := store.Runs()
+	// Get history twice
+	history1 := store.History()
+	history2 := store.History()
 
-	require.Len(t, runs1, 1)
-	require.Len(t, runs2, 1)
+	require.Len(t, history1, 1)
+	require.Len(t, history2, 1)
 
 	// Modifying one shouldn't affect the other
-	runs1[0].Error = "modified"
+	history1[0].Error = "modified"
 
-	// Expected run should have its ID populated
-	expectedRun := run
-	expectedRun.ID = expectedRun.CalculateID()
-	assert.Equal(t, expectedRun, runs2[0], "modifying one slice should not affect the other")
+	// Expected summary should have its ID populated
+	expectedSummary := run.RunSummary
+	expectedSummary.ID = expectedSummary.CalculateID()
+	assert.Equal(t, expectedSummary, history2[0], "modifying one slice should not affect the other")
 }
 
 func TestMemoryStore_Concurrent(t *testing.T) {
@@ -117,7 +117,7 @@ func TestMemoryStore_Concurrent(t *testing.T) {
 					EndedAt:   &now,
 				},
 			}
-			err := store.Save(run)
+			err := store.Save(run.RunSummary, run.ActivityExecutions)
 			assert.NoError(t, err)
 		}(i)
 	}
@@ -125,8 +125,8 @@ func TestMemoryStore_Concurrent(t *testing.T) {
 	// Wait for all goroutines to finish
 	wg.Wait()
 
-	runs := store.Runs()
-	assert.Len(t, runs, numGoroutines)
+	history := store.History()
+	assert.Len(t, history, numGoroutines)
 }
 
 func TestMemoryStore_NoLimit(t *testing.T) {
@@ -143,10 +143,10 @@ func TestMemoryStore_NoLimit(t *testing.T) {
 				EndedAt:   &runTime,
 			},
 		}
-		err := store.Save(run)
+		err := store.Save(run.RunSummary, run.ActivityExecutions)
 		require.NoError(t, err)
 	}
 
-	runs := store.Runs()
-	assert.Len(t, runs, 100, "memory store should not limit runs")
+	history := store.History()
+	assert.Len(t, history, 100, "memory store should not limit runs")
 }

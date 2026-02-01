@@ -46,23 +46,45 @@ func NewDiskStore(dir string, maxCount int, logger *slog.Logger) (*DiskStore, er
 	return s, nil
 }
 
-// Runs returns a copy of all loaded runs.
-func (s *DiskStore) Runs() []runStatus {
+// History returns all runs as summaries.
+func (s *DiskStore) History() []RunSummary {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	result := make([]runStatus, len(s.runs))
-	copy(result, s.runs)
+	result := make([]RunSummary, len(s.runs))
+	for i, run := range s.runs {
+		result[i] = run.RunSummary
+	}
 	return result
 }
 
-// Save persists a run to disk and updates the in-memory representation.
-func (s *DiskStore) Save(run runStatus) error {
+// Logs returns the activity executions for a specific run.
+func (s *DiskStore) Logs(id string) []ActivityExecution {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if run.StartedAt == nil {
+	for _, run := range s.runs {
+		if run.ID == id {
+			result := make([]ActivityExecution, len(run.ActivityExecutions))
+			copy(result, run.ActivityExecutions)
+			return result
+		}
+	}
+	return nil
+}
+
+// Save persists a run to disk and updates the in-memory representation.
+func (s *DiskStore) Save(summary RunSummary, logs []ActivityExecution) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if summary.StartedAt == nil {
 		return fmt.Errorf("cannot save run without start time")
+	}
+
+	run := runStatus{
+		RunSummary:         summary,
+		ActivityExecutions: logs,
 	}
 
 	// Use timestamp as filename: 2006-01-02T15-04-05.json

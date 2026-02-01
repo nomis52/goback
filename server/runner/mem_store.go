@@ -15,24 +15,46 @@ func NewMemoryStore() *MemoryStore {
 	}
 }
 
-// Runs returns a copy of all runs.
-func (s *MemoryStore) Runs() []runStatus {
+// History returns all runs as summaries.
+func (s *MemoryStore) History() []RunSummary {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	result := make([]runStatus, len(s.runs))
-	copy(result, s.runs)
+	result := make([]RunSummary, len(s.runs))
+	for i, run := range s.runs {
+		result[i] = run.RunSummary
+	}
 	return result
 }
 
+// Logs returns the activity executions for a specific run.
+func (s *MemoryStore) Logs(id string) []ActivityExecution {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, run := range s.runs {
+		if run.ID == id {
+			result := make([]ActivityExecution, len(run.ActivityExecutions))
+			copy(result, run.ActivityExecutions)
+			return result
+		}
+	}
+	return nil
+}
+
 // Save stores a run in memory.
-func (s *MemoryStore) Save(run runStatus) error {
+func (s *MemoryStore) Save(summary RunSummary, logs []ActivityExecution) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	// Ensure ID is populated
-	if run.ID == "" {
-		run.ID = run.CalculateID()
+	if summary.ID == "" {
+		summary.ID = summary.CalculateID()
+	}
+
+	run := runStatus{
+		RunSummary:         summary,
+		ActivityExecutions: logs,
 	}
 
 	// Prepend to keep most recent first

@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// assertrunStatusEqual compares runStatus structs handling time.Time properly.
-func assertrunStatusEqual(t *testing.T, expected, actual runStatus, msgAndArgs ...interface{}) {
+// assertRunSummaryEqual compares RunSummary structs handling time.Time properly.
+func assertRunSummaryEqual(t *testing.T, expected, actual RunSummary, msgAndArgs ...interface{}) {
 	t.Helper()
 
 	// Ensure IDs match if expected ID is set, otherwise check if actual ID is populated
@@ -49,7 +49,7 @@ func TestNewDiskStore(t *testing.T) {
 	require.NotNil(t, store)
 
 	// Should start with empty runs
-	assert.Empty(t, store.Runs())
+	assert.Empty(t, store.History())
 }
 
 func TestDiskStore_Save(t *testing.T) {
@@ -69,7 +69,7 @@ func TestDiskStore_Save(t *testing.T) {
 		},
 	}
 
-	err = store.Save(run)
+	err = store.Save(run.RunSummary, run.ActivityExecutions)
 	require.NoError(t, err)
 
 	// Check file was created
@@ -97,7 +97,7 @@ func TestDiskStore_SaveWithoutStartTime(t *testing.T) {
 		},
 	}
 
-	err = store.Save(run)
+	err = store.Save(run.RunSummary, run.ActivityExecutions)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "cannot save run without start time")
 }
@@ -120,17 +120,17 @@ func TestDiskStore_Reload(t *testing.T) {
 				EndedAt:   &runTime,
 			},
 		}
-		err = store.Save(run)
+		err = store.Save(run.RunSummary, run.ActivityExecutions)
 		require.NoError(t, err)
 	}
 
 	// All runs should be visible
-	runs := store.Runs()
-	assert.Len(t, runs, 3)
+	history := store.History()
+	assert.Len(t, history, 3)
 
 	// Should be sorted by start time descending (most recent first)
-	for i := 0; i < len(runs)-1; i++ {
-		assert.True(t, runs[i].StartedAt.After(*runs[i+1].StartedAt))
+	for i := 0; i < len(history)-1; i++ {
+		assert.True(t, history[i].StartedAt.After(*history[i+1].StartedAt))
 	}
 }
 
@@ -153,7 +153,7 @@ func TestDiskStore_MaxCount(t *testing.T) {
 				EndedAt:   &runTime,
 			},
 		}
-		err = store.Save(run)
+		err = store.Save(run.RunSummary, run.ActivityExecutions)
 		require.NoError(t, err)
 	}
 
@@ -161,12 +161,12 @@ func TestDiskStore_MaxCount(t *testing.T) {
 	err = store.Reload()
 	require.NoError(t, err)
 
-	runs := store.Runs()
-	assert.Len(t, runs, maxCount)
+	history := store.History()
+	assert.Len(t, history, maxCount)
 
 	// Should keep the most recent ones
-	for i := 0; i < len(runs)-1; i++ {
-		assert.True(t, runs[i].StartedAt.After(*runs[i+1].StartedAt))
+	for i := 0; i < len(history)-1; i++ {
+		assert.True(t, history[i].StartedAt.After(*history[i+1].StartedAt))
 	}
 }
 
@@ -188,16 +188,16 @@ func TestDiskStore_LoadsExistingRuns(t *testing.T) {
 	// Save using first store
 	store1, err := NewDiskStore(tmpDir, 10, logger)
 	require.NoError(t, err)
-	err = store1.Save(run)
+	err = store1.Save(run.RunSummary, run.ActivityExecutions)
 	require.NoError(t, err)
 
 	// Create new store - should load existing run
 	store2, err := NewDiskStore(tmpDir, 10, logger)
 	require.NoError(t, err)
 
-	runs := store2.Runs()
-	assert.Len(t, runs, 1)
-	assertrunStatusEqual(t, run, runs[0])
+	history := store2.History()
+	assert.Len(t, history, 1)
+	assertRunSummaryEqual(t, run.RunSummary, history[0])
 }
 
 func TestDiskStore_IgnoresNonJSONFiles(t *testing.T) {
@@ -215,10 +215,10 @@ func TestDiskStore_IgnoresNonJSONFiles(t *testing.T) {
 	require.NoError(t, err)
 
 	// Should ignore non-JSON files
-	assert.Empty(t, store.Runs())
+	assert.Empty(t, store.History())
 }
 
-func TestDiskStore_Runs_ReturnsCopy(t *testing.T) {
+func TestDiskStore_History_ReturnsCopy(t *testing.T) {
 	tmpDir := t.TempDir()
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
@@ -233,22 +233,22 @@ func TestDiskStore_Runs_ReturnsCopy(t *testing.T) {
 			EndedAt:   &now,
 		},
 	}
-	err = store.Save(run)
+	err = store.Save(run.RunSummary, run.ActivityExecutions)
 	require.NoError(t, err)
 
 	err = store.Reload()
 	require.NoError(t, err)
 
-	// Get runs twice
-	runs1 := store.Runs()
-	runs2 := store.Runs()
+	// Get history twice
+	history1 := store.History()
+	history2 := store.History()
 
 	// Should be copies, not the same slice
 	// Check by comparing pointers using reflection or modify one and verify other unchanged
-	require.Len(t, runs1, 1)
-	require.Len(t, runs2, 1)
+	require.Len(t, history1, 1)
+	require.Len(t, history2, 1)
 
 	// Modifying one shouldn't affect the other
-	runs1[0].Error = "modified"
-	assertrunStatusEqual(t, run, runs2[0], "modifying one slice should not affect the other")
+	history1[0].Error = "modified"
+	assertRunSummaryEqual(t, run.RunSummary, history2[0], "modifying one slice should not affect the other")
 }
