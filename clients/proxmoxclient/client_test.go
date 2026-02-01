@@ -330,8 +330,9 @@ func TestTaskStatus(t *testing.T) {
 
 func TestNewAndOptions(t *testing.T) {
 	t.Run("New with valid URL", func(t *testing.T) {
-		_, err := New("https://pve.test")
+		client, err := New("https://pve.test")
 		require.NoError(t, err)
+		assert.Equal(t, "pve", client.Host())
 	})
 
 	t.Run("New with invalid URL", func(t *testing.T) {
@@ -342,10 +343,6 @@ func TestNewAndOptions(t *testing.T) {
 
 	t.Run("WithToken", func(t *testing.T) {
 		token := "user@pve!token=uuid"
-		client, err := New("https://pve.test", WithToken(token))
-		require.NoError(t, err)
-		assert.Equal(t, token, client.token)
-
 		// Verify it's used in request
 		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, "PVEAPIToken="+token, r.Header.Get("Authorization"))
@@ -353,16 +350,16 @@ func TestNewAndOptions(t *testing.T) {
 		}))
 		defer ts.Close()
 
-		client, _ = New(ts.URL, WithToken(token))
+		client, err := New(ts.URL, WithToken(token))
+		require.NoError(t, err)
 		_, err = client.Version()
 		require.NoError(t, err)
 	})
 
 	t.Run("WithLogger", func(t *testing.T) {
 		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		client, err := New("https://pve.test", WithLogger(logger))
+		_, err := New("https://pve.test", WithLogger(logger))
 		require.NoError(t, err)
-		assert.Equal(t, logger, client.logger)
 	})
 
 	t.Run("Host", func(t *testing.T) {
