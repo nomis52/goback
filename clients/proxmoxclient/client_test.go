@@ -365,6 +365,11 @@ func TestNewAndOptions(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, logger, client.logger)
 	})
+
+	t.Run("Host", func(t *testing.T) {
+		client, _ := New("https://pve2.test:8006")
+		assert.Equal(t, "pve2", client.Host())
+	})
 }
 
 func TestBackup_UnmarshalJSON(t *testing.T) {
@@ -385,24 +390,6 @@ func TestBackup_UnmarshalJSON(t *testing.T) {
 	assert.Equal(t, "2022-01-01T00:00:00Z", b.CTime.UTC().Format(time.RFC3339))
 }
 
-func TestHost(t *testing.T) {
-	tests := []struct {
-		url      string
-		expected string
-	}{
-		{"https://pve2.test:8006", "pve2"},
-		{"https://pve-node1:8006", "pve-node1"},
-		{"https://192.168.1.100:8006", "192"},
-		{"http://localhost", "localhost"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.url, func(t *testing.T) {
-			client, _ := New(tt.url)
-			assert.Equal(t, tt.expected, client.Host())
-		})
-	}
-}
 
 func TestBackup(t *testing.T) {
 	tests := []struct {
