@@ -192,11 +192,13 @@ func (r *Runner) Status() (RunSummary, []ActivityExecution) {
 
 	// Make a copy of the base summary
 	summary := r.runStatus.RunSummary
-	executions := r.runStatus.ActivityExecutions
+	var executions []ActivityExecution
 
 	// If running, build live activity executions with current logs and status messages
 	if r.runStatus.State == RunStateRunning && r.workflow != nil && r.logCollector != nil {
 		executions = r.buildActivityExecutions()
+	} else {
+		executions = r.runStatus.ActivityExecutions
 	}
 
 	return summary, executions
