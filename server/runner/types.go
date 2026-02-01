@@ -76,11 +76,6 @@ type RunSummary struct {
 	Error string `json:"error,omitempty"`
 }
 
-// runStatus is an internal type that manages the state of the current or last run.
-type runStatus struct {
-	RunSummary
-}
-
 // runRecord is an internal type used for JSON serialization of a run to/from disk.
 type runRecord struct {
 	RunSummary

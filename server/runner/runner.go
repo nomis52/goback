@@ -69,7 +69,7 @@ type Runner struct {
 	store          StateStore
 
 	mu               sync.Mutex
-	runStatus        runStatus
+	runStatus        RunSummary
 	workflow         workflow.Workflow           // Current or last run's workflow
 	statusCollection *activity.StatusHandler     // Current run's status collection
 	logCollector     *logging.LogCollector       // Captures logs during workflow execution
@@ -110,7 +110,7 @@ func New(logger *slog.Logger, provider ConfigProvider, factories map[string]Work
 		configProvider: provider,
 		factories:      factories,
 		store:          NewMemoryStore(),
-		runStatus:      runStatus{RunSummary: RunSummary{State: RunStateIdle}},
+		runStatus:      RunSummary{State: RunStateIdle},
 	}
 
 	// Apply options
@@ -191,7 +191,7 @@ func (r *Runner) Status() (RunSummary, []ActivityExecution) {
 	defer r.mu.Unlock()
 
 	// Make a copy of the base summary
-	summary := r.runStatus.RunSummary
+	summary := r.runStatus
 	var executions []ActivityExecution
 
 	// Build activity executions with current/latest logs and status messages if workflow is available
@@ -276,12 +276,10 @@ func (r *Runner) tryStart(workflows []string) bool {
 	}
 
 	now := time.Now()
-	r.runStatus = runStatus{
-		RunSummary: RunSummary{
-			State:     RunStateRunning,
-			Workflows: workflows,
-			StartedAt: &now,
-		},
+	r.runStatus = RunSummary{
+		State:     RunStateRunning,
+		Workflows: workflows,
+		StartedAt: &now,
 	}
 	r.runStatus.ID = r.runStatus.CalculateID()
 	return true
@@ -328,7 +326,7 @@ func (r *Runner) finish(err error) {
 	}
 
 	// Save to store
-	if err := r.store.Save(r.runStatus.RunSummary, executions); err != nil {
+	if err := r.store.Save(r.runStatus, executions); err != nil {
 		r.logger.Error("failed to save run to store", "error", err)
 	}
 }
