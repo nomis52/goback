@@ -26,10 +26,10 @@ type NextRunResponse struct {
 // APIStatusResponse is the consolidated response for /api/status.
 type APIStatusResponse struct {
 	PBS PBSStatus `json:"pbs"`
-	Run struct {
-		runner.RunSummary
-		ActivityExecutions []runner.ActivityExecution `json:"activity_executions,omitempty"`
-	} `json:"run"`
+	ActiveWorkflow struct {
+		Status       runner.RunSummary           `json:"status"`
+		ActivityLogs []runner.ActivityExecution `json:"activity_logs,omitempty"`
+	} `json:"active_workflow"`
 	NextRun NextRunResponse        `json:"next_run"`
 	Server  types.ServerProperties `json:"server"`
 }
@@ -91,12 +91,12 @@ func (h *APIStatusHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		PBS: PBSStatus{
 			PowerState: powerStateStr,
 		},
-		Run: struct {
-			runner.RunSummary
-			ActivityExecutions []runner.ActivityExecution `json:"activity_executions,omitempty"`
+		ActiveWorkflow: struct {
+			Status       runner.RunSummary           `json:"status"`
+			ActivityLogs []runner.ActivityExecution `json:"activity_logs,omitempty"`
 		}{
-			RunSummary:         runSummary,
-			ActivityExecutions: activityExecutions,
+			Status:       runSummary,
+			ActivityLogs: activityExecutions,
 		},
 		NextRun: nextRunResp,
 		Server:  h.provider.Properties(),

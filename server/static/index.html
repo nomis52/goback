@@ -1043,7 +1043,7 @@
 
                 // Update run status
                 const wasRunning = isRunning;
-                isRunning = data.run.state === 'running';
+                isRunning = data.active_workflow.status.state === 'running';
 
                 // Adjust poll interval when state changes
                 if (wasRunning !== isRunning) {
@@ -1081,7 +1081,7 @@
                 const tbody = document.getElementById('activitiesBody');
                 const count = document.getElementById('activityCount');
 
-                const executions = data.run.activity_executions || [];
+                const executions = data.active_workflow.activity_logs || [];
                 currentExecutions = executions; // Store for expand/collapse
 
                 if (!isRunning || executions.length === 0) {
@@ -1133,7 +1133,7 @@
 
                 // Update workflows tab with running status
                 if (availableWorkflows.length > 0) {
-                    const runningWorkflows = data.run.state === 'running' ? data.run.workflows : [];
+                    const runningWorkflows = data.active_workflow.status.state === 'running' ? data.active_workflow.status.workflows : [];
                     updateWorkflowsTab(runningWorkflows);
 
                     // Also disable buttons when any workflow is running
