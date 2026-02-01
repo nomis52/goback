@@ -12,21 +12,23 @@ import (
 
 // DiskStore persists run history to disk as JSON files.
 type DiskStore struct {
-	dir      string
-	logger   *slog.Logger
-	maxCount int
-	runs     []runStatus // protected by mu
-	mu       sync.Mutex
+	dir       string
+	logger    *slog.Logger
+	maxCount  int
+	summaries []RunSummary           // protected by mu
+	logs      map[string][]ActivityExecution // protected by mu
+	mu        sync.Mutex
 }
 
 // NewDiskStore creates a new disk-backed store.
 // The directory is created if it doesn't exist, and existing runs are loaded.
 func NewDiskStore(dir string, maxCount int, logger *slog.Logger) (*DiskStore, error) {
 	s := &DiskStore{
-		dir:      dir,
-		logger:   logger,
-		maxCount: maxCount,
-		runs:     make([]runStatus, 0),
+		dir:       dir,
+		logger:    logger,
+		maxCount:  maxCount,
+		summaries: make([]RunSummary, 0),
+		logs:      make(map[string][]ActivityExecution),
 	}
 
 	// Create directory if it doesn't exist
@@ -35,12 +37,13 @@ func NewDiskStore(dir string, maxCount int, logger *slog.Logger) (*DiskStore, er
 	}
 
 	// Load existing runs
-	runs, err := s.load()
+	summaries, logs, err := s.load()
 	if err != nil {
 		logger.Warn("failed to load existing runs", "error", err)
 		// Continue without existing data
 	} else {
-		s.runs = runs
+		s.summaries = summaries
+		s.logs = logs
 	}
 
 	return s, nil
@@ -51,10 +54,8 @@ func (s *DiskStore) History() []RunSummary {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	result := make([]RunSummary, len(s.runs))
-	for i, run := range s.runs {
-		result[i] = run.RunSummary
-	}
+	result := make([]RunSummary, len(s.summaries))
+	copy(result, s.summaries)
 	return result
 }
 
@@ -63,12 +64,10 @@ func (s *DiskStore) Logs(id string) []ActivityExecution {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	for _, run := range s.runs {
-		if run.ID == id {
-			result := make([]ActivityExecution, len(run.ActivityExecutions))
-			copy(result, run.ActivityExecutions)
-			return result
-		}
+	if logs, ok := s.logs[id]; ok {
+		result := make([]ActivityExecution, len(logs))
+		copy(result, logs)
+		return result
 	}
 	return nil
 }
@@ -88,12 +87,13 @@ func (s *DiskStore) Save(summary RunSummary, logs []ActivityExecution) error {
 	}
 
 	// Use timestamp as filename: 2006-01-02T15-04-05.json
-	filename := run.StartedAt.Format("2006-01-02T15-04-05") + ".json"
+	filename := summary.StartedAt.Format("2006-01-02T15-04-05") + ".json"
 	path := filepath.Join(s.dir, filename)
 
 	// Ensure ID is populated
-	if run.ID == "" {
-		run.ID = run.CalculateID()
+	if summary.ID == "" {
+		summary.ID = summary.CalculateID()
+		run.ID = summary.ID
 	}
 
 	data, err := json.MarshalIndent(run, "", "  ")
@@ -106,11 +106,15 @@ func (s *DiskStore) Save(summary RunSummary, logs []ActivityExecution) error {
 	}
 
 	// Add to in-memory representation (prepend to keep most recent first)
-	s.runs = append([]runStatus{run}, s.runs...)
+	s.summaries = append([]RunSummary{summary}, s.summaries...)
+	s.logs[summary.ID] = logs
 
 	// Enforce max count limit
-	if len(s.runs) > s.maxCount {
-		s.runs = s.runs[:s.maxCount]
+	if len(s.summaries) > s.maxCount {
+		// Remove logs for the oldest run
+		oldestID := s.summaries[len(s.summaries)-1].ID
+		delete(s.logs, oldestID)
+		s.summaries = s.summaries[:s.maxCount]
 	}
 
 	s.logger.Debug("saved run to disk", "path", path)
@@ -119,23 +123,24 @@ func (s *DiskStore) Save(summary RunSummary, logs []ActivityExecution) error {
 
 // Reload re-loads all runs from disk.
 func (s *DiskStore) Reload() error {
-	runs, err := s.load()
+	summaries, logs, err := s.load()
 	if err != nil {
 		return err
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.runs = runs
+	s.summaries = summaries
+	s.logs = logs
 
 	return nil
 }
 
 // load loads all runs from disk.
-func (s *DiskStore) load() ([]runStatus, error) {
+func (s *DiskStore) load() ([]RunSummary, map[string][]ActivityExecution, error) {
 	files, err := os.ReadDir(s.dir)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read state directory: %w", err)
+		return nil, nil, fmt.Errorf("failed to read state directory: %w", err)
 	}
 
 	// Count JSON files to pre-size the slice
@@ -195,7 +200,14 @@ func (s *DiskStore) load() ([]runStatus, error) {
 		runs = runs[:s.maxCount]
 	}
 
-	s.logger.Info("loaded run history from disk", "count", len(runs))
+	summaries := make([]RunSummary, len(runs))
+	logs := make(map[string][]ActivityExecution, len(runs))
+	for i, run := range runs {
+		summaries[i] = run.RunSummary
+		logs[run.ID] = run.ActivityExecutions
+	}
 
-	return runs, nil
+	s.logger.Info("loaded run history from disk", "count", len(summaries))
+
+	return summaries, logs, nil
 }

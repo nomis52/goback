@@ -28,5 +28,5 @@ type BackupRunner interface {
 // HistoryProvider provides access to run history.
 type HistoryProvider interface {
 	History() []runner.RunSummary
-	GetLogs(id string) ([]runner.ActivityExecution, error)
+	GetLogs(string) ([]runner.ActivityExecution, error)
 }

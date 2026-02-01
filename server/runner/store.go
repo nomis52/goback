@@ -5,7 +5,7 @@ type StateStore interface {
 	// History returns all loaded runs as summaries.
 	History() []RunSummary
 	// Logs returns the activity executions for a specific run.
-	Logs(id string) []ActivityExecution
+	Logs(string) []ActivityExecution
 	// Save persists a run.
-	Save(summary RunSummary, logs []ActivityExecution) error
+	Save(RunSummary, []ActivityExecution) error
 }

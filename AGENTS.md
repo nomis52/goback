@@ -135,16 +135,17 @@ The **runner** (server/runner/) prevents concurrent runs, tracks current status,
    - `main()` only calls `run()` and handles errors
    - `run()` calls `parseArgs()` first, contains all logic
    - `parseArgs()` returns an `Args` struct with all parsed flags
-5. **Test files in same directory as code** - Never separate test files into different directories
-6. **Directory name matches package name** - Exception: `main` package in `cmd/*/`
-7. **All documentation in godoc comments** - Never create separate .md files for API docs (exception: READMEs for overview/setup)
-8. **Client packages:**
+5. **Do not use argument names in interface definitions** - Only the types should be specified (e.g., `Logs(string) []ActivityExecution`, not `Logs(id string) []ActivityExecution`).
+6. **Test files in same directory as code** - Never separate test files into different directories
+7. **Directory name matches package name** - Exception: `main` package in `cmd/*/`
+8. **All documentation in godoc comments** - Never create separate .md files for API docs (exception: READMEs for overview/setup)
+9. **Client packages:**
    - Located in `clients/` directory
    - Named `fooclient` (e.g., `clients/pbsclient`, `clients/proxmoxclient`, `clients/ipmiclient`)
    - Main type is `Client`, constructor is `New()`
    - Separate `types.go` for return types (public types first, internal types at end)
-9. **Use Options pattern** for constructors with multiple parameters (e.g., `WithTimeout()`, `WithLogger()`)
-10. **Use standard library constants** instead of strings (e.g., `http.MethodPost` not `"POST"`)
+10. **Use Options pattern** for constructors with multiple parameters (e.g., `WithTimeout()`, `WithLogger()`)
+11. **Use standard library constants** instead of strings (e.g., `http.MethodPost` not `"POST"`)
 
 ## Configuration
 

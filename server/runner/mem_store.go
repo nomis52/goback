@@ -4,14 +4,16 @@ import "sync"
 
 // MemoryStore keeps run history in memory only (no persistence).
 type MemoryStore struct {
-	runs []runStatus
-	mu   sync.Mutex
+	summaries []RunSummary
+	logs      map[string][]ActivityExecution
+	mu        sync.Mutex
 }
 
 // NewMemoryStore creates a new in-memory store.
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
-		runs: make([]runStatus, 0),
+		summaries: make([]RunSummary, 0),
+		logs:      make(map[string][]ActivityExecution),
 	}
 }
 
@@ -20,10 +22,8 @@ func (s *MemoryStore) History() []RunSummary {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	result := make([]RunSummary, len(s.runs))
-	for i, run := range s.runs {
-		result[i] = run.RunSummary
-	}
+	result := make([]RunSummary, len(s.summaries))
+	copy(result, s.summaries)
 	return result
 }
 
@@ -32,12 +32,10 @@ func (s *MemoryStore) Logs(id string) []ActivityExecution {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	for _, run := range s.runs {
-		if run.ID == id {
-			result := make([]ActivityExecution, len(run.ActivityExecutions))
-			copy(result, run.ActivityExecutions)
-			return result
-		}
+	if logs, ok := s.logs[id]; ok {
+		result := make([]ActivityExecution, len(logs))
+		copy(result, logs)
+		return result
 	}
 	return nil
 }
@@ -52,12 +50,8 @@ func (s *MemoryStore) Save(summary RunSummary, logs []ActivityExecution) error {
 		summary.ID = summary.CalculateID()
 	}
 
-	run := runStatus{
-		RunSummary:         summary,
-		ActivityExecutions: logs,
-	}
-
 	// Prepend to keep most recent first
-	s.runs = append([]runStatus{run}, s.runs...)
+	s.summaries = append([]RunSummary{summary}, s.summaries...)
+	s.logs[summary.ID] = logs
 	return nil
 }
