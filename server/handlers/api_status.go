@@ -23,15 +23,18 @@ type NextRunResponse struct {
 	Workflows []string   `json:"workflows,omitempty"`
 }
 
+// ActiveWorkflowStatus contains status and logs for the currently active workflow.
+type ActiveWorkflowStatus struct {
+	Status       runner.RunSummary           `json:"status"`
+	ActivityLogs []runner.ActivityExecution `json:"activity_logs,omitempty"`
+}
+
 // APIStatusResponse is the consolidated response for /api/status.
 type APIStatusResponse struct {
-	PBS PBSStatus `json:"pbs"`
-	ActiveWorkflow struct {
-		Status       runner.RunSummary           `json:"status"`
-		ActivityLogs []runner.ActivityExecution `json:"activity_logs,omitempty"`
-	} `json:"active_workflow"`
-	NextRun NextRunResponse        `json:"next_run"`
-	Server  types.ServerProperties `json:"server"`
+	PBS            PBSStatus            `json:"pbs"`
+	ActiveWorkflow ActiveWorkflowStatus `json:"active_workflow"`
+	NextRun        NextRunResponse      `json:"next_run"`
+	Server         types.ServerProperties `json:"server"`
 }
 
 // APIStatusProvider aggregates all the providers needed for the status endpoint.
@@ -91,10 +94,7 @@ func (h *APIStatusHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		PBS: PBSStatus{
 			PowerState: powerStateStr,
 		},
-		ActiveWorkflow: struct {
-			Status       runner.RunSummary           `json:"status"`
-			ActivityLogs []runner.ActivityExecution `json:"activity_logs,omitempty"`
-		}{
+		ActiveWorkflow: ActiveWorkflowStatus{
 			Status:       runSummary,
 			ActivityLogs: activityExecutions,
 		},
