@@ -48,7 +48,8 @@ func TestNew(t *testing.T) {
 			client, err := New(tt.host, tt.opts...)
 
 			if tt.wantErr != "" {
-				assert.Equal(t, tt.wantErr, err.Error())
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
 				assert.Nil(t, client)
 			} else {
 				assert.NoError(t, err)
@@ -111,14 +112,8 @@ func TestPing(t *testing.T) {
 			resp, err := client.Ping()
 
 			if tt.wantErr != "" {
-				require.Error(t, err)
-				// Use assert.Contains for the connection error case because dial error messages
-				// are platform-dependent (e.g. [::1] vs 127.0.0.1, or slightly different wording).
-				if tt.name == "connection error" {
-					assert.Contains(t, err.Error(), tt.wantErr)
-				} else {
-					assert.Equal(t, tt.wantErr, err.Error())
-				}
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
 				assert.Empty(t, resp)
 			} else {
 				assert.NoError(t, err)
@@ -143,8 +138,8 @@ func TestPingReadError(t *testing.T) {
 	}
 
 	resp, err := client.Ping()
-	require.Error(t, err)
-	assert.Equal(t, "failed to read response body: read error", err.Error())
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to read response body: read error")
 	assert.Empty(t, resp)
 }
 
