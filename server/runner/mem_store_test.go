@@ -14,26 +14,29 @@ func TestNewMemoryStore(t *testing.T) {
 	require.NotNil(t, store)
 
 	// Should start with empty runs
-	assert.Empty(t, store.Runs())
+	assert.Empty(t, store.History())
 }
 
 func TestMemoryStore_Save(t *testing.T) {
 	store := NewMemoryStore()
 
 	now := time.Now()
-	run := RunStatus{
+	summary := RunSummary{
 		State:     RunStateIdle,
 		StartedAt: &now,
 		EndedAt:   &now,
 		Error:     "",
 	}
 
-	err := store.Save(run)
+	err := store.Save(summary, nil)
 	require.NoError(t, err)
 
-	runs := store.Runs()
-	require.Len(t, runs, 1)
-	assert.Equal(t, run, runs[0])
+	history := store.History()
+	require.Len(t, history, 1)
+
+	// ID should have been populated
+	summary.ID = summary.CalculateID()
+	assert.Equal(t, summary, history[0])
 }
 
 func TestMemoryStore_SaveMultiple(t *testing.T) {
@@ -42,47 +45,51 @@ func TestMemoryStore_SaveMultiple(t *testing.T) {
 	now := time.Now()
 	for i := 0; i < 5; i++ {
 		runTime := now.Add(time.Duration(i) * time.Hour)
-		run := RunStatus{
+		summary := RunSummary{
 			State:     RunStateIdle,
 			StartedAt: &runTime,
 			EndedAt:   &runTime,
 		}
-		err := store.Save(run)
+		err := store.Save(summary, nil)
 		require.NoError(t, err)
 	}
 
-	runs := store.Runs()
-	assert.Len(t, runs, 5)
+	history := store.History()
+	assert.Len(t, history, 5)
 
 	// Should be in reverse order (most recent first)
-	for i := 0; i < len(runs)-1; i++ {
-		assert.True(t, runs[i].StartedAt.After(*runs[i+1].StartedAt))
+	for i := 0; i < len(history)-1; i++ {
+		assert.True(t, history[i].StartedAt.After(*history[i+1].StartedAt))
 	}
 }
 
-func TestMemoryStore_Runs_ReturnsCopy(t *testing.T) {
+func TestMemoryStore_History_ReturnsCopy(t *testing.T) {
 	store := NewMemoryStore()
 
 	now := time.Now()
-	run := RunStatus{
+	summary := RunSummary{
 		State:     RunStateIdle,
 		StartedAt: &now,
 		EndedAt:   &now,
 		Error:     "",
 	}
-	err := store.Save(run)
+	err := store.Save(summary, nil)
 	require.NoError(t, err)
 
-	// Get runs twice
-	runs1 := store.Runs()
-	runs2 := store.Runs()
+	// Get history twice
+	history1 := store.History()
+	history2 := store.History()
 
-	require.Len(t, runs1, 1)
-	require.Len(t, runs2, 1)
+	require.Len(t, history1, 1)
+	require.Len(t, history2, 1)
 
 	// Modifying one shouldn't affect the other
-	runs1[0].Error = "modified"
-	assert.Equal(t, run, runs2[0], "modifying one slice should not affect the other")
+	history1[0].Error = "modified"
+
+	// Expected summary should have its ID populated
+	expectedSummary := summary
+	expectedSummary.ID = expectedSummary.CalculateID()
+	assert.Equal(t, expectedSummary, history2[0], "modifying one slice should not affect the other")
 }
 
 func TestMemoryStore_Concurrent(t *testing.T) {
@@ -97,12 +104,12 @@ func TestMemoryStore_Concurrent(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 			now := time.Now()
-			run := RunStatus{
+			summary := RunSummary{
 				State:     RunStateIdle,
 				StartedAt: &now,
 				EndedAt:   &now,
 			}
-			err := store.Save(run)
+			err := store.Save(summary, nil)
 			assert.NoError(t, err)
 		}(i)
 	}
@@ -110,8 +117,8 @@ func TestMemoryStore_Concurrent(t *testing.T) {
 	// Wait for all goroutines to finish
 	wg.Wait()
 
-	runs := store.Runs()
-	assert.Len(t, runs, numGoroutines)
+	history := store.History()
+	assert.Len(t, history, numGoroutines)
 }
 
 func TestMemoryStore_NoLimit(t *testing.T) {
@@ -121,15 +128,15 @@ func TestMemoryStore_NoLimit(t *testing.T) {
 	now := time.Now()
 	for i := 0; i < 100; i++ {
 		runTime := now.Add(time.Duration(i) * time.Second)
-		run := RunStatus{
+		summary := RunSummary{
 			State:     RunStateIdle,
 			StartedAt: &runTime,
 			EndedAt:   &runTime,
 		}
-		err := store.Save(run)
+		err := store.Save(summary, nil)
 		require.NoError(t, err)
 	}
 
-	runs := store.Runs()
-	assert.Len(t, runs, 100, "memory store should not limit runs")
+	history := store.History()
+	assert.Len(t, history, 100, "memory store should not limit runs")
 }

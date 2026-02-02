@@ -1,6 +1,9 @@
 package runner
 
 import (
+	"crypto/sha256"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/nomis52/goback/logging"
@@ -57,8 +60,10 @@ func (s *RunState) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// RunStatus contains information about the current or last run.
-type RunStatus struct {
+// RunSummary contains summary information about a backup run.
+type RunSummary struct {
+	// ID is a stable identifier for the run.
+	ID string `json:"id,omitempty"`
 	// State is the current state of the run.
 	State RunState `json:"state"`
 	// Workflows is the list of workflows that were/are being executed.
@@ -69,8 +74,24 @@ type RunStatus struct {
 	EndedAt *time.Time `json:"ended_at,omitempty"`
 	// Error contains the error message if the run failed. Empty on success.
 	Error string `json:"error,omitempty"`
-	// ActivityExecutions contains detailed execution records for each activity in the workflow.
+}
+
+// runRecord is an internal type used for JSON serialization of a run to/from disk.
+type runRecord struct {
+	RunSummary
 	ActivityExecutions []ActivityExecution `json:"activity_executions,omitempty"`
+}
+
+// CalculateID generates a stable ID for the run based on its start time and workflows.
+func (s *RunSummary) CalculateID() string {
+	if s.StartedAt == nil {
+		return ""
+	}
+
+	// Use Unix timestamp (seconds) for stability
+	data := fmt.Sprintf("%d:%s", s.StartedAt.Unix(), strings.Join(s.Workflows, ","))
+	hash := sha256.Sum256([]byte(data))
+	return fmt.Sprintf("%x", hash)
 }
 
 // ActivityExecution captures all details for a single activity execution.

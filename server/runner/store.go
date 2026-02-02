@@ -2,8 +2,10 @@ package runner
 
 // StateStore manages persistence of run history.
 type StateStore interface {
-	// Runs returns all loaded runs.
-	Runs() []RunStatus
+	// History returns all loaded runs as summaries.
+	History() []RunSummary
+	// Logs returns the activity executions for a specific run.
+	Logs(string) []ActivityExecution
 	// Save persists a run.
-	Save(RunStatus) error
+	Save(RunSummary, []ActivityExecution) error
 }

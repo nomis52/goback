@@ -23,18 +23,24 @@ type NextRunResponse struct {
 	Workflows []string   `json:"workflows,omitempty"`
 }
 
+// ActiveWorkflowStatus contains status and logs for the currently active workflow.
+type ActiveWorkflowStatus struct {
+	Status       runner.RunSummary           `json:"status"`
+	ActivityLogs []runner.ActivityExecution `json:"activity_logs,omitempty"`
+}
+
 // APIStatusResponse is the consolidated response for /api/status.
 type APIStatusResponse struct {
-	PBS     PBSStatus              `json:"pbs"`
-	Run     runner.RunStatus       `json:"run"` // Includes ActivityExecutions with Status field
-	NextRun NextRunResponse        `json:"next_run"`
-	Server  types.ServerProperties `json:"server"`
+	PBS            PBSStatus            `json:"pbs"`
+	ActiveWorkflow ActiveWorkflowStatus `json:"active_workflow"`
+	NextRun        NextRunResponse      `json:"next_run"`
+	Server         types.ServerProperties `json:"server"`
 }
 
 // APIStatusProvider aggregates all the providers needed for the status endpoint.
 type APIStatusProvider interface {
 	IPMIController() *ipmiclient.IPMIController
-	Status() runner.RunStatus
+	Status() (runner.RunSummary, []runner.ActivityExecution)
 	NextTrigger() *cron.NextTriggerInfo
 	Properties() types.ServerProperties
 }
@@ -71,7 +77,7 @@ func (h *APIStatusHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get run status (includes live activity executions with logs and status messages)
-	runStatus := h.provider.Status()
+	runSummary, activityExecutions := h.provider.Status()
 
 	// Get next run with workflows
 	nextTrigger := h.provider.NextTrigger()
@@ -88,7 +94,10 @@ func (h *APIStatusHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		PBS: PBSStatus{
 			PowerState: powerStateStr,
 		},
-		Run:     runStatus,
+		ActiveWorkflow: ActiveWorkflowStatus{
+			Status:       runSummary,
+			ActivityLogs: activityExecutions,
+		},
 		NextRun: nextRunResp,
 		Server:  h.provider.Properties(),
 	}

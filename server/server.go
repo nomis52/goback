@@ -315,8 +315,8 @@ func (s *Server) NextTrigger() *cron.NextTriggerInfo {
 	return &info
 }
 
-// Status returns the current run status by delegating to the runner.
-func (s *Server) Status() runner.RunStatus {
+// Status returns the current run summary and activity executions by delegating to the runner.
+func (s *Server) Status() (runner.RunSummary, []runner.ActivityExecution) {
 	return s.runner.Status()
 }
 
@@ -403,6 +403,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	reloadHandler := handlers.NewReloadHandler(s.logger, s)
 	runHandler := handlers.NewRunHandler(s.runner)
 	historyHandler := handlers.NewHistoryHandler(s.runner)
+	historyLogsHandler := handlers.NewHistoryLogsHandler(s.runner)
 	apiStatusHandler := handlers.NewAPIStatusHandler(s.logger, s)
 	availableWorkflowsHandler := handlers.NewAvailableWorkflowsHandler(s.runner)
 
@@ -410,6 +411,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /health", handlers.HandleHealth)
 	mux.Handle("GET /api/status", apiStatusHandler)
 	mux.Handle("GET /api/history", historyHandler)
+	mux.Handle("GET /api/history/logs", historyLogsHandler)
 	mux.Handle("GET /api/workflows", availableWorkflowsHandler)
 	if s.store != nil {
 		storeReloadHandler := handlers.NewStoreReloadHandler(s.logger, s.store)

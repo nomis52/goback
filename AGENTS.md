@@ -135,23 +135,24 @@ The **runner** (server/runner/) prevents concurrent runs, tracks current status,
    - `main()` only calls `run()` and handles errors
    - `run()` calls `parseArgs()` first, contains all logic
    - `parseArgs()` returns an `Args` struct with all parsed flags
-5. **Test files in same directory as code** - Never separate test files into different directories
-6. **Directory name matches package name** - Exception: `main` package in `cmd/*/`
-7. **All documentation in godoc comments** - Never create separate .md files for API docs (exception: READMEs for overview/setup)
-8. **Client packages:**
+5. **Do not use argument names in interface definitions** - Only the types should be specified (e.g., `Logs(string) []ActivityExecution`, not `Logs(id string) []ActivityExecution`).
+6. **Test files in same directory as code** - Never separate test files into different directories
+7. **Directory name matches package name** - Exception: `main` package in `cmd/*/`
+8. **All documentation in godoc comments** - Never create separate .md files for API docs (exception: READMEs for overview/setup)
+9. **Client packages:**
    - Located in `clients/` directory
    - Named `fooclient` (e.g., `clients/pbsclient`, `clients/proxmoxclient`, `clients/ipmiclient`)
    - Main type is `Client`, constructor is `New()`
    - Separate `types.go` for return types (public types first, internal types at end)
-9. **Use Options pattern** for constructors with multiple parameters (e.g., `WithTimeout()`, `WithLogger()`)
-10. **Use standard library constants** instead of strings (e.g., `http.MethodPost` not `"POST"`)
-11. **Exported methods precede unexported methods** - Within a file, all exported functions/methods should come before unexported ones
-12. **Test helper types at end of file** - In test files, helper types (mocks, stubs, test fixtures) and their methods should be placed at the end of the file after all test functions
-13. **Never test unexported fields** - Tests should only verify behavior through exported APIs, never inspect unexported struct fields (fragile and tests implementation not behavior)
-14. **Assert exact values, not partial matches** - Use `assert.Equal` with complete expected values rather than `assert.Contains` for fragments. Partial matches can pass with incorrect results and are harder to debug
-15. **Make external dependencies injectable** - Wrap external calls (exec.Command) in interfaces that can be injected via options, enabling tests to use mocks without real external calls
-16. **Use table-driven tests** - Organize tests as a slice of test cases with name, inputs, and expected outputs. Makes adding cases easy and keeps tests consistent
-17. **Use `require` for preconditions, `assert` for verifications** - Use `require.NoError`/`require.Error` to fail fast on setup or critical checks; use `assert` for the actual test verifications
+10. **Use Options pattern** for constructors with multiple parameters (e.g., `WithTimeout()`, `WithLogger()`)
+11. **Use standard library constants** instead of strings (e.g., `http.MethodPost` not `"POST"`)
+12. **Exported methods precede unexported methods** - Within a file, all exported functions/methods should come before unexported ones
+13. **Test helper types at end of file** - In test files, helper types (mocks, stubs, test fixtures) and their methods should be placed at the end of the file after all test functions
+14. **Never test unexported fields** - Tests should only verify behavior through exported APIs, never inspect unexported struct fields (fragile and tests implementation not behavior)
+15. **Assert exact values, not partial matches** - Use `assert.Equal` with complete expected values rather than `assert.Contains` for fragments. Partial matches can pass with incorrect results and are harder to debug
+16. **Make external dependencies injectable** - Wrap external calls (exec.Command) in interfaces that can be injected via options, enabling tests to use mocks without real external calls
+17. **Use table-driven tests** - Organize tests as a slice of test cases with name, inputs, and expected outputs. Makes adding cases easy and keeps tests consistent
+18. **Use `require` for preconditions, `assert` for verifications** - Use `require.NoError`/`require.Error` to fail fast on setup or critical checks; use `assert` for the actual test verifications
 
 ## Configuration
 

@@ -676,6 +676,8 @@
         let expandedHistoryRows = new Set(); // Track which history runs are expanded
         let expandedHistoryActivities = new Set(); // Track which activities within history are expanded
         let historyData = []; // Store history data for expansion
+        let logsCache = new Map(); // Cache for run data including logs
+        let activeFetches = new Set(); // Track in-flight log fetches
 
         async function fetchJSON(url) {
             const resp = await fetch(url);
@@ -797,9 +799,34 @@
             }
         }
 
-        function toggleHistoryRow(runId) {
+        async function fetchLogs(runId) {
+            if (activeFetches.has(runId)) return null;
+
+            const run = historyData.find(r => r.id === runId);
+            if (!run) return null;
+
+            // Use cached logs if available and run is not running
+            if (logsCache.has(runId) && run.state !== 'running') {
+                return logsCache.get(runId);
+            }
+
+            activeFetches.add(runId);
+            try {
+                const executions = await fetchJSON(`/api/history/logs?id=${runId}`);
+                logsCache.set(runId, executions);
+                return executions;
+            } catch (err) {
+                console.error(`Failed to fetch logs for run ${runId}:`, err);
+                return null;
+            } finally {
+                activeFetches.delete(runId);
+            }
+        }
+
+        async function toggleHistoryRow(runId) {
             const logsRow = document.getElementById(`history-details-${runId}`);
             const chevron = document.getElementById(`history-chevron-${runId}`);
+            const contentWrapper = document.getElementById(`history-content-${runId}`);
 
             if (expandedHistoryRows.has(runId)) {
                 expandedHistoryRows.delete(runId);
@@ -809,6 +836,16 @@
                 expandedHistoryRows.add(runId);
                 logsRow.style.display = 'table-row';
                 chevron.classList.add('expanded');
+
+                // Show loading state if no logs in cache
+                if (!logsCache.has(runId)) {
+                    contentWrapper.innerHTML = '<div class="empty-state">Loading logs...</div>';
+                }
+
+                const executions = await fetchLogs(runId);
+                if (executions) {
+                    contentWrapper.innerHTML = renderHistoryActivityDetails(runId, executions);
+                }
             }
         }
 
@@ -828,14 +865,10 @@
             }
         }
 
-        function renderHistoryActivityDetails(run) {
-            const executions = run.activity_executions || [];
-
-            if (executions.length === 0) {
+        function renderHistoryActivityDetails(runId, executions) {
+            if (!executions || executions.length === 0) {
                 return '<div class="empty-state" style="padding: 1rem;">No activity details available</div>';
             }
-
-            const runId = run.started_at;
 
             return `
                 <table style="background-color: var(--bg-primary); margin: 0; width: 100%;">
@@ -878,7 +911,7 @@
                                 </tr>
                                 <tr id="history-activity-logs-${activityId}" class="log-details" style="display: ${isExpanded ? 'table-row' : 'none'};">
                                     <td colspan="7">
-                                        <div class="log-details-content">
+                                        <div id="history-activity-logs-content-${activityId}" class="log-details-content">
                                             ${renderLogs(exec.logs)}
                                         </div>
                                     </td>
@@ -931,6 +964,35 @@
             return `<span class="badge ${badge.class}">${badge.text}</span>`;
         }
 
+        function saveScrollPositions() {
+            const positions = new Map();
+            document.querySelectorAll('.log-details-content').forEach(el => {
+                if (el.id) {
+                    positions.set(el.id, {
+                        scrollTop: el.scrollTop,
+                        scrollHeight: el.scrollHeight,
+                        atTop: el.scrollTop === 0
+                    });
+                }
+            });
+            return positions;
+        }
+
+        function restoreScrollPositions(positions) {
+            document.querySelectorAll('.log-details-content').forEach(el => {
+                const pos = positions.get(el.id);
+                if (pos) {
+                    if (pos.atTop) {
+                        el.scrollTop = 0;
+                    } else {
+                        const newScrollHeight = el.scrollHeight;
+                        const heightDiff = newScrollHeight - pos.scrollHeight;
+                        el.scrollTop = pos.scrollTop + heightDiff;
+                    }
+                }
+            });
+        }
+
         async function updateAPIStatus() {
             try {
                 const data = await fetchJSON('/api/status');
@@ -981,7 +1043,7 @@
 
                 // Update run status
                 const wasRunning = isRunning;
-                isRunning = data.run.state === 'running';
+                isRunning = data.active_workflow.status.state === 'running';
 
                 // Adjust poll interval when state changes
                 if (wasRunning !== isRunning) {
@@ -1019,7 +1081,7 @@
                 const tbody = document.getElementById('activitiesBody');
                 const count = document.getElementById('activityCount');
 
-                const executions = data.run.activity_executions || [];
+                const executions = data.active_workflow.activity_logs || [];
                 currentExecutions = executions; // Store for expand/collapse
 
                 if (!isRunning || executions.length === 0) {
@@ -1032,6 +1094,7 @@
                     emptyState.classList.add('hidden');
                     count.textContent = `${executions.length} activit${executions.length !== 1 ? 'ies' : 'y'}`;
 
+                    const scrollPos = saveScrollPositions();
                     tbody.innerHTML = executions.map((exec, index) => {
                         const displayName = exec.type || 'Unknown';
                         const startTime = exec.start_time && exec.start_time !== '0001-01-01T00:00:00Z'
@@ -1058,18 +1121,19 @@
                             </tr>
                             <tr id="logs-${index}" class="log-details" style="display: ${isExpanded ? 'table-row' : 'none'};">
                                 <td colspan="7">
-                                    <div class="log-details-content">
+                                    <div id="current-activity-logs-${index}" class="log-details-content">
                                         ${renderLogs(exec.logs)}
                                     </div>
                                 </td>
                             </tr>
                         `;
                     }).join('');
+                    restoreScrollPositions(scrollPos);
                 }
 
                 // Update workflows tab with running status
                 if (availableWorkflows.length > 0) {
-                    const runningWorkflows = data.run.state === 'running' ? data.run.workflows : [];
+                    const runningWorkflows = data.active_workflow.status.state === 'running' ? data.active_workflow.status.workflows : [];
                     updateWorkflowsTab(runningWorkflows);
 
                     // Also disable buttons when any workflow is running
@@ -1102,6 +1166,7 @@
                     return;
                 }
 
+                const scrollPos = saveScrollPositions();
                 tbody.innerHTML = data.map(run => {
                     const isSuccess = run.state !== 'running' && !run.error;
                     const isError = run.state !== 'running' && run.error;
@@ -1118,11 +1183,29 @@
                         badgeText = 'Failed';
                     }
 
-                    const runId = run.started_at;
+                    const runId = run.id;
                     const isExpanded = expandedHistoryRows.has(runId);
                     const workflows = run.workflows && run.workflows.length > 0
                         ? run.workflows.join(', ')
                         : '-';
+
+                    let content = '';
+                    if (isExpanded) {
+                        const cached = logsCache.get(runId);
+                        content = cached ? renderHistoryActivityDetails(runId, cached) : '<div class="empty-state">Loading logs...</div>';
+
+                        // If it's expanded and running, we might want to refresh logs
+                        if (runIsRunning) {
+                            fetchLogs(runId).then(executions => {
+                                const wrapper = document.getElementById(`history-content-${runId}`);
+                                if (wrapper && executions) {
+                                    const innerScrollPos = saveScrollPositions();
+                                    wrapper.innerHTML = renderHistoryActivityDetails(runId, executions);
+                                    restoreScrollPositions(innerScrollPos);
+                                }
+                            });
+                        }
+                    }
 
                     return `
                         <tr class="expandable-row" onclick="toggleHistoryRow('${runId}')">
@@ -1140,13 +1223,14 @@
                         </tr>
                         <tr id="history-details-${runId}" class="log-details" style="display: ${isExpanded ? 'table-row' : 'none'};">
                             <td colspan="7">
-                                <div class="log-details-content">
-                                    ${renderHistoryActivityDetails(run)}
+                                <div id="history-content-${runId}" class="log-details-content-wrapper">
+                                    ${content}
                                 </div>
                             </td>
                         </tr>
                     `;
                 }).join('');
+                restoreScrollPositions(scrollPos);
             } catch (err) {
                 document.getElementById('historyBody').innerHTML =
                     `<tr><td colspan="7" class="empty-state">Failed to load history: ${err.message}</td></tr>`;
