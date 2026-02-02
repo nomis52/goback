@@ -42,7 +42,6 @@ import (
 	"fmt"
 	"log/slog"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -304,18 +303,19 @@ func (r *Runner) finish(err error) {
 		r.logger.Info("backup run completed", "duration", duration)
 	}
 
-	// Update workflow metrics
+	// Update workflow metrics - emit one metric per workflow name
 	if r.workflowLastRunTimestamp != nil {
-		workflowName := strings.Join(r.runStatus.Workflows, ",")
-		labels := prometheus.Labels{"workflow": workflowName}
+		for _, workflowName := range r.runStatus.Workflows {
+			labels := prometheus.Labels{"workflow": workflowName}
 
-		r.workflowLastRunTimestamp.With(labels).Set(float64(endTime.Unix()))
-		r.workflowLastRunDuration.With(labels).Set(duration.Seconds())
+			r.workflowLastRunTimestamp.With(labels).Set(float64(endTime.Unix()))
+			r.workflowLastRunDuration.With(labels).Set(duration.Seconds())
 
-		if err != nil {
-			r.workflowLastRunSuccess.With(labels).Set(0)
-		} else {
-			r.workflowLastRunSuccess.With(labels).Set(1)
+			if err != nil {
+				r.workflowLastRunSuccess.With(labels).Set(0)
+			} else {
+				r.workflowLastRunSuccess.With(labels).Set(1)
+			}
 		}
 	}
 
