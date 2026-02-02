@@ -171,8 +171,8 @@ func (a *BackupVMs) performBackup(ctx context.Context, resource proxmoxclient.Re
 	if a.Compress != "" {
 		backupOpts = append(backupOpts, proxmoxclient.WithCompress(a.Compress))
 	}
-	// Disable email notifications for API-triggered backups
-	backupOpts = append(backupOpts, proxmoxclient.WithMailNotification(""))
+	// Disable email notifications by using legacy-sendmail mode with no mailto configured
+	backupOpts = append(backupOpts, proxmoxclient.WithNotificationMode("legacy-sendmail"))
 
 	// Start the backup
 	a.Logger.Debug("Starting backup for resource",

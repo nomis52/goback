@@ -111,14 +111,14 @@ func WithCompress(compress string) BackupOption {
 	}
 }
 
-// WithMailNotification sets the mail notification mode
-// Valid values: "always", "failure", or empty string to disable
-func WithMailNotification(mode string) BackupOption {
+// WithNotificationMode sets the notification mode for backups.
+// Valid values: "auto", "legacy-sendmail", "notification-system"
+func WithNotificationMode(mode string) BackupOption {
 	return func(p *backupParams) {
 		if p.params == nil {
 			p.params = make(map[string]string)
 		}
-		p.params["mailnotification"] = mode
+		p.params["notification-mode"] = mode
 	}
 }
 
