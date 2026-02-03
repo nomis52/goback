@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This file provides guidance to agents when working with code in this repository.
+This file provides guidance to agents when working with code in this repository. See [TESTING.md](TESTING.md) for testing patterns and requirements.
 
 ## Project Overview
 
@@ -17,19 +17,8 @@ go build -o build/goback ./cmd/cli
 go build -o build/goback-server ./cmd/server
 go build -o build/goback-poweroff ./cmd/power_off
 
-# Run all tests
+# Run all tests (see TESTING.md for more details)
 make test
-
-or
-
-go test ./...
-
-# Run tests for a specific package
-go test ./orchestrator
-go test -v ./server/handlers
-
-# Run a single test
-go test -v -run TestBackupVMs ./workflows/backup
 
 # Format code
 make fmt
@@ -130,29 +119,23 @@ The **runner** (server/runner/) prevents concurrent runs, tracks current status,
 
 1. **Time values must be constants** - Define all durations/timeouts as named constants
 2. **Pre-size maps when size is known** - Use `make(map[K]V, size)` for better performance
-3. **Always use testify** for assertions - Use `require` for critical checks, `assert` for non-critical
-4. **Program structure:**
+3. **Program structure:**
    - `main()` only calls `run()` and handles errors
    - `run()` calls `parseArgs()` first, contains all logic
    - `parseArgs()` returns an `Args` struct with all parsed flags
-5. **Do not use argument names in interface definitions** - Only the types should be specified (e.g., `Logs(string) []ActivityExecution`, not `Logs(id string) []ActivityExecution`).
-6. **Test files in same directory as code** - Never separate test files into different directories
-7. **Directory name matches package name** - Exception: `main` package in `cmd/*/`
-8. **All documentation in godoc comments** - Never create separate .md files for API docs (exception: READMEs for overview/setup)
-9. **Client packages:**
+4. **Do not use argument names in interface definitions** - Only the types should be specified (e.g., `Logs(string) []ActivityExecution`, not `Logs(id string) []ActivityExecution`).
+5. **Directory name matches package name** - Exception: `main` package in `cmd/*/`
+6. **All documentation in godoc comments** - Never create separate .md files for API docs (exception: READMEs for overview/setup)
+7. **Client packages:**
    - Located in `clients/` directory
    - Named `fooclient` (e.g., `clients/pbsclient`, `clients/proxmoxclient`, `clients/ipmiclient`)
    - Main type is `Client`, constructor is `New()`
    - Separate `types.go` for return types (public types first, internal types at end)
-10. **Use Options pattern** for constructors with multiple parameters (e.g., `WithTimeout()`, `WithLogger()`)
-11. **Use standard library constants** instead of strings (e.g., `http.MethodPost` not `"POST"`)
-12. **Exported methods precede unexported methods** - Within a file, all exported functions/methods should come before unexported ones
-13. **Test helper types at end of file** - In test files, helper types (mocks, stubs, test fixtures) and their methods should be placed at the end of the file after all test functions
-14. **Never test unexported fields** - Tests should only verify behavior through exported APIs, never inspect unexported struct fields (fragile and tests implementation not behavior)
-15. **Assert exact values, not partial matches** - Use `assert.Equal` with complete expected values rather than `assert.Contains` for fragments. Partial matches can pass with incorrect results and are harder to debug
-16. **Make external dependencies injectable** - Wrap external calls (exec.Command) in interfaces that can be injected via options, enabling tests to use mocks without real external calls
-17. **Use table-driven tests** - Organize tests as a slice of test cases with name, inputs, and expected outputs. Makes adding cases easy and keeps tests consistent
-18. **Use `require` for preconditions, `assert` for verifications** - Use `require.NoError`/`require.Error` to fail fast on setup or critical checks; use `assert` for the actual test verifications
+8. **Use Options pattern** for constructors with multiple parameters (e.g., `WithTimeout()`, `WithLogger()`)
+9. **Use standard library constants** instead of strings (e.g., `http.MethodPost` not `"POST"`)
+10. **Exported methods precede unexported methods** - Within a file, all exported functions/methods should come before unexported ones
+
+See [TESTING.md](TESTING.md) for testing-specific rules and patterns.
 
 ## Configuration
 
@@ -167,17 +150,6 @@ Configuration is in YAML format. See config.yaml for example. Key sections:
 
 The config package (config/config.go:1) provides validation, defaults, and loading.
 
-## Testing Strategy
-
-- Use testify for all assertions (`require` for critical, `assert` for non-critical)
-- Place test files in same directory as implementation
-- Test files use same package name as code they test
-- Mock interfaces for unit testing (e.g., `handlers/interfaces.go` defines testable interfaces)
-- **Table-driven tests:** Use a single `wantErr string` field instead of a boolean `wantErr` and a separate string for the error message. If `wantErr` is non-empty, an error is expected and its message must contain that string using `assert.Contains`.
-- **Verification functions:** In table-driven tests, include a `verifyFn` field (e.g., `verifyFn func(t *testing.T, result Type)`) to perform custom assertions for each test case.
-- **No Sleeps:** Never use `time.Sleep` in unit tests as they cause flakiness.
-- **Mock Domains:** Use RFC 6761 reserved domains (e.g., `.test`, `.example`, `.invalid`, `.localhost`) for mock hostnames in tests.
-- **Blackbox Testing:** Only test exported methods and types. Avoid testing unexported functions or internal state (whitebox testing) unless absolutely necessary.
 
 ## Common Patterns
 
