@@ -173,7 +173,7 @@ The config package (config/config.go:1) provides validation, defaults, and loadi
 - Place test files in same directory as implementation
 - Test files use same package name as code they test
 - Mock interfaces for unit testing (e.g., `handlers/interfaces.go` defines testable interfaces)
-- **Table-driven tests:** Use a single `wantErr string` field instead of a boolean `wantErr` and a separate string for the error message. If `wantErr` is non-empty, an error is expected and its message must contain that string.
+- **Table-driven tests:** Use a single `wantErr string` field instead of a boolean `wantErr` and a separate string for the error message. If `wantErr` is non-empty, an error is expected and its message must contain that string using `assert.Contains`.
 - **Verification functions:** In table-driven tests, include a `verifyFn` field (e.g., `verifyFn func(t *testing.T, result Type)`) to perform custom assertions for each test case.
 - **No Sleeps:** Never use `time.Sleep` in unit tests as they cause flakiness.
 - **Mock Domains:** Use RFC 6761 reserved domains (e.g., `.test`, `.example`, `.invalid`, `.localhost`) for mock hostnames in tests.
