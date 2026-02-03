@@ -48,7 +48,7 @@ func TestNew(t *testing.T) {
 			client, err := New(tt.host, tt.opts...)
 
 			if tt.wantErr != "" {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.wantErr)
 				assert.Nil(t, client)
 			} else {
@@ -112,7 +112,7 @@ func TestPing(t *testing.T) {
 			resp, err := client.Ping()
 
 			if tt.wantErr != "" {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.wantErr)
 				assert.Empty(t, resp)
 			} else {
@@ -138,7 +138,7 @@ func TestPingReadError(t *testing.T) {
 	}
 
 	resp, err := client.Ping()
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to read response body: read error")
 	assert.Empty(t, resp)
 }
