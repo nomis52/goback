@@ -545,6 +545,14 @@
                 <div id="nextRunStatus" class="status-value">-</div>
                 <div id="nextRunDetail" class="status-detail">Checking schedule...</div>
                 <div id="nextRunWorkflows" class="status-detail" style="margin-top: 0.5rem; font-weight: 500;"></div>
+                <div id="nextRunAction" style="margin-top: 1rem; display: none;">
+                    <button id="runNowBtn" class="btn btn-primary" onclick="runNextWorkflows()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                        </svg>
+                        Run Now
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -673,6 +681,7 @@
         let expandedRows = new Set(); // Track which rows are expanded
         let currentExecutions = []; // Store current executions for expanding
         let availableWorkflows = [];
+        let nextRunWorkflows = [];
         let expandedHistoryRows = new Set(); // Track which history runs are expanded
         let expandedHistoryActivities = new Set(); // Track which activities within history are expanded
         let historyData = []; // Store history data for expansion
@@ -1057,22 +1066,28 @@
                 const nextRunDetail = document.getElementById('nextRunDetail');
 
                 const nextRunWorkflowsDiv = document.getElementById('nextRunWorkflows');
+                const nextRunAction = document.getElementById('nextRunAction');
 
                 if (data.next_run.scheduled && data.next_run.next_run) {
                     nextRunDot.className = 'status-dot scheduled';
                     nextRunStatus.textContent = formatRelativeTime(data.next_run.next_run);
                     nextRunDetail.textContent = formatTime(data.next_run.next_run);
 
-                    if (data.next_run.workflows && data.next_run.workflows.length > 0) {
-                        nextRunWorkflowsDiv.textContent = `Workflows: ${data.next_run.workflows.join(', ')}`;
+                    nextRunWorkflows = data.next_run.workflows || [];
+                    if (nextRunWorkflows.length > 0) {
+                        nextRunWorkflowsDiv.textContent = `Workflows: ${nextRunWorkflows.join(', ')}`;
+                        nextRunAction.style.display = isRunning ? 'none' : 'block';
                     } else {
                         nextRunWorkflowsDiv.textContent = '';
+                        nextRunAction.style.display = 'none';
                     }
                 } else {
                     nextRunDot.className = 'status-dot not-scheduled';
                     nextRunStatus.textContent = 'Not scheduled';
                     nextRunDetail.textContent = 'No cron schedule configured';
                     nextRunWorkflowsDiv.textContent = '';
+                    nextRunWorkflows = [];
+                    nextRunAction.style.display = 'none';
                 }
 
                 // Update activity executions
@@ -1368,6 +1383,38 @@
                         }
                     });
                 }, 1000);
+            }
+        }
+
+        async function runNextWorkflows() {
+            if (nextRunWorkflows.length === 0) return;
+
+            const btn = document.getElementById('runNowBtn');
+            const originalHtml = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = 'Starting...';
+
+            try {
+                const resp = await fetch('/run', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({workflows: nextRunWorkflows})
+                });
+
+                if (resp.status === 202) {
+                    switchTab('current');
+                    await updateAll();
+                } else if (resp.status === 409) {
+                    alert('A workflow is already running.');
+                } else {
+                    const data = await resp.json();
+                    alert(`Failed to start workflows: ${data.error || 'Unknown error'}`);
+                }
+            } catch (err) {
+                alert(`Error starting workflows: ${err.message}`);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalHtml;
             }
         }
 
