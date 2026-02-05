@@ -1,0 +1,23 @@
+load("@rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "server_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/nomis52/goback/cmd/server",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//buildinfo",
+        "//server",
+        "//server/config",
+    ],
+)
+
+go_binary(
+    name = "server",
+    embed = [":server_lib"],
+    visibility = ["//visibility:public"],
+    x_defs = {
+        "github.com/nomis52/goback/buildinfo.buildTime": "{BUILD_TIMESTAMP}",
+        "github.com/nomis52/goback/buildinfo.gitCommit": "{STABLE_GIT_COMMIT}",
+    },
+)

@@ -1,0 +1,14 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "activity",
+    srcs = [
+        "capture_error.go",
+        "doc.go",
+        "status_handler.go",
+        "status_line.go",
+    ],
+    importpath = "github.com/nomis52/goback/activity",
+    visibility = ["//visibility:public"],
+    deps = ["//workflow"],
+)

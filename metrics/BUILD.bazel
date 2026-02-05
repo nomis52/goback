@@ -1,0 +1,34 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "metrics",
+    srcs = [
+        "interfaces.go",
+        "push.go",
+        "scrape.go",
+    ],
+    importpath = "github.com/nomis52/goback/metrics",
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_github_golang_protobuf//proto",
+        "@com_github_golang_snappy//:snappy",
+        "@com_github_prometheus_client_golang//prometheus",
+        "@com_github_prometheus_client_golang//prometheus/collectors",
+        "@com_github_prometheus_client_golang//prometheus/promhttp",
+        "@com_github_prometheus_prometheus//prompb",
+    ],
+)
+
+go_test(
+    name = "metrics_test",
+    srcs = ["metrics_test.go"],
+    embed = [":metrics"],
+    deps = [
+        "@com_github_golang_protobuf//proto",
+        "@com_github_golang_snappy//:snappy",
+        "@com_github_prometheus_client_golang//prometheus",
+        "@com_github_prometheus_prometheus//prompb",
+        "@com_github_stretchr_testify//assert",
+        "@com_github_stretchr_testify//require",
+    ],
+)

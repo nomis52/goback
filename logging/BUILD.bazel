@@ -1,0 +1,26 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "logging",
+    srcs = [
+        "capturing_handler.go",
+        "log_collector.go",
+        "logger.go",
+    ],
+    importpath = "github.com/nomis52/goback/logging",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "logging_test",
+    srcs = [
+        "capturing_handler_test.go",
+        "log_collector_test.go",
+        "logger_test.go",
+    ],
+    embed = [":logging"],
+    deps = [
+        "@com_github_stretchr_testify//assert",
+        "@com_github_stretchr_testify//require",
+    ],
+)

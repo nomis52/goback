@@ -1,0 +1,21 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "proxmoxclient",
+    srcs = [
+        "client.go",
+        "types.go",
+    ],
+    importpath = "github.com/nomis52/goback/clients/proxmoxclient",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "proxmoxclient_test",
+    srcs = ["client_test.go"],
+    embed = [":proxmoxclient"],
+    deps = [
+        "@com_github_stretchr_testify//assert",
+        "@com_github_stretchr_testify//require",
+    ],
+)

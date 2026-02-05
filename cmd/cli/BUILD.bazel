@@ -1,0 +1,28 @@
+load("@rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "cli_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/nomis52/goback/cmd/cli",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//buildinfo",
+        "//config",
+        "//logging",
+        "//metrics",
+        "//workflow",
+        "//workflows",
+        "//workflows/backup",
+        "//workflows/poweroff",
+    ],
+)
+
+go_binary(
+    name = "cli",
+    embed = [":cli_lib"],
+    visibility = ["//visibility:public"],
+    x_defs = {
+        "github.com/nomis52/goback/buildinfo.buildTime": "{BUILD_TIMESTAMP}",
+        "github.com/nomis52/goback/buildinfo.gitCommit": "{STABLE_GIT_COMMIT}",
+    },
+)

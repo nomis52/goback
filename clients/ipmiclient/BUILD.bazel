@@ -1,0 +1,21 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "ipmiclient",
+    srcs = [
+        "ipmi.go",
+        "power_state.go",
+    ],
+    importpath = "github.com/nomis52/goback/clients/ipmiclient",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "ipmiclient_test",
+    srcs = [
+        "ipmi_test.go",
+        "power_state_test.go",
+    ],
+    embed = [":ipmiclient"],
+    deps = ["@com_github_stretchr_testify//assert"],
+)

@@ -1,0 +1,18 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "pbsclient",
+    srcs = ["client.go"],
+    importpath = "github.com/nomis52/goback/clients/pbsclient",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "pbsclient_test",
+    srcs = ["client_test.go"],
+    embed = [":pbsclient"],
+    deps = [
+        "@com_github_stretchr_testify//assert",
+        "@com_github_stretchr_testify//require",
+    ],
+)

@@ -1,0 +1,41 @@
+# Bazel configuration for goback
+
+# Use bzlmod (enabled by default in Bazel 9)
+common --enable_bzlmod
+
+# Workspace status for build-time variables
+build --workspace_status_command=/workspace/claude-session/goback/workspace_status.sh
+build --stamp
+
+# Disable CGO (matching Makefile's CGO_ENABLED=0)
+build --@rules_go//go/config:pure
+
+# Use static linking
+build --@rules_go//go/config:static
+
+# Go SDK configuration
+build --incompatible_enable_cc_toolchain_resolution
+
+# Performance settings
+build --jobs=auto
+
+# Error output
+build --verbose_failures
+
+# Test configuration
+test --test_output=errors
+test --test_summary=detailed
+
+# Cache settings
+build --disk_cache=~/.cache/bazel-disk-cache
+
+# Color output
+common --color=yes
+
+# Show build progress
+build --show_progress
+build --show_progress_rate_limit=1
+
+# Test environment
+test --test_env=GOOS=linux
+test --test_env=GOARCH=arm64

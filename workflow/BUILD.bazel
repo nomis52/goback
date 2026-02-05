@@ -1,0 +1,29 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "workflow",
+    srcs = [
+        "activity_id.go",
+        "activity_state.go",
+        "doc.go",
+        "orchestrator.go",
+        "types.go",
+        "workflow.go",
+    ],
+    importpath = "github.com/nomis52/goback/workflow",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "workflow_test",
+    srcs = [
+        "activity_id_test.go",
+        "orchestrator_test.go",
+    ],
+    embed = [":workflow"],
+    deps = [
+        "//logging",
+        "@com_github_stretchr_testify//assert",
+        "@com_github_stretchr_testify//require",
+    ],
+)
