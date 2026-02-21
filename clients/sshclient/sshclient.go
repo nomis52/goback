@@ -67,9 +67,13 @@ func (c *SSHClient) RunWithWriter(command string, stdoutWriter, stderrWriter io.
 
 	if stdoutWriter != nil {
 		session.Stdout = stdoutWriter
+	} else {
+		session.Stdout = io.Discard
 	}
 	if stderrWriter != nil {
 		session.Stderr = stderrWriter
+	} else {
+		session.Stderr = io.Discard
 	}
 
 	if err := session.Run(command); err != nil {

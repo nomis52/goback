@@ -29,9 +29,9 @@ Table-driven tests are the required pattern for organizing multiple test cases.
 
 ## Mocking and Dependencies
 
-- **Injectable Dependencies**: Make external dependencies injectable. Wrap external calls (e.g., `exec.Command`, network requests) in interfaces that can be swapped for mocks in tests.
-- **Manual Mocks**: Prefer simple manual mocks, fakes, or stubs over complex mocking frameworks. They are easier to maintain and understand.
-- **Placement**: Keep test helper types (mocks, stubs, test fixtures) and their methods at the end of the test file, after all test functions.
+- **Test Servers**: Prefer real test servers over mocks when testing network clients. Use `httptest.NewServer` for HTTP clients and in-process test servers for other protocols (e.g., SSH). This tests the actual client code without mocking internals.
+- **Manual Mocks**: When test servers aren't practical, prefer simple manual mocks, fakes, or stubs over complex mocking frameworks. They are easier to maintain and understand.
+- **Placement**: Keep test helper types (mocks, stubs, test fixtures, test servers) and their methods at the end of the test file, after all test functions.
 
 ## Test Commands
 

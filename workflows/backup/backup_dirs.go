@@ -22,7 +22,6 @@ import (
 
 var (
 	ErrMissingSSHConfig    = errors.New("missing SSH config: host, user, or private key is not set")
-	ErrSSHClientNotInit    = errors.New("SSH client not initialized")
 	ErrMissingBackupConfig = errors.New("missing backup configuration: token or target")
 )
 
@@ -91,9 +90,6 @@ type BackupDirs struct {
 	Files          config.FilesConfig `config:"files"`
 	PrivateKeyPath string             `config:"files.private_key_path"`
 
-	// SSH client for remote operations
-	sshClient *sshclient.SSHClient
-
 	// Metrics (initialized in Init)
 	lastBackupGauge metrics.GaugeVec
 	failureCounter  metrics.CounterVec
@@ -126,11 +122,22 @@ func (a *BackupDirs) Init() error {
 	}
 
 	host := a.Files.Host
-
 	if host == "" || a.Files.User == "" || a.PrivateKeyPath == "" {
 		return ErrMissingSSHConfig
 	}
 
+	// Validate the private key file is readable at startup
+	if _, err := os.ReadFile(a.PrivateKeyPath); err != nil {
+		return fmt.Errorf("failed to read private key file %s: %w", a.PrivateKeyPath, err)
+	}
+
+	return nil
+}
+
+// newSSHClient creates a new SSH client for the configured host.
+// The caller is responsible for closing the returned client.
+func (a *BackupDirs) newSSHClient() (*sshclient.SSHClient, error) {
+	host := a.Files.Host
 	// Default to port 22 if not specified
 	if _, _, err := net.SplitHostPort(host); err != nil {
 		host = host + defaultSSHPort
@@ -138,15 +145,14 @@ func (a *BackupDirs) Init() error {
 
 	privateKeyPEM, err := os.ReadFile(a.PrivateKeyPath)
 	if err != nil {
-		return fmt.Errorf("failed to read private key file %s: %w", a.PrivateKeyPath, err)
+		return nil, fmt.Errorf("failed to read private key file %s: %w", a.PrivateKeyPath, err)
 	}
 
 	client, err := sshclient.New(host, a.Files.User, string(privateKeyPEM))
 	if err != nil {
-		return fmt.Errorf("failed to create SSH client: %w", err)
+		return nil, fmt.Errorf("failed to create SSH client: %w", err)
 	}
-	a.sshClient = client
-	return nil
+	return client, nil
 }
 
 func (a *BackupDirs) Execute(ctx context.Context) error {
@@ -154,11 +160,17 @@ func (a *BackupDirs) Execute(ctx context.Context) error {
 		return nil // nothing configured
 	}
 
-	return activity.CaptureError(a.StatusLine, func() error {
-		if a.sshClient == nil {
-			return ErrSSHClientNotInit
+	sshClient, err := a.newSSHClient()
+	if err != nil {
+		return fmt.Errorf("failed to connect to backup host: %w", err)
+	}
+	defer func() {
+		if err := sshClient.Close(); err != nil {
+			a.Logger.Warn("failed to close SSH client", "error", err)
 		}
+	}()
 
+	return activity.CaptureError(a.StatusLine, func() error {
 		if len(a.Files.Sources) == 0 {
 			a.StatusLine.Set("no directories to backup")
 			return nil
@@ -167,14 +179,14 @@ func (a *BackupDirs) Execute(ctx context.Context) error {
 		a.StatusLine.Set(fmt.Sprintf("waiting for the PBS host to become available from %s", a.Files.Host))
 
 		// Test SSH connectivity before attempting backup
-		if err := a.waitForPBSHost(ctx); err != nil {
+		if err := a.waitForPBSHost(ctx, sshClient); err != nil {
 			a.Logger.Error("host not accessible via SSH", "error", err)
 			return err
 		}
 
 		a.StatusLine.Set(fmt.Sprintf("backing up %d directories", len(a.Files.Sources)))
 
-		err := a.backupAllDirs(a.Files.Sources)
+		err := a.backupAllDirs(sshClient, a.Files.Sources)
 		if err != nil {
 			a.Logger.Error("Backup failed", "sources", a.Files.Sources, "error", err)
 			return err
@@ -188,7 +200,7 @@ func (a *BackupDirs) Execute(ctx context.Context) error {
 
 // backupAllDirs executes a single backup command with all sources combined
 // This enables PBS deduplication across all directories
-func (a *BackupDirs) backupAllDirs(sources []string) error {
+func (a *BackupDirs) backupAllDirs(sshClient *sshclient.SSHClient, sources []string) error {
 	token := a.Files.Token
 	target := a.Files.Target
 
@@ -203,7 +215,7 @@ func (a *BackupDirs) backupAllDirs(sources []string) error {
 	defer stdoutLogger.Close()
 	defer stderrLogger.Close()
 
-	err := a.sshClient.RunWithWriter(cmd, stdoutLogger, stderrLogger)
+	err := sshClient.RunWithWriter(cmd, stdoutLogger, stderrLogger)
 
 	labels := prometheus.Labels{"target": target}
 	if err != nil {
@@ -226,7 +238,7 @@ func buildBackupCommand(token, target string, sources []string) string {
 }
 
 // waitForPBSHost tests if PBS is reachable from the remote host before starting backup
-func (a *BackupDirs) waitForPBSHost(ctx context.Context) error {
+func (a *BackupDirs) waitForPBSHost(ctx context.Context, sshClient *sshclient.SSHClient) error {
 	// Extract hostname from target (format: user@host!datastore@hostname:port)
 	target := a.Files.Target
 	pbsHost := extractPBSHostFromTarget(target)
@@ -239,7 +251,7 @@ func (a *BackupDirs) waitForPBSHost(ctx context.Context) error {
 	for attempt := 1; attempt <= pbsConnectivityMaxRetries; attempt++ {
 		// Test connectivity using a simple nc (netcat) command
 		cmd := fmt.Sprintf("nc -z -w5 %s 8007 2>/dev/null", pbsHost)
-		_, _, err := a.sshClient.Run(cmd)
+		_, _, err := sshClient.Run(cmd)
 		if err == nil {
 			a.Logger.Debug("PBS connectivity test successful", "pbs_host", pbsHost, "attempts", attempt)
 			return nil
