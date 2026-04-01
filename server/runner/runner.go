@@ -74,10 +74,11 @@ type Runner struct {
 	logCollector     *logging.LogCollector       // Captures logs during workflow execution
 
 	// Metrics
-	registry                 metrics.Registry
-	workflowLastRunTimestamp metrics.GaugeVec
-	workflowLastRunDuration  metrics.GaugeVec
-	workflowLastRunSuccess   metrics.GaugeVec
+	registry                          metrics.Registry
+	workflowLastRunTimestamp          metrics.GaugeVec
+	workflowLastRunDuration           metrics.GaugeVec
+	workflowLastRunSuccess            metrics.GaugeVec
+	workflowLastSuccessfulRunTimestamp metrics.GaugeVec
 }
 
 // ConfigProvider provides access to the current configuration.
@@ -142,6 +143,14 @@ func New(logger *slog.Logger, provider ConfigProvider, factories map[string]Work
 		}, []string{"workflow"})
 		if err != nil {
 			r.logger.Error("failed to create workflow_last_run_success metric", "error", err)
+		}
+
+		r.workflowLastSuccessfulRunTimestamp, err = r.registry.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "workflow_last_successful_run_timestamp_seconds",
+			Help: "Unix timestamp of the last successful workflow run",
+		}, []string{"workflow"})
+		if err != nil {
+			r.logger.Error("failed to create workflow_last_successful_run_timestamp_seconds metric", "error", err)
 		}
 	}
 
@@ -315,6 +324,7 @@ func (r *Runner) finish(err error) {
 				r.workflowLastRunSuccess.With(labels).Set(0)
 			} else {
 				r.workflowLastRunSuccess.With(labels).Set(1)
+				r.workflowLastSuccessfulRunTimestamp.With(labels).Set(float64(endTime.Unix()))
 			}
 		}
 	}
