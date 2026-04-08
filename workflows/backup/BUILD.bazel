@@ -1,0 +1,25 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "backup",
+    srcs = [
+        "backup_dirs.go",
+        "backup_vms.go",
+        "power_on_pbs.go",
+        "workflow.go",
+    ],
+    importpath = "github.com/nomis52/goback/workflows/backup",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//activity",
+        "//clients/ipmiclient",
+        "//clients/pbsclient",
+        "//clients/proxmoxclient",
+        "//clients/sshclient",
+        "//config",
+        "//metrics",
+        "//workflow",
+        "//workflows",
+        "@com_github_prometheus_client_golang//prometheus",
+    ],
+)

@@ -1,0 +1,36 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "runner",
+    srcs = [
+        "disk_store.go",
+        "mem_store.go",
+        "runner.go",
+        "store.go",
+        "types.go",
+    ],
+    importpath = "github.com/nomis52/goback/server/runner",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//activity",
+        "//config",
+        "//logging",
+        "//metrics",
+        "//workflow",
+        "//workflows",
+        "@com_github_prometheus_client_golang//prometheus",
+    ],
+)
+
+go_test(
+    name = "runner_test",
+    srcs = [
+        "disk_store_test.go",
+        "mem_store_test.go",
+    ],
+    embed = [":runner"],
+    deps = [
+        "@com_github_stretchr_testify//assert",
+        "@com_github_stretchr_testify//require",
+    ],
+)

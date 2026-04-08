@@ -1,0 +1,14 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "workflows",
+    srcs = ["params.go"],
+    importpath = "github.com/nomis52/goback/workflows",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//activity",
+        "//config",
+        "//metrics",
+        "//workflow",
+    ],
+)

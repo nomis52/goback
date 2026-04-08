@@ -1,0 +1,29 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "server",
+    srcs = [
+        "cert_loader.go",
+        "properties.go",
+        "server.go",
+    ],
+    embedsrcs = ["static/index.html"],
+    importpath = "github.com/nomis52/goback/server",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//buildinfo",
+        "//clients/ipmiclient",
+        "//config",
+        "//metrics",
+        "//server/config",
+        "//server/cron",
+        "//server/handlers",
+        "//server/runner",
+        "//server/types",
+        "//workflow",
+        "//workflows/backup",
+        "//workflows/demo",
+        "//workflows/poweroff",
+        "@com_github_prometheus_client_golang//prometheus",
+    ],
+)
