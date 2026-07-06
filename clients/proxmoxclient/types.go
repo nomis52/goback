@@ -122,6 +122,48 @@ func WithNotificationMode(mode string) BackupOption {
 	}
 }
 
+// Task represents an entry in a Proxmox node's task log.
+// See: GET /api2/json/nodes/{node}/tasks
+type Task struct {
+	UPID      string    `json:"upid"`
+	Type      string    `json:"type"`   // e.g. "qmstop", "qmshutdown", "vzstop", "vzshutdown", "vzdump"
+	ID        string    `json:"id"`     // for VM/CT tasks this is the VMID as a string
+	Status    string    `json:"status"` // exit status; "OK" on success, empty while running
+	StartTime time.Time `json:"starttime"`
+	EndTime   time.Time `json:"endtime"`
+}
+
+// UnmarshalJSON implements custom JSON unmarshaling for Task to handle Unix timestamp conversion.
+func (t *Task) UnmarshalJSON(data []byte) error {
+	type taskAlias Task
+	temp := struct {
+		*taskAlias
+		StartTime int64 `json:"starttime"`
+		EndTime   int64 `json:"endtime"`
+	}{
+		taskAlias: (*taskAlias)(t),
+	}
+
+	if err := json.Unmarshal(data, &temp); err != nil {
+		return err
+	}
+
+	// A zero Unix timestamp maps to the zero time.Time so callers can detect
+	// missing values (e.g. a task that has not finished has no endtime).
+	if temp.StartTime != 0 {
+		t.StartTime = time.Unix(temp.StartTime, 0)
+	} else {
+		t.StartTime = time.Time{}
+	}
+	if temp.EndTime != 0 {
+		t.EndTime = time.Unix(temp.EndTime, 0)
+	} else {
+		t.EndTime = time.Time{}
+	}
+
+	return nil
+}
+
 // TaskStatusResponse represents the response from the task status endpoint
 // See: GET /api2/json/nodes/{node}/tasks/{upid}/status
 // Example fields: status, exitstatus, starttime, endtime, etc.

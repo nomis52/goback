@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // Option is a function that configures a Client
@@ -274,6 +275,68 @@ func (c *Client) TaskStatus(ctx context.Context, node string, taskID TaskID) (*T
 	}
 
 	return &response.Data, nil
+}
+
+// stopTaskTypes are the task log types that represent a VM or container being
+// stopped or shut down.
+var stopTaskTypes = map[string]bool{
+	"qmstop":     true,
+	"qmshutdown": true,
+	"vzstop":     true,
+	"vzshutdown": true,
+}
+
+// LastStopTime returns when the VM was most recently stopped or shut down,
+// derived from the node's task log. found is false when no such task is present
+// (e.g. it aged out of the task archive, or the guest was shut down from within
+// and left no host task).
+// It queries GET /api2/json/nodes/{node}/tasks filtered to the given vmid.
+func (c *Client) LastStopTime(ctx context.Context, node string, vmid VMID) (time.Time, bool, error) {
+	path := fmt.Sprintf("/api2/json/nodes/%s/tasks?vmid=%d&source=archive&limit=500", node, vmid)
+
+	resp, err := c.doRequest(ctx, http.MethodGet, path)
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return time.Time{}, false, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	var response struct {
+		Data []json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(body, &response); err != nil {
+		return time.Time{}, false, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	var (
+		latest time.Time
+		found  bool
+	)
+	for _, rawTask := range response.Data {
+		var task Task
+		if err := json.Unmarshal(rawTask, &task); err != nil {
+			// Skip invalid entries rather than failing completely.
+			c.logger.Warn("Failed to unmarshal task entry", "error", err, "data", string(rawTask))
+			continue
+		}
+		if !stopTaskTypes[task.Type] || task.EndTime.IsZero() || task.Status != "OK" {
+			continue
+		}
+		if !found || task.EndTime.After(latest) {
+			latest = task.EndTime
+			found = true
+		}
+	}
+
+	return latest, found, nil
 }
 
 // Non-exported Methods
