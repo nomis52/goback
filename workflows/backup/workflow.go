@@ -18,6 +18,41 @@ import (
 // The workflow executes: PowerOnPBS → BackupDirs → BackupVMs
 // It does NOT power off PBS after completion.
 func NewWorkflow(params workflows.Params) (workflow.Workflow, error) {
+	o, err := newBackupOrchestrator(params)
+	if err != nil {
+		return nil, err
+	}
+
+	// Add backup activities
+	if err := o.AddActivity(&PowerOnPBS{}, &BackupDirs{}, &BackupVMs{}); err != nil {
+		return nil, fmt.Errorf("failed to add activities: %w", err)
+	}
+
+	return o, nil
+}
+
+// NewVMsWorkflow creates a workflow that powers on PBS and backs up VMs only,
+// skipping directory/file backups.
+// The workflow executes: PowerOnPBS → BackupVMs
+// It does NOT power off PBS after completion.
+func NewVMsWorkflow(params workflows.Params) (workflow.Workflow, error) {
+	o, err := newBackupOrchestrator(params)
+	if err != nil {
+		return nil, err
+	}
+
+	// Add backup activities (VMs only, no directory backups)
+	if err := o.AddActivity(&PowerOnPBS{}, &BackupVMs{}); err != nil {
+		return nil, fmt.Errorf("failed to add activities: %w", err)
+	}
+
+	return o, nil
+}
+
+// newBackupOrchestrator builds an orchestrator with the shared backup
+// dependencies (IPMI controller, PBS client, Proxmox client) and common
+// factories registered, but no activities added.
+func newBackupOrchestrator(params workflows.Params) (*workflow.Orchestrator, error) {
 	cfg := params.Config
 	logger := params.Logger
 
@@ -40,15 +75,6 @@ func NewWorkflow(params workflows.Params) (workflow.Workflow, error) {
 
 	// Inject common factories (logger, metrics registry, status line)
 	params.InjectInto(o)
-
-	// Add backup activities
-	powerOnPBS := &PowerOnPBS{}
-	backupDirs := &BackupDirs{}
-	backupVMs := &BackupVMs{}
-
-	if err := o.AddActivity(powerOnPBS, backupDirs, backupVMs); err != nil {
-		return nil, fmt.Errorf("failed to add activities: %w", err)
-	}
 
 	return o, nil
 }
