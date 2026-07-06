@@ -2,6 +2,7 @@ package proxmoxclient
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -321,6 +322,122 @@ func TestTaskStatus(t *testing.T) {
 				if tt.verifyFn != nil {
 					tt.verifyFn(t, status)
 				}
+			}
+		})
+	}
+}
+
+func TestLastStopTime(t *testing.T) {
+	tests := []struct {
+		name           string
+		node           string
+		vmid           VMID
+		serverResponse string
+		status         int
+		wantErr        string
+		wantFound      bool
+		wantUnix       int64
+	}{
+		{
+			name:    "picks most recent stop task",
+			node:    "pve2",
+			vmid:    101,
+			status:  http.StatusOK,
+			serverResponse: `{"data": [
+				{"upid": "UPID:...", "type": "qmshutdown", "id": "101", "status": "OK", "starttime": 1700000000, "endtime": 1700000030},
+				{"upid": "UPID:...", "type": "qmstop", "id": "101", "status": "OK", "starttime": 1700009000, "endtime": 1700009005},
+				{"upid": "UPID:...", "type": "vzdump", "id": "101", "status": "OK", "starttime": 1700010000, "endtime": 1700010500}
+			]}`,
+			wantFound: true,
+			wantUnix:  1700009005,
+		},
+		{
+			name:    "ignores non-stop, running, and failed tasks",
+			node:    "pve2",
+			vmid:    100,
+			status:  http.StatusOK,
+			serverResponse: `{"data": [
+				{"upid": "UPID:...", "type": "vzdump", "id": "100", "status": "OK", "starttime": 1700000000, "endtime": 1700000500},
+				{"upid": "UPID:...", "type": "qmstart", "id": "100", "status": "OK", "starttime": 1700001000, "endtime": 1700001010},
+				{"upid": "UPID:...", "type": "qmstop", "id": "100", "status": "", "starttime": 1700002000, "endtime": 0},
+				{"upid": "UPID:...", "type": "qmstop", "id": "100", "status": "some error", "starttime": 1700003000, "endtime": 1700003005},
+				{"upid": "UPID:...", "type": "qmshutdown", "id": "100", "status": "OK", "starttime": 1700004000, "endtime": 1700004020}
+			]}`,
+			wantFound: true,
+			wantUnix:  1700004020,
+		},
+		{
+			name:           "no matching tasks",
+			node:           "pve2",
+			vmid:           102,
+			status:         http.StatusOK,
+			serverResponse: `{"data": [{"upid": "UPID:...", "type": "vzdump", "id": "102", "status": "OK", "starttime": 1700000000, "endtime": 1700000500}]}`,
+			wantFound:      false,
+		},
+		{
+			name:           "empty response",
+			node:           "pve2",
+			vmid:           103,
+			status:         http.StatusOK,
+			serverResponse: `{"data": []}`,
+			wantFound:      false,
+		},
+		{
+			name:           "skips invalid entries",
+			node:           "pve2",
+			vmid:           104,
+			status:         http.StatusOK,
+			serverResponse: `{"data": ["invalid", {"upid": "UPID:...", "type": "qmstop", "id": "104", "status": "OK", "starttime": 1700005000, "endtime": 1700005005}]}`,
+			wantFound:      true,
+			wantUnix:       1700005005,
+		},
+		{
+			name:           "http error",
+			node:           "pve2",
+			vmid:           100,
+			status:         http.StatusInternalServerError,
+			serverResponse: "",
+			wantErr:        "unexpected status code: 500",
+		},
+		{
+			name:           "invalid json",
+			node:           "pve2",
+			vmid:           100,
+			status:         http.StatusOK,
+			serverResponse: "invalid json",
+			wantErr:        "failed to unmarshal response",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, "/api2/json/nodes/"+tt.node+"/tasks", r.URL.Path)
+				assert.Equal(t, fmt.Sprintf("%d", tt.vmid), r.URL.Query().Get("vmid"))
+				assert.Equal(t, "archive", r.URL.Query().Get("source"))
+
+				w.WriteHeader(tt.status)
+				w.Write([]byte(tt.serverResponse))
+			}))
+			defer ts.Close()
+
+			client, err := New(ts.URL)
+			require.NoError(t, err)
+
+			stopTime, found, err := client.LastStopTime(context.Background(), tt.node, tt.vmid)
+
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantFound, found)
+			if tt.wantFound {
+				assert.Equal(t, tt.wantUnix, stopTime.Unix())
+			} else {
+				assert.True(t, stopTime.IsZero())
 			}
 		})
 	}

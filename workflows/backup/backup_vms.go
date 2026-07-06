@@ -284,10 +284,29 @@ func (a *BackupVMs) determineBackups(ctx context.Context) ([]proxmoxclient.Resou
 
 	var resourcesToBackup []proxmoxclient.Resource
 	for vmID, lastBackup := range getMostRecentBackupTimes(backups, resources) {
-		if lastBackup.IsZero() || time.Since(lastBackup) > a.MaxBackupAge {
-			if resource, exists := resourceMap[vmID]; exists {
-				resourcesToBackup = append(resourcesToBackup, resource)
+		resource, exists := resourceMap[vmID]
+		if !exists {
+			continue
+		}
+
+		// A stopped VM whose latest backup post-dates its power-off is already
+		// captured at rest and cannot have changed, so skip it. On any lookup
+		// error, or when no stop time is found, fall through to the age check
+		// below (fail-safe: back up if stale).
+		if resource.Status == "stopped" && !lastBackup.IsZero() {
+			if stopTime, found, err := a.ProxmoxClient.LastStopTime(ctx, resource.Node, vmID); err != nil {
+				a.Logger.Warn("Failed to look up stop time, falling back to age check",
+					"vmid", vmID, "name", resource.Name, "error", err)
+			} else if found && lastBackup.After(stopTime) {
+				a.Logger.Debug("Skipping stopped VM already backed up after power-off",
+					"vmid", vmID, "name", resource.Name,
+					"last_backup", lastBackup, "stopped_at", stopTime)
+				continue
 			}
+		}
+
+		if lastBackup.IsZero() || time.Since(lastBackup) > a.MaxBackupAge {
+			resourcesToBackup = append(resourcesToBackup, resource)
 		}
 	}
 
