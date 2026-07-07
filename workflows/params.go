@@ -6,6 +6,8 @@ package workflows
 import (
 	"log/slog"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/nomis52/goback/activity"
 	"github.com/nomis52/goback/config"
 	"github.com/nomis52/goback/metrics"
@@ -44,6 +46,7 @@ func (p Params) InjectInto(o *workflow.Orchestrator) {
 	// Metrics registry (optional - activities check for nil)
 	if p.Registry != nil {
 		workflow.Provide(o, workflow.Shared(p.Registry))
+		p.registerActivityRunningMetric(o)
 	}
 
 	// Logger factory (per-activity, defaults to shared logger)
@@ -53,5 +56,34 @@ func (p Params) InjectInto(o *workflow.Orchestrator) {
 	workflow.Provide(o, func(id workflow.ActivityID) *activity.StatusLine {
 		activityLogger := loggerFactory(id)
 		return activity.NewStatusLine(id, activityLogger, p.StatusCollection)
+	})
+}
+
+// registerActivityRunningMetric installs an activity_running gauge that reports 1
+// while an activity is executing and 0 once it finishes. It observes activity
+// state transitions on the orchestrator so every activity is covered without
+// per-activity wiring. The caller must ensure p.Registry is non-nil.
+func (p Params) registerActivityRunningMetric(o *workflow.Orchestrator) {
+	activityRunning, err := p.Registry.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "activity_running",
+		Help: "Whether a workflow activity is currently running (1) or not (0)",
+	}, []string{"activity"})
+	if err != nil {
+		if p.Logger != nil {
+			p.Logger.Error("failed to create activity_running metric", "error", err)
+		}
+		return
+	}
+
+	o.SetActivityStateObserver(func(id workflow.ActivityID, result *workflow.Result) {
+		// Label by the bare activity name (its type) so an activity reused
+		// across workflows maps to a single series.
+		gauge := activityRunning.With(prometheus.Labels{"activity": id.Type})
+		switch result.State {
+		case workflow.Running:
+			gauge.Set(1)
+		case workflow.Completed, workflow.Skipped:
+			gauge.Set(0)
+		}
 	})
 }

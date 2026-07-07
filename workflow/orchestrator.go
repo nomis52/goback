@@ -34,8 +34,21 @@ type Orchestrator struct {
 	completionChans map[ActivityID]chan struct{} // activity ID -> completion signal (closed when done)
 	resultMap       map[ActivityID]*Result       // activity ID -> result (protected by mutex)
 
+	// stateObserver, if set, is called whenever an activity transitions to a new
+	// execution state. It enables cross-cutting concerns (metrics, tracing) without
+	// coupling the orchestrator to those packages.
+	stateObserver ActivityStateObserver
+
 	mu sync.RWMutex
 }
+
+// ActivityStateObserver is notified whenever an activity transitions to a new
+// execution state during Execute(). It receives the activity's latest Result,
+// which carries the new State along with timing and error details. It is called
+// synchronously from the activity's goroutine, so implementations must be
+// non-blocking and safe for concurrent use across activities. The Result must be
+// treated as read-only.
+type ActivityStateObserver func(ActivityID, *Result)
 
 // Factory creates a dependency instance for a specific activity.
 // The activityID parameter can be used to create activity-specific instances,
@@ -86,6 +99,13 @@ func WithConfig(config interface{}) OrchestratorOption {
 	return func(o *Orchestrator) {
 		o.config = config
 	}
+}
+
+// SetActivityStateObserver registers an observer that is notified of every
+// activity state transition during Execute(). See ActivityStateObserver.
+// It must be called before Execute(); passing nil clears any existing observer.
+func (o *Orchestrator) SetActivityStateObserver(observer ActivityStateObserver) {
+	o.stateObserver = observer
 }
 
 // NewOrchestrator creates a new orchestrator instance with optional configuration
@@ -266,17 +286,28 @@ func (o *Orchestrator) Execute(ctx context.Context) error {
 	return nil
 }
 
+// updateState records the activity's new result and notifies the registered
+// state observer, if any. The map write is done under the lock; the observer is
+// invoked afterwards outside the lock so implementations cannot deadlock against
+// orchestrator methods.
+func (o *Orchestrator) updateState(id ActivityID, result *Result) {
+	o.mu.Lock()
+	o.resultMap[id] = result
+	o.mu.Unlock()
+
+	if o.stateObserver != nil {
+		o.stateObserver(id, result)
+	}
+}
+
 // runActivity executes a single activity after waiting for its dependencies
 func (o *Orchestrator) runActivity(ctx context.Context, id ActivityID, activity Activity, wg *sync.WaitGroup, errorChan chan<- error) {
 	defer wg.Done()
 	activityLogger := o.logger.With("activity_module", id.Module, "activity_type", id.Type, "activity_id", id.String())
 	activityLogger.Debug("activity goroutine started")
 
-	// Get the pre-initialized result and update it to Pending
-	o.mu.Lock()
-	result := o.resultMap[id]
-	result.State = Pending // Activity is now waiting for dependencies
-	o.mu.Unlock()
+	// Activity is now waiting for its dependencies to complete.
+	o.updateState(id, &Result{State: Pending})
 
 	// Wait for all dependencies to complete successfully
 	dependencies := o.dependencyMap[id]
@@ -290,10 +321,7 @@ func (o *Orchestrator) runActivity(ctx context.Context, id ActivityID, activity 
 		case <-ctx.Done():
 			activityLogger.Warn("activity cancelled due to context", "error", ctx.Err())
 			// Update result to show cancellation (Error remains nil as per documentation)
-			result = &Result{State: Skipped, Error: nil}
-			o.mu.Lock()
-			o.resultMap[id] = result
-			o.mu.Unlock()
+			o.updateState(id, &Result{State: Skipped})
 			// Signal completion for this activity since it's now skipped
 			close(o.completionChans[id])
 			errorChan <- fmt.Errorf("activity %s cancelled: %w", id.String(), ctx.Err())
@@ -311,10 +339,7 @@ func (o *Orchestrator) runActivity(ctx context.Context, id ActivityID, activity 
 		if !exists {
 			activityLogger.Error("dependency completed but no result found", "dependency", depID.String())
 			// Skipped activities have Error = nil as per documentation
-			result = &Result{State: Skipped, Error: nil}
-			o.mu.Lock()
-			o.resultMap[id] = result
-			o.mu.Unlock()
+			o.updateState(id, &Result{State: Skipped})
 			// Signal completion for this activity since it's now skipped
 			close(o.completionChans[id])
 			errorChan <- fmt.Errorf("activity %s skipped: dependency %s completed but no result found", id.String(), depID.String())
@@ -324,10 +349,7 @@ func (o *Orchestrator) runActivity(ctx context.Context, id ActivityID, activity 
 		if !depResult.IsSuccess() {
 			activityLogger.Error("dependency failed", "dependency", depID.String(), "error", depResult.Error)
 			// Skipped activities have Error = nil as per documentation
-			result = &Result{State: Skipped, Error: nil}
-			o.mu.Lock()
-			o.resultMap[id] = result
-			o.mu.Unlock()
+			o.updateState(id, &Result{State: Skipped})
 			// Signal completion for this activity since it's now skipped
 			close(o.completionChans[id])
 			errorChan <- fmt.Errorf("activity %s skipped due to dependency failure: %s", id.String(), depID.String())
@@ -341,10 +363,8 @@ func (o *Orchestrator) runActivity(ctx context.Context, id ActivityID, activity 
 	activityLogger.Info("all dependencies satisfied, executing activity")
 
 	// Mark as running
-	result = &Result{State: Running, Error: nil, StartTime: time.Now()}
-	o.mu.Lock()
-	o.resultMap[id] = result
-	o.mu.Unlock()
+	result := &Result{State: Running, StartTime: time.Now()}
+	o.updateState(id, result)
 
 	// Execute the activity
 	err := activity.Execute(ctx)
@@ -359,9 +379,7 @@ func (o *Orchestrator) runActivity(ctx context.Context, id ActivityID, activity 
 	}
 
 	// Store final result
-	o.mu.Lock()
-	o.resultMap[id] = result
-	o.mu.Unlock()
+	o.updateState(id, result)
 
 	// Signal completion
 	close(o.completionChans[id])
