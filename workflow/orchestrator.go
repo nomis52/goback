@@ -319,7 +319,7 @@ func (o *Orchestrator) runActivity(ctx context.Context, id ActivityID, activity 
 		case <-ctx.Done():
 			activityLogger.Warn("activity cancelled due to context", "error", ctx.Err())
 			// Update result to show cancellation (Error remains nil as per documentation)
-			o.updateState(id, &Result{State: Skipped, Error: nil})
+			o.updateState(id, &Result{State: Skipped})
 			// Signal completion for this activity since it's now skipped
 			close(o.completionChans[id])
 			errorChan <- fmt.Errorf("activity %s cancelled: %w", id.String(), ctx.Err())
@@ -337,7 +337,7 @@ func (o *Orchestrator) runActivity(ctx context.Context, id ActivityID, activity 
 		if !exists {
 			activityLogger.Error("dependency completed but no result found", "dependency", depID.String())
 			// Skipped activities have Error = nil as per documentation
-			o.updateState(id, &Result{State: Skipped, Error: nil})
+			o.updateState(id, &Result{State: Skipped})
 			// Signal completion for this activity since it's now skipped
 			close(o.completionChans[id])
 			errorChan <- fmt.Errorf("activity %s skipped: dependency %s completed but no result found", id.String(), depID.String())
@@ -347,7 +347,7 @@ func (o *Orchestrator) runActivity(ctx context.Context, id ActivityID, activity 
 		if !depResult.IsSuccess() {
 			activityLogger.Error("dependency failed", "dependency", depID.String(), "error", depResult.Error)
 			// Skipped activities have Error = nil as per documentation
-			o.updateState(id, &Result{State: Skipped, Error: nil})
+			o.updateState(id, &Result{State: Skipped})
 			// Signal completion for this activity since it's now skipped
 			close(o.completionChans[id])
 			errorChan <- fmt.Errorf("activity %s skipped due to dependency failure: %s", id.String(), depID.String())
@@ -361,7 +361,7 @@ func (o *Orchestrator) runActivity(ctx context.Context, id ActivityID, activity 
 	activityLogger.Info("all dependencies satisfied, executing activity")
 
 	// Mark as running
-	result := &Result{State: Running, Error: nil, StartTime: time.Now()}
+	result := &Result{State: Running, StartTime: time.Now()}
 	o.updateState(id, result)
 
 	// Execute the activity
