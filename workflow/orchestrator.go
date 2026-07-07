@@ -46,7 +46,7 @@ type Orchestrator struct {
 // execution state during Execute(). It is called synchronously from the
 // activity's goroutine, so implementations must be non-blocking and safe for
 // concurrent use across activities.
-type ActivityStateObserver func(id ActivityID, state ActivityState)
+type ActivityStateObserver func(ActivityID, ActivityState)
 
 // Factory creates a dependency instance for a specific activity.
 // The activityID parameter can be used to create activity-specific instances,
@@ -284,11 +284,17 @@ func (o *Orchestrator) Execute(ctx context.Context) error {
 	return nil
 }
 
-// notifyState invokes the registered state observer, if any. It is a no-op when
-// no observer is configured.
-func (o *Orchestrator) notifyState(id ActivityID, state ActivityState) {
+// updateState records the activity's new result and notifies the registered
+// state observer, if any. The map write is done under the lock; the observer is
+// invoked afterwards outside the lock so implementations cannot deadlock against
+// orchestrator methods.
+func (o *Orchestrator) updateState(id ActivityID, result *Result) {
+	o.mu.Lock()
+	o.resultMap[id] = result
+	o.mu.Unlock()
+
 	if o.stateObserver != nil {
-		o.stateObserver(id, state)
+		o.stateObserver(id, result.State)
 	}
 }
 
@@ -298,12 +304,8 @@ func (o *Orchestrator) runActivity(ctx context.Context, id ActivityID, activity 
 	activityLogger := o.logger.With("activity_module", id.Module, "activity_type", id.Type, "activity_id", id.String())
 	activityLogger.Debug("activity goroutine started")
 
-	// Get the pre-initialized result and update it to Pending
-	o.mu.Lock()
-	result := o.resultMap[id]
-	result.State = Pending // Activity is now waiting for dependencies
-	o.mu.Unlock()
-	o.notifyState(id, Pending)
+	// Activity is now waiting for its dependencies to complete.
+	o.updateState(id, &Result{State: Pending})
 
 	// Wait for all dependencies to complete successfully
 	dependencies := o.dependencyMap[id]
@@ -317,13 +319,9 @@ func (o *Orchestrator) runActivity(ctx context.Context, id ActivityID, activity 
 		case <-ctx.Done():
 			activityLogger.Warn("activity cancelled due to context", "error", ctx.Err())
 			// Update result to show cancellation (Error remains nil as per documentation)
-			result = &Result{State: Skipped, Error: nil}
-			o.mu.Lock()
-			o.resultMap[id] = result
-			o.mu.Unlock()
+			o.updateState(id, &Result{State: Skipped, Error: nil})
 			// Signal completion for this activity since it's now skipped
 			close(o.completionChans[id])
-			o.notifyState(id, Skipped)
 			errorChan <- fmt.Errorf("activity %s cancelled: %w", id.String(), ctx.Err())
 			return
 		case <-o.completionChans[depID]:
@@ -339,13 +337,9 @@ func (o *Orchestrator) runActivity(ctx context.Context, id ActivityID, activity 
 		if !exists {
 			activityLogger.Error("dependency completed but no result found", "dependency", depID.String())
 			// Skipped activities have Error = nil as per documentation
-			result = &Result{State: Skipped, Error: nil}
-			o.mu.Lock()
-			o.resultMap[id] = result
-			o.mu.Unlock()
+			o.updateState(id, &Result{State: Skipped, Error: nil})
 			// Signal completion for this activity since it's now skipped
 			close(o.completionChans[id])
-			o.notifyState(id, Skipped)
 			errorChan <- fmt.Errorf("activity %s skipped: dependency %s completed but no result found", id.String(), depID.String())
 			return
 		}
@@ -353,13 +347,9 @@ func (o *Orchestrator) runActivity(ctx context.Context, id ActivityID, activity 
 		if !depResult.IsSuccess() {
 			activityLogger.Error("dependency failed", "dependency", depID.String(), "error", depResult.Error)
 			// Skipped activities have Error = nil as per documentation
-			result = &Result{State: Skipped, Error: nil}
-			o.mu.Lock()
-			o.resultMap[id] = result
-			o.mu.Unlock()
+			o.updateState(id, &Result{State: Skipped, Error: nil})
 			// Signal completion for this activity since it's now skipped
 			close(o.completionChans[id])
-			o.notifyState(id, Skipped)
 			errorChan <- fmt.Errorf("activity %s skipped due to dependency failure: %s", id.String(), depID.String())
 			return
 		}
@@ -371,11 +361,8 @@ func (o *Orchestrator) runActivity(ctx context.Context, id ActivityID, activity 
 	activityLogger.Info("all dependencies satisfied, executing activity")
 
 	// Mark as running
-	result = &Result{State: Running, Error: nil, StartTime: time.Now()}
-	o.mu.Lock()
-	o.resultMap[id] = result
-	o.mu.Unlock()
-	o.notifyState(id, Running)
+	result := &Result{State: Running, Error: nil, StartTime: time.Now()}
+	o.updateState(id, result)
 
 	// Execute the activity
 	err := activity.Execute(ctx)
@@ -390,10 +377,7 @@ func (o *Orchestrator) runActivity(ctx context.Context, id ActivityID, activity 
 	}
 
 	// Store final result
-	o.mu.Lock()
-	o.resultMap[id] = result
-	o.mu.Unlock()
-	o.notifyState(id, Completed)
+	o.updateState(id, result)
 
 	// Signal completion
 	close(o.completionChans[id])
