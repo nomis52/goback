@@ -874,10 +874,33 @@
             }
         }
 
+        // Order activities by execution order: activities that have started sort
+        // by start time; those that never started (pending/skipped, i.e. no or
+        // zero start time) sort last, by type name for stable output. Returns a
+        // new array; the input is left untouched.
+        function sortByExecutionOrder(executions) {
+            const startMs = (e) => {
+                if (!e.start_time || e.start_time === '0001-01-01T00:00:00Z') return null;
+                const t = Date.parse(e.start_time);
+                return Number.isNaN(t) ? null : t;
+            };
+            return [...executions].sort((a, b) => {
+                const am = startMs(a), bm = startMs(b);
+                if (am !== null && bm !== null) {
+                    if (am !== bm) return am - bm;
+                    return (a.type || '').localeCompare(b.type || '');
+                }
+                if ((am !== null) !== (bm !== null)) return am !== null ? -1 : 1;
+                return (a.type || '').localeCompare(b.type || '');
+            });
+        }
+
         function renderHistoryActivityDetails(runId, executions) {
             if (!executions || executions.length === 0) {
                 return '<div class="empty-state" style="padding: 1rem;">No activity details available</div>';
             }
+
+            executions = sortByExecutionOrder(executions);
 
             return `
                 <table style="background-color: var(--bg-primary); margin: 0; width: 100%;">
@@ -1096,7 +1119,7 @@
                 const tbody = document.getElementById('activitiesBody');
                 const count = document.getElementById('activityCount');
 
-                const executions = data.active_workflow.activity_logs || [];
+                const executions = sortByExecutionOrder(data.active_workflow.activity_logs || []);
                 currentExecutions = executions; // Store for expand/collapse
 
                 if (!isRunning || executions.length === 0) {
@@ -1104,7 +1127,7 @@
                     emptyState.classList.remove('hidden');
                     count.textContent = 'No active workflow';
                 } else {
-                    // Backend provides activities in execution order (by start time)
+                    // Activities are ordered client-side by execution order (start time)
                     table.classList.remove('hidden');
                     emptyState.classList.add('hidden');
                     count.textContent = `${executions.length} activit${executions.length !== 1 ? 'ies' : 'y'}`;
