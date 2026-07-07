@@ -201,6 +201,8 @@ func (a *BackupVMs) performBackup(ctx context.Context, resource proxmoxclient.Re
 
 	timeout := time.After(a.BackupTimeout)
 
+	var lastStatus string
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -219,13 +221,18 @@ func (a *BackupVMs) performBackup(ctx context.Context, resource proxmoxclient.Re
 				return err
 			}
 
-			a.Logger.Debug("Backup task status",
-				"vmid", resource.VMID,
-				"name", resource.Name,
-				"node", resource.Node,
-				"task_id", taskID,
-				"status", status.Status,
-				"exit_status", status.ExitStatus)
+			// Only log when the task status changes to avoid spamming the logs
+			// on every poll.
+			if status.Status != lastStatus {
+				a.Logger.Debug("Backup task status",
+					"vmid", resource.VMID,
+					"name", resource.Name,
+					"node", resource.Node,
+					"task_id", taskID,
+					"status", status.Status,
+					"exit_status", status.ExitStatus)
+				lastStatus = status.Status
+			}
 
 			// Check if task is complete
 			if status.Status == "stopped" {
