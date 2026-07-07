@@ -43,10 +43,12 @@ type Orchestrator struct {
 }
 
 // ActivityStateObserver is notified whenever an activity transitions to a new
-// execution state during Execute(). It is called synchronously from the
-// activity's goroutine, so implementations must be non-blocking and safe for
-// concurrent use across activities.
-type ActivityStateObserver func(ActivityID, ActivityState)
+// execution state during Execute(). It receives the activity's latest Result,
+// which carries the new State along with timing and error details. It is called
+// synchronously from the activity's goroutine, so implementations must be
+// non-blocking and safe for concurrent use across activities. The Result must be
+// treated as read-only.
+type ActivityStateObserver func(ActivityID, *Result)
 
 // Factory creates a dependency instance for a specific activity.
 // The activityID parameter can be used to create activity-specific instances,
@@ -294,7 +296,7 @@ func (o *Orchestrator) updateState(id ActivityID, result *Result) {
 	o.mu.Unlock()
 
 	if o.stateObserver != nil {
-		o.stateObserver(id, result.State)
+		o.stateObserver(id, result)
 	}
 }
 

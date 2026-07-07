@@ -37,7 +37,7 @@ func scrapeBody(t *testing.T, registry *metrics.ScrapeRegistry) string {
 	return w.Body.String()
 }
 
-func TestInjectInto_StepRunningMetric(t *testing.T) {
+func TestInjectInto_ActivityRunningMetric(t *testing.T) {
 	registry, err := metrics.NewScrapeRegistry()
 	require.NoError(t, err)
 
@@ -54,18 +54,18 @@ func TestInjectInto_StepRunningMetric(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- o.Execute(context.Background()) }()
 
-	// Wait until the step is actually executing.
+	// Wait until the activity is actually executing.
 	select {
 	case <-act.started:
 	case <-time.After(2 * time.Second):
 		t.Fatal("activity did not start")
 	}
 
-	// While running, the gauge should report 1 for this step (labeled by the
-	// bare step name, not the workflow-qualified name).
-	assert.Contains(t, scrapeBody(t, registry), `step_running{step="blockingActivity"} 1`)
+	// While running, the gauge should report 1 for this activity (labeled by the
+	// bare activity name, not the workflow-qualified name).
+	assert.Contains(t, scrapeBody(t, registry), `activity_running{activity="blockingActivity"} 1`)
 
-	// Let the step finish and wait for the workflow to complete.
+	// Let the activity finish and wait for the workflow to complete.
 	close(act.release)
 	select {
 	case err := <-done:
@@ -75,7 +75,7 @@ func TestInjectInto_StepRunningMetric(t *testing.T) {
 	}
 
 	// Once finished, the gauge should report 0.
-	assert.Contains(t, scrapeBody(t, registry), `step_running{step="blockingActivity"} 0`)
+	assert.Contains(t, scrapeBody(t, registry), `activity_running{activity="blockingActivity"} 0`)
 }
 
 func TestInjectInto_NoRegistry(t *testing.T) {

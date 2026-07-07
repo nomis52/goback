@@ -19,10 +19,10 @@ func newRecordingObserver() *recordingObserver {
 	return &recordingObserver{states: make(map[string][]ActivityState)}
 }
 
-func (r *recordingObserver) observe(id ActivityID, state ActivityState) {
+func (r *recordingObserver) observe(id ActivityID, result *Result) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.states[id.String()] = append(r.states[id.String()], state)
+	r.states[id.String()] = append(r.states[id.String()], result.State)
 }
 
 func (r *recordingObserver) forType(typeName string) []ActivityState {
