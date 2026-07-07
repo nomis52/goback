@@ -69,15 +69,16 @@ type Runner struct {
 
 	mu               sync.Mutex
 	runStatus        RunSummary
-	workflow         workflow.Workflow           // Current or last run's workflow
-	statusCollection *activity.StatusHandler     // Current run's status collection
-	logCollector     *logging.LogCollector       // Captures logs during workflow execution
+	workflow         workflow.Workflow       // Current or last run's workflow
+	statusCollection *activity.StatusHandler // Current run's status collection
+	logCollector     *logging.LogCollector   // Captures logs during workflow execution
 
 	// Metrics
-	registry                          metrics.Registry
-	workflowLastRunTimestamp          metrics.GaugeVec
-	workflowLastRunDuration           metrics.GaugeVec
-	workflowLastRunSuccess            metrics.GaugeVec
+	registry                           metrics.Registry
+	workflowRunning                    metrics.GaugeVec
+	workflowLastRunTimestamp           metrics.GaugeVec
+	workflowLastRunDuration            metrics.GaugeVec
+	workflowLastRunSuccess             metrics.GaugeVec
 	workflowLastSuccessfulRunTimestamp metrics.GaugeVec
 }
 
@@ -121,6 +122,14 @@ func New(logger *slog.Logger, provider ConfigProvider, factories map[string]Work
 	// Initialize workflow metrics if registry is provided
 	if r.registry != nil {
 		var err error
+		r.workflowRunning, err = r.registry.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "workflow_running",
+			Help: "Whether the workflow is currently running (1) or not (0)",
+		}, []string{"workflow"})
+		if err != nil {
+			r.logger.Error("failed to create workflow_running metric", "error", err)
+		}
+
 		r.workflowLastRunTimestamp, err = r.registry.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "workflow_last_run_timestamp_seconds",
 			Help: "Unix timestamp of the last workflow run",
@@ -290,6 +299,14 @@ func (r *Runner) tryStart(workflows []string) bool {
 		StartedAt: &now,
 	}
 	r.runStatus.ID = r.runStatus.CalculateID()
+
+	// Mark all workflows in this run as running.
+	if r.workflowRunning != nil {
+		for _, workflowName := range workflows {
+			r.workflowRunning.With(prometheus.Labels{"workflow": workflowName}).Set(1)
+		}
+	}
+
 	return true
 }
 
@@ -316,6 +333,10 @@ func (r *Runner) finish(err error) {
 	if r.workflowLastRunTimestamp != nil {
 		for _, workflowName := range r.runStatus.Workflows {
 			labels := prometheus.Labels{"workflow": workflowName}
+
+			if r.workflowRunning != nil {
+				r.workflowRunning.With(labels).Set(0)
+			}
 
 			r.workflowLastRunTimestamp.With(labels).Set(float64(endTime.Unix()))
 			r.workflowLastRunDuration.With(labels).Set(duration.Seconds())
