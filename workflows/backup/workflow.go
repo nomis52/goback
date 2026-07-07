@@ -49,6 +49,24 @@ func NewVMsWorkflow(params workflows.Params) (workflow.Workflow, error) {
 	return o, nil
 }
 
+// NewDirsWorkflow creates a workflow that powers on PBS and backs up directories
+// only, skipping VM/LXC backups.
+// The workflow executes: PowerOnPBS → BackupDirs
+// It does NOT power off PBS after completion.
+func NewDirsWorkflow(params workflows.Params) (workflow.Workflow, error) {
+	o, err := newBackupOrchestrator(params)
+	if err != nil {
+		return nil, err
+	}
+
+	// Add backup activities (directories only, no VM backups)
+	if err := o.AddActivity(&PowerOnPBS{}, &BackupDirs{}); err != nil {
+		return nil, fmt.Errorf("failed to add activities: %w", err)
+	}
+
+	return o, nil
+}
+
 // newBackupOrchestrator builds an orchestrator with the shared backup
 // dependencies (IPMI controller, PBS client, Proxmox client) and common
 // factories registered, but no activities added.

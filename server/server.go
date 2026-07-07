@@ -64,6 +64,7 @@ import (
 	"github.com/nomis52/goback/workflows/computebackup"
 	"github.com/nomis52/goback/workflows/demo"
 	"github.com/nomis52/goback/workflows/poweroff"
+	"github.com/nomis52/goback/workflows/serialfullbackup"
 )
 
 //go:embed static
@@ -79,10 +80,11 @@ const (
 // defaultWorkflowFactories returns the standard workflow factories for backup, compute-backup, poweroff, and demo workflows.
 func defaultWorkflowFactories() map[string]runner.WorkflowFactory {
 	return map[string]runner.WorkflowFactory{
-		"backup":         backup.NewWorkflow,
-		"compute-backup": computebackup.NewWorkflow,
-		"poweroff":       poweroff.NewWorkflow,
-		"demo":           demo.NewWorkflow,
+		"backup":             backup.NewWorkflow,
+		"compute-backup":     computebackup.NewWorkflow,
+		"serial-full-backup": serialfullbackup.NewWorkflow,
+		"poweroff":           poweroff.NewWorkflow,
+		"demo":               demo.NewWorkflow,
 	}
 }
 
