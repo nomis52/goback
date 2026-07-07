@@ -6,6 +6,8 @@ package workflows
 import (
 	"log/slog"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/nomis52/goback/activity"
 	"github.com/nomis52/goback/config"
 	"github.com/nomis52/goback/metrics"
@@ -44,6 +46,7 @@ func (p Params) InjectInto(o *workflow.Orchestrator) {
 	// Metrics registry (optional - activities check for nil)
 	if p.Registry != nil {
 		workflow.Provide(o, workflow.Shared(p.Registry))
+		p.registerStepRunningMetric(o)
 	}
 
 	// Logger factory (per-activity, defaults to shared logger)
@@ -53,5 +56,32 @@ func (p Params) InjectInto(o *workflow.Orchestrator) {
 	workflow.Provide(o, func(id workflow.ActivityID) *activity.StatusLine {
 		activityLogger := loggerFactory(id)
 		return activity.NewStatusLine(id, activityLogger, p.StatusCollection)
+	})
+}
+
+// registerStepRunningMetric installs a step_running gauge that reports 1 while a
+// step (activity) is executing and 0 once it finishes. It observes activity state
+// transitions on the orchestrator so every step is covered without per-activity
+// wiring. The caller must ensure p.Registry is non-nil.
+func (p Params) registerStepRunningMetric(o *workflow.Orchestrator) {
+	stepRunning, err := p.Registry.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "step_running",
+		Help: "Whether a workflow step is currently running (1) or not (0)",
+	}, []string{"step"})
+	if err != nil {
+		if p.Logger != nil {
+			p.Logger.Error("failed to create step_running metric", "error", err)
+		}
+		return
+	}
+
+	o.SetActivityStateObserver(func(id workflow.ActivityID, state workflow.ActivityState) {
+		gauge := stepRunning.With(prometheus.Labels{"step": id.ShortString()})
+		switch state {
+		case workflow.Running:
+			gauge.Set(1)
+		case workflow.Completed, workflow.Skipped:
+			gauge.Set(0)
+		}
 	})
 }

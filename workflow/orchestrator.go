@@ -34,8 +34,19 @@ type Orchestrator struct {
 	completionChans map[ActivityID]chan struct{} // activity ID -> completion signal (closed when done)
 	resultMap       map[ActivityID]*Result       // activity ID -> result (protected by mutex)
 
+	// stateObserver, if set, is called whenever an activity transitions to a new
+	// execution state. It enables cross-cutting concerns (metrics, tracing) without
+	// coupling the orchestrator to those packages.
+	stateObserver ActivityStateObserver
+
 	mu sync.RWMutex
 }
+
+// ActivityStateObserver is notified whenever an activity transitions to a new
+// execution state during Execute(). It is called synchronously from the
+// activity's goroutine, so implementations must be non-blocking and safe for
+// concurrent use across activities.
+type ActivityStateObserver func(id ActivityID, state ActivityState)
 
 // Factory creates a dependency instance for a specific activity.
 // The activityID parameter can be used to create activity-specific instances,
@@ -86,6 +97,13 @@ func WithConfig(config interface{}) OrchestratorOption {
 	return func(o *Orchestrator) {
 		o.config = config
 	}
+}
+
+// SetActivityStateObserver registers an observer that is notified of every
+// activity state transition during Execute(). See ActivityStateObserver.
+// It must be called before Execute(); passing nil clears any existing observer.
+func (o *Orchestrator) SetActivityStateObserver(observer ActivityStateObserver) {
+	o.stateObserver = observer
 }
 
 // NewOrchestrator creates a new orchestrator instance with optional configuration
@@ -266,6 +284,14 @@ func (o *Orchestrator) Execute(ctx context.Context) error {
 	return nil
 }
 
+// notifyState invokes the registered state observer, if any. It is a no-op when
+// no observer is configured.
+func (o *Orchestrator) notifyState(id ActivityID, state ActivityState) {
+	if o.stateObserver != nil {
+		o.stateObserver(id, state)
+	}
+}
+
 // runActivity executes a single activity after waiting for its dependencies
 func (o *Orchestrator) runActivity(ctx context.Context, id ActivityID, activity Activity, wg *sync.WaitGroup, errorChan chan<- error) {
 	defer wg.Done()
@@ -277,6 +303,7 @@ func (o *Orchestrator) runActivity(ctx context.Context, id ActivityID, activity 
 	result := o.resultMap[id]
 	result.State = Pending // Activity is now waiting for dependencies
 	o.mu.Unlock()
+	o.notifyState(id, Pending)
 
 	// Wait for all dependencies to complete successfully
 	dependencies := o.dependencyMap[id]
@@ -296,6 +323,7 @@ func (o *Orchestrator) runActivity(ctx context.Context, id ActivityID, activity 
 			o.mu.Unlock()
 			// Signal completion for this activity since it's now skipped
 			close(o.completionChans[id])
+			o.notifyState(id, Skipped)
 			errorChan <- fmt.Errorf("activity %s cancelled: %w", id.String(), ctx.Err())
 			return
 		case <-o.completionChans[depID]:
@@ -317,6 +345,7 @@ func (o *Orchestrator) runActivity(ctx context.Context, id ActivityID, activity 
 			o.mu.Unlock()
 			// Signal completion for this activity since it's now skipped
 			close(o.completionChans[id])
+			o.notifyState(id, Skipped)
 			errorChan <- fmt.Errorf("activity %s skipped: dependency %s completed but no result found", id.String(), depID.String())
 			return
 		}
@@ -330,6 +359,7 @@ func (o *Orchestrator) runActivity(ctx context.Context, id ActivityID, activity 
 			o.mu.Unlock()
 			// Signal completion for this activity since it's now skipped
 			close(o.completionChans[id])
+			o.notifyState(id, Skipped)
 			errorChan <- fmt.Errorf("activity %s skipped due to dependency failure: %s", id.String(), depID.String())
 			return
 		}
@@ -345,6 +375,7 @@ func (o *Orchestrator) runActivity(ctx context.Context, id ActivityID, activity 
 	o.mu.Lock()
 	o.resultMap[id] = result
 	o.mu.Unlock()
+	o.notifyState(id, Running)
 
 	// Execute the activity
 	err := activity.Execute(ctx)
@@ -362,6 +393,7 @@ func (o *Orchestrator) runActivity(ctx context.Context, id ActivityID, activity 
 	o.mu.Lock()
 	o.resultMap[id] = result
 	o.mu.Unlock()
+	o.notifyState(id, Completed)
 
 	// Signal completion
 	close(o.completionChans[id])
