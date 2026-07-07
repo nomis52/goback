@@ -80,7 +80,7 @@ const (
 // defaultWorkflowFactories returns the standard workflow factories for backup, compute-backup, poweroff, and demo workflows.
 func defaultWorkflowFactories() map[string]runner.WorkflowFactory {
 	return map[string]runner.WorkflowFactory{
-		"backup":             backup.NewWorkflow,
+		"full-backup":        backup.NewWorkflow,
 		"compute-backup":     computebackup.NewWorkflow,
 		"serial-full-backup": serialfullbackup.NewWorkflow,
 		"poweroff":           poweroff.NewWorkflow,
