@@ -6,6 +6,11 @@ This file provides guidance to agents when working with code in this repository.
 
 Goback is a PBS (Proxmox Backup Server) backup automation system written in Go. It orchestrates the backup workflow: powering on the PBS server via IPMI, backing up VMs/LXCs from Proxmox and file-based backups via SSH, then powering down PBS to save energy. It includes both a CLI tool for one-time runs and an HTTP server with web UI for monitoring and scheduling.
 
+## Development Workflow
+
+- **Use a separate git worktree for each change.** Do not commit directly to `master`. Create a dedicated worktree on its own branch (e.g. `git worktree add ../goback-<topic> -b worktree-<topic> origin/master`) so unrelated changes stay isolated and `master` always stays clean and releasable.
+- **Open a GitHub PR when the change is ready.** Once the change builds, `make test` passes, and `make fmt` has been run, push the branch and open a pull request (`gh pr create`) for review rather than merging locally. Keep each PR scoped to a single change.
+
 ## Build and Test Commands
 
 ```bash
