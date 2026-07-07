@@ -76,7 +76,9 @@ func (p Params) registerStepRunningMetric(o *workflow.Orchestrator) {
 	}
 
 	o.SetActivityStateObserver(func(id workflow.ActivityID, state workflow.ActivityState) {
-		gauge := stepRunning.With(prometheus.Labels{"step": id.ShortString()})
+		// Label by the bare step name (the activity's type) so a step reused
+		// across workflows maps to a single series.
+		gauge := stepRunning.With(prometheus.Labels{"step": id.Type})
 		switch state {
 		case workflow.Running:
 			gauge.Set(1)

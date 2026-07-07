@@ -61,8 +61,9 @@ func TestInjectInto_StepRunningMetric(t *testing.T) {
 		t.Fatal("activity did not start")
 	}
 
-	// While running, the gauge should report 1 for this step.
-	assert.Contains(t, scrapeBody(t, registry), `step_running{step="workflows.blockingActivity"} 1`)
+	// While running, the gauge should report 1 for this step (labeled by the
+	// bare step name, not the workflow-qualified name).
+	assert.Contains(t, scrapeBody(t, registry), `step_running{step="blockingActivity"} 1`)
 
 	// Let the step finish and wait for the workflow to complete.
 	close(act.release)
@@ -74,7 +75,7 @@ func TestInjectInto_StepRunningMetric(t *testing.T) {
 	}
 
 	// Once finished, the gauge should report 0.
-	assert.Contains(t, scrapeBody(t, registry), `step_running{step="workflows.blockingActivity"} 0`)
+	assert.Contains(t, scrapeBody(t, registry), `step_running{step="blockingActivity"} 0`)
 }
 
 func TestInjectInto_NoRegistry(t *testing.T) {
