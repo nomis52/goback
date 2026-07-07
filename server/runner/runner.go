@@ -382,12 +382,32 @@ func (r *Runner) buildActivityExecutions() []ActivityExecution {
 		executions = append(executions, exec)
 	}
 
-	// Sort by type for stable ordering
-	sort.Slice(executions, func(i, j int) bool {
-		return executions[i].Type < executions[j].Type
-	})
+	sortByExecutionOrder(executions)
 
 	return executions
+}
+
+// sortByExecutionOrder orders activity executions to reflect the order in which
+// they ran. Activities that have started are ordered by StartTime; those that
+// never started (pending, not-started, or skipped) have a zero StartTime and
+// sort after started activities, ordered by type for stable output. Ties (e.g.
+// parallel activities with identical start times) also fall back to type.
+func sortByExecutionOrder(executions []ActivityExecution) {
+	sort.Slice(executions, func(i, j int) bool {
+		iStarted := executions[i].StartTime != nil && !executions[i].StartTime.IsZero()
+		jStarted := executions[j].StartTime != nil && !executions[j].StartTime.IsZero()
+
+		if iStarted && jStarted {
+			if !executions[i].StartTime.Equal(*executions[j].StartTime) {
+				return executions[i].StartTime.Before(*executions[j].StartTime)
+			}
+			return executions[i].Type < executions[j].Type
+		}
+		if iStarted != jStarted {
+			return iStarted
+		}
+		return executions[i].Type < executions[j].Type
+	})
 }
 
 func (r *Runner) executeRun(ctx context.Context, workflowNames []string) error {

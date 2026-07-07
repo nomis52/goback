@@ -1104,7 +1104,7 @@
                     emptyState.classList.remove('hidden');
                     count.textContent = 'No active workflow';
                 } else {
-                    // Backend provides stable alphabetical order
+                    // Backend provides activities in execution order (by start time)
                     table.classList.remove('hidden');
                     emptyState.classList.add('hidden');
                     count.textContent = `${executions.length} activit${executions.length !== 1 ? 'ies' : 'y'}`;
