@@ -353,6 +353,27 @@
             overflow-y: auto;
         }
 
+        .log-panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+        }
+
+        .log-panel-title {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+
+        .btn-icon {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.25rem 0.6rem;
+            font-size: 0.75rem;
+        }
+
         .log-entry {
             font-family: 'SF Mono', Monaco, Consolas, monospace;
             font-size: 0.8rem;
@@ -944,6 +965,7 @@
                                 <tr id="history-activity-logs-${activityId}" class="log-details" style="display: ${isExpanded ? 'table-row' : 'none'};">
                                     <td colspan="7">
                                         <div id="history-activity-logs-content-${activityId}" class="log-details-content">
+                                            ${renderLogPanelHeader('history', runId, index, exec.logs)}
                                             ${renderLogs(exec.logs)}
                                         </div>
                                     </td>
@@ -982,6 +1004,52 @@
                     <span class="log-message">${log.message}${attrs}</span>
                 </div>`;
             }).join('');
+        }
+
+        function renderLogPanelHeader(source, runId, index, logs) {
+            const hasLogs = logs && logs.length > 0;
+            const args = source === 'current'
+                ? `'current', null, ${index}`
+                : `'history', '${runId}', ${index}`;
+            return `
+                <div class="log-panel-header">
+                    <span class="log-panel-title">Logs</span>
+                    <button class="btn btn-secondary btn-icon" ${hasLogs ? '' : 'disabled'}
+                            title="Download logs as JSON"
+                            onclick="downloadActivityLogs(${args})">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="7 10 12 15 17 10"></polyline>
+                            <line x1="12" y1="15" x2="12" y2="3"></line>
+                        </svg>
+                        Download
+                    </button>
+                </div>`;
+        }
+
+        function downloadActivityLogs(source, runId, index) {
+            // Resolve the activity execution from data already in the browser
+            let exec;
+            if (source === 'current') {
+                exec = currentExecutions[index];           // global, refreshed each poll
+            } else {
+                const executions = logsCache.get(runId);   // cached history logs
+                exec = executions && executions[index];
+            }
+            if (!exec) return;
+
+            const logs = exec.logs || [];
+            const json = JSON.stringify(logs, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${(exec.type || 'activity').replace(/[^a-zA-Z0-9_-]/g, '_')}-logs.json`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
         }
 
         function getStateBadge(state, error) {
@@ -1160,6 +1228,7 @@
                             <tr id="logs-${index}" class="log-details" style="display: ${isExpanded ? 'table-row' : 'none'};">
                                 <td colspan="7">
                                     <div id="current-activity-logs-${index}" class="log-details-content">
+                                        ${renderLogPanelHeader('current', null, index, exec.logs)}
                                         ${renderLogs(exec.logs)}
                                     </div>
                                 </td>
