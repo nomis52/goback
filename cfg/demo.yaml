@@ -4,6 +4,11 @@
 # starting the server never loads real credentials or SSH keys. There is no
 # cron block, so nothing runs on a schedule — the demo workflow is triggered
 # manually from the UI or via `curl POST /run`.
+#
+# This is the template used by scripts/demo-start.sh, which overrides `addr`
+# with a free port at launch so multiple agents can demo concurrently. The
+# :8080 below is only used if you run `goback-server --config cfg/demo.yaml`
+# directly.
 listener:
   addr: ":8080"
 state_dir: "./demo-state"

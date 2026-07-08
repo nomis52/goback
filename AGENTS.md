@@ -17,8 +17,8 @@ Every change follows this end-to-end lifecycle, isolated in its own worktree so
 2. **Verify the build:** `make build`, `make test`, and `make fmt`.
 3. **Demo it:** `scripts/demo-start.sh` (the `goback-demo` skill) launches the
    web UI against safe demo config (`cfg/demo.yaml` + `cfg/demo-workflows.yaml`
-   — no real infra); inspect the change at http://localhost:8080/, then
-   `scripts/demo-stop.sh` to tear it down.
+   — no real infra) on an automatically chosen free port; inspect the change at
+   the URL it prints, then `scripts/demo-stop.sh` to tear it down.
 4. **Get the user's OK** on the demo before proposing a PR.
 5. **Open a PR:** push the branch and `gh pr create`. Keep each PR scoped to a
    single change. Wait for the user's OK to merge.
@@ -62,8 +62,9 @@ make clean
 # Server mode with web UI (takes server config, not workflow config)
 ./build/goback-server --config cfg/test.yaml
 
-# Demo mode (safe, no real infra): build + launch, then tear down
-scripts/demo-start.sh          # prints http://localhost:8080/
+# Demo mode (safe, no real infra): build + launch, then tear down.
+# A free port is chosen automatically so concurrent demos don't collide.
+scripts/demo-start.sh          # prints the URL
 scripts/demo-start.sh --run    # also trigger the demo workflow
 scripts/demo-stop.sh           # stop the server and remove demo-state
 
