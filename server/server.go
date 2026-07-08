@@ -63,6 +63,7 @@ import (
 	"github.com/nomis52/goback/workflows/backup"
 	"github.com/nomis52/goback/workflows/computebackup"
 	"github.com/nomis52/goback/workflows/demo"
+	"github.com/nomis52/goback/workflows/dirbackup"
 	"github.com/nomis52/goback/workflows/poweroff"
 	"github.com/nomis52/goback/workflows/serialfullbackup"
 )
@@ -82,6 +83,7 @@ func defaultWorkflowFactories() map[string]runner.WorkflowFactory {
 	return map[string]runner.WorkflowFactory{
 		"full-backup":        backup.NewWorkflow,
 		"compute-backup":     computebackup.NewWorkflow,
+		"dir-backup":         dirbackup.NewWorkflow,
 		"serial-full-backup": serialfullbackup.NewWorkflow,
 		"poweroff":           poweroff.NewWorkflow,
 		"demo":               demo.NewWorkflow,
@@ -96,20 +98,20 @@ type serverDeps struct {
 
 // Server is the HTTP server for the goback web interface.
 type Server struct {
-	addr            string
-	configPath      string
-	stateDir        string
-	logger          *slog.Logger
-	logLevel        *slog.LevelVar
-	deps            atomic.Pointer[serverDeps]
-	httpServer      *http.Server
-	runner          *runner.Runner
-	store           *runner.DiskStore
-	cronTrigger     *cron.CronTriggerManager
-	cronConfig      []serverconfig.CronTrigger
-	tlsCert    string
-	tlsKey     string
-	properties ServerProperties
+	addr        string
+	configPath  string
+	stateDir    string
+	logger      *slog.Logger
+	logLevel    *slog.LevelVar
+	deps        atomic.Pointer[serverDeps]
+	httpServer  *http.Server
+	runner      *runner.Runner
+	store       *runner.DiskStore
+	cronTrigger *cron.CronTriggerManager
+	cronConfig  []serverconfig.CronTrigger
+	tlsCert     string
+	tlsKey      string
+	properties  ServerProperties
 
 	// Metrics
 	metricsRegistry *metrics.ScrapeRegistry
