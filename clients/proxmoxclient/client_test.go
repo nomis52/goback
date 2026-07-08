@@ -339,10 +339,10 @@ func TestLastStopTime(t *testing.T) {
 		wantUnix       int64
 	}{
 		{
-			name:   "picks most recent stop task",
-			node:   "pve2",
-			vmid:   101,
-			status: http.StatusOK,
+			name:    "picks most recent stop task",
+			node:    "pve2",
+			vmid:    101,
+			status:  http.StatusOK,
 			serverResponse: `{"data": [
 				{"upid": "UPID:...", "type": "qmshutdown", "id": "101", "status": "OK", "starttime": 1700000000, "endtime": 1700000030},
 				{"upid": "UPID:...", "type": "qmstop", "id": "101", "status": "OK", "starttime": 1700009000, "endtime": 1700009005},
@@ -352,10 +352,10 @@ func TestLastStopTime(t *testing.T) {
 			wantUnix:  1700009005,
 		},
 		{
-			name:   "ignores non-stop, running, and failed tasks",
-			node:   "pve2",
-			vmid:   100,
-			status: http.StatusOK,
+			name:    "ignores non-stop, running, and failed tasks",
+			node:    "pve2",
+			vmid:    100,
+			status:  http.StatusOK,
 			serverResponse: `{"data": [
 				{"upid": "UPID:...", "type": "vzdump", "id": "100", "status": "OK", "starttime": 1700000000, "endtime": 1700000500},
 				{"upid": "UPID:...", "type": "qmstart", "id": "100", "status": "OK", "starttime": 1700001000, "endtime": 1700001010},
@@ -482,6 +482,8 @@ func TestNewAndOptions(t *testing.T) {
 		assert.Equal(t, "pve2", client.Host())
 	})
 }
+
+
 
 func TestBackup(t *testing.T) {
 	tests := []struct {

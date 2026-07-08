@@ -11,7 +11,7 @@ import (
 
 // Step1 is the first demo activity that simulates work with status updates and sleeps.
 type Step1 struct {
-	Logger     *slog.Logger
+	Logger         *slog.Logger
 	StatusLine *activity.StatusLine
 }
 

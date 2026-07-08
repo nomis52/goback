@@ -15,7 +15,7 @@ type DiskStore struct {
 	dir       string
 	logger    *slog.Logger
 	maxCount  int
-	summaries []RunSummary                   // protected by mu
+	summaries []RunSummary           // protected by mu
 	logs      map[string][]ActivityExecution // protected by mu
 	mu        sync.Mutex
 }

@@ -16,7 +16,7 @@ const (
 	testShutdownTimeout = time.Minute
 	testBackupTimeout   = time.Minute
 	testMaxBackupAge    = 24 * time.Hour
-
+	
 	// Test time strings for parsing tests
 	test24Hours = 24 * time.Hour
 	test48Hours = 48 * time.Hour
@@ -34,8 +34,8 @@ func TestConfig_Validate(t *testing.T) {
 			name: "valid config",
 			cfg: Config{
 				PBS: PBSConfig{
-					Host:            "1.2.3.6",
-					IPMI:            IPMIConfig{Host: "1.2.3.4", Username: "u", Password: "p"},
+					Host: "1.2.3.6",
+					IPMI: IPMIConfig{Host: "1.2.3.4", Username: "u", Password: "p"},
 					BootTimeout:     testBootTimeout,
 					ShutdownTimeout: testShutdownTimeout,
 				},
@@ -97,7 +97,7 @@ func TestConfig_Validate(t *testing.T) {
 func TestConfig_SetDefaults(t *testing.T) {
 	cfg := Config{}
 	cfg.SetDefaults()
-
+	
 	assert.Equal(t, testBootTimeout, cfg.PBS.BootTimeout, "BootTimeout default")
 	assert.Equal(t, 2*time.Hour, cfg.Proxmox.BackupTimeout, "BackupTimeout default")
 	assert.Equal(t, 2*time.Minute, cfg.PBS.ShutdownTimeout, "ShutdownTimeout default")
@@ -135,7 +135,7 @@ monitoring:
 
 	cfg, err := LoadConfig(tmpfile.Name())
 	require.NoError(t, err, "LoadConfig should succeed")
-
+	
 	assert.Equal(t, "1.2.3.4", cfg.PBS.IPMI.Host, "PBS IPMI host")
 	assert.Equal(t, "1.2.3.5", cfg.Proxmox.Host, "Proxmox host")
 	assert.Equal(t, "1.2.3.6", cfg.PBS.Host, "PBS host")
@@ -145,14 +145,14 @@ monitoring:
 
 func TestLoadConfig_TimeStrings(t *testing.T) {
 	tests := []struct {
-		name     string
-		maxAge   string
-		expected time.Duration
+	name     string
+	maxAge   string
+	expected time.Duration
 	}{
-		{"24h", "24h", test24Hours},
-		{"48h", "48h", test48Hours},
-		{"30m", "30m", test30Min},
-		{"1h30m", "1h30m", test90Min},
+	{"24h", "24h", test24Hours},
+	{"48h", "48h", test48Hours},
+	{"30m", "30m", test30Min},
+	{"1h30m", "1h30m", test90Min},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -236,7 +236,7 @@ files:
 
 	cfg, err := LoadConfig(tmpfile.Name())
 	require.NoError(t, err, "LoadConfig should succeed")
-
+	
 	b := cfg.Files
 	assert.Equal(t, "pve2", b.Host, "Files host")
 	assert.Equal(t, "root", b.User, "Files user")

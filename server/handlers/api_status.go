@@ -25,15 +25,15 @@ type NextRunResponse struct {
 
 // ActiveWorkflowStatus contains status and logs for the currently active workflow.
 type ActiveWorkflowStatus struct {
-	Status       runner.RunSummary          `json:"status"`
+	Status       runner.RunSummary           `json:"status"`
 	ActivityLogs []runner.ActivityExecution `json:"activity_logs,omitempty"`
 }
 
 // APIStatusResponse is the consolidated response for /api/status.
 type APIStatusResponse struct {
-	PBS            PBSStatus              `json:"pbs"`
-	ActiveWorkflow ActiveWorkflowStatus   `json:"active_workflow"`
-	NextRun        NextRunResponse        `json:"next_run"`
+	PBS            PBSStatus            `json:"pbs"`
+	ActiveWorkflow ActiveWorkflowStatus `json:"active_workflow"`
+	NextRun        NextRunResponse      `json:"next_run"`
 	Server         types.ServerProperties `json:"server"`
 }
 

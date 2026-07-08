@@ -65,11 +65,11 @@ func TestPing(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	tests := []struct {
-		name         string
-		handler      http.HandlerFunc
-		modifyClient func(*Client)
-		wantResp     string
-		wantErr      string
+		name           string
+		handler        http.HandlerFunc
+		modifyClient   func(*Client)
+		wantResp       string
+		wantErr        string
 	}{
 		{
 			name: "success",

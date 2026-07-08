@@ -22,6 +22,8 @@ type Args struct {
 	Validate    bool
 }
 
+
+
 func main() {
 	if err := run(); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
