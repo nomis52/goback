@@ -1,0 +1,11 @@
+# Demo server config: safe local demo of the web UI (no real infra).
+#
+# Points at cfg/demo-workflows.yaml (fake hosts) rather than ./config.yaml, so
+# starting the server never loads real credentials or SSH keys. There is no
+# cron block, so nothing runs on a schedule — the demo workflow is triggered
+# manually from the UI or via `curl POST /run`.
+listener:
+  addr: ":8080"
+state_dir: "./demo-state"
+log_level: "info"
+workflow_config: "./cfg/demo-workflows.yaml"
