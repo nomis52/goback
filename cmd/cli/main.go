@@ -10,10 +10,8 @@ import (
 	"github.com/nomis52/goback/config"
 	"github.com/nomis52/goback/logging"
 	"github.com/nomis52/goback/metrics"
-	"github.com/nomis52/goback/workflow"
 	"github.com/nomis52/goback/workflows"
 	"github.com/nomis52/goback/workflows/backup"
-	"github.com/nomis52/goback/workflows/poweroff"
 )
 
 type Args struct {
@@ -86,8 +84,10 @@ func run() error {
 		Instance: hostname,
 	})
 
-	// Create backup workflow (PowerOnPBS → BackupDirs → BackupVMs)
-	backupWorkflow, err := backup.NewWorkflow(workflows.Params{
+	// Create the full-backup workflow (PowerOnPBS → {BackupDirs ∥ BackupVMs} →
+	// PowerOffPBS). Power-off is guaranteed by the factory and runs even if a
+	// backup fails.
+	backupWorkflow, err := backup.NewFullBackupWorkflow(workflows.Params{
 		Config:           &cfg,
 		Logger:           logger,
 		StatusCollection: nil,
@@ -98,24 +98,9 @@ func run() error {
 		return fmt.Errorf("failed to create backup workflow: %w", err)
 	}
 
-	// Create power off workflow (PowerOffPBS)
-	powerOffWorkflow, err := poweroff.NewWorkflow(workflows.Params{
-		Config:           &cfg,
-		Logger:           logger,
-		StatusCollection: nil,
-		LoggerFactory:    nil,
-		Registry:         registry,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to create power off workflow: %w", err)
-	}
-
-	// Compose workflows to run backup then power off
-	composedWorkflow := workflow.Compose(backupWorkflow, powerOffWorkflow)
-
-	// Execute composed workflow
+	// Execute the workflow
 	ctx := context.Background()
-	if err := composedWorkflow.Execute(ctx); err != nil {
+	if err := backupWorkflow.Execute(ctx); err != nil {
 		return fmt.Errorf("workflow execution failed: %w", err)
 	}
 

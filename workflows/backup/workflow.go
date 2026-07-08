@@ -1,5 +1,11 @@
 // Package backup provides workflow factories for backup-related operations.
-// It composes activities into a reusable backup workflow.
+// It composes activities into reusable backup workflows.
+//
+// Every public factory guarantees the power-on → do work → power-off cycle:
+// the work orchestrators include PowerOnPBS, and withPowerOff appends a
+// PowerOffPBS step that always runs (even if the work fails). Routing all
+// factories through withPowerOff makes the power cycle structural, so a backup
+// workflow cannot be defined that forgets to power PBS back off.
 package backup
 
 import (
@@ -12,18 +18,84 @@ import (
 	"github.com/nomis52/goback/config"
 	"github.com/nomis52/goback/workflow"
 	"github.com/nomis52/goback/workflows"
+	"github.com/nomis52/goback/workflows/poweroff"
 )
 
-// NewWorkflow creates a workflow that powers on PBS and performs backups.
-// The workflow executes: PowerOnPBS → BackupDirs → BackupVMs
-// It does NOT power off PBS after completion.
-func NewWorkflow(params workflows.Params) (workflow.Workflow, error) {
+// NewFullBackupWorkflow creates the "full-backup" workflow: power on PBS, back up
+// VMs and directories concurrently, then power PBS back off.
+// The workflow executes: PowerOnPBS → {BackupVMs ∥ BackupDirs} → PowerOffPBS.
+// Power-off runs even if a backup fails.
+func NewFullBackupWorkflow(params workflows.Params) (workflow.Workflow, error) {
+	work, err := newConcurrentWork(params)
+	if err != nil {
+		return nil, err
+	}
+	return withPowerOff(params, work)
+}
+
+// NewSerialFullBackupWorkflow creates the "serial-full-backup" workflow: power on
+// PBS, back up VMs, then back up directories (serialised so the two workloads never
+// overlap and contend for pool IO), then power PBS back off.
+// The workflow executes: (PowerOnPBS → BackupVMs) then (PowerOnPBS → BackupDirs)
+// then PowerOffPBS. Power-off runs even if a backup fails.
+func NewSerialFullBackupWorkflow(params workflows.Params) (workflow.Workflow, error) {
+	vmWork, err := newVMsWork(params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create VM backup workflow: %w", err)
+	}
+
+	dirWork, err := newDirsWork(params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create directory backup workflow: %w", err)
+	}
+
+	return withPowerOff(params, workflow.Compose(vmWork, dirWork))
+}
+
+// NewComputeBackupWorkflow creates the "compute-backup" workflow: power on PBS, back
+// up VMs only, then power PBS back off.
+// The workflow executes: PowerOnPBS → BackupVMs → PowerOffPBS.
+// Power-off runs even if the VM backup fails.
+func NewComputeBackupWorkflow(params workflows.Params) (workflow.Workflow, error) {
+	work, err := newVMsWork(params)
+	if err != nil {
+		return nil, err
+	}
+	return withPowerOff(params, work)
+}
+
+// NewDirBackupWorkflow creates the "dir-backup" workflow: power on PBS, back up
+// directories only, then power PBS back off.
+// The workflow executes: PowerOnPBS → BackupDirs → PowerOffPBS.
+// Power-off runs even if the directory backup fails.
+func NewDirBackupWorkflow(params workflows.Params) (workflow.Workflow, error) {
+	work, err := newDirsWork(params)
+	if err != nil {
+		return nil, err
+	}
+	return withPowerOff(params, work)
+}
+
+// withPowerOff wraps a work workflow so PBS is always powered off afterwards, even
+// if the work fails (workflow.Compose runs sub-workflows in sequence and continues
+// on failure). Power-on is performed by the work workflow's own PowerOnPBS activity.
+func withPowerOff(params workflows.Params, work workflow.Workflow) (workflow.Workflow, error) {
+	powerOff, err := poweroff.NewWorkflow(params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create power off workflow: %w", err)
+	}
+	return workflow.Compose(work, powerOff), nil
+}
+
+// newConcurrentWork builds the work orchestrator that powers on PBS and backs up
+// both VMs and directories. BackupDirs and BackupVMs both depend only on PowerOnPBS,
+// so they run concurrently. This is work only — it does NOT power off PBS.
+func newConcurrentWork(params workflows.Params) (workflow.Workflow, error) {
 	o, err := newBackupOrchestrator(params)
 	if err != nil {
 		return nil, err
 	}
 
-	// Add backup activities
 	if err := o.AddActivity(&PowerOnPBS{}, &BackupDirs{}, &BackupVMs{}); err != nil {
 		return nil, fmt.Errorf("failed to add activities: %w", err)
 	}
@@ -31,17 +103,14 @@ func NewWorkflow(params workflows.Params) (workflow.Workflow, error) {
 	return o, nil
 }
 
-// NewVMsWorkflow creates a workflow that powers on PBS and backs up VMs only,
-// skipping directory/file backups.
-// The workflow executes: PowerOnPBS → BackupVMs
-// It does NOT power off PBS after completion.
-func NewVMsWorkflow(params workflows.Params) (workflow.Workflow, error) {
+// newVMsWork builds the work orchestrator that powers on PBS and backs up VMs only.
+// This is work only — it does NOT power off PBS.
+func newVMsWork(params workflows.Params) (workflow.Workflow, error) {
 	o, err := newBackupOrchestrator(params)
 	if err != nil {
 		return nil, err
 	}
 
-	// Add backup activities (VMs only, no directory backups)
 	if err := o.AddActivity(&PowerOnPBS{}, &BackupVMs{}); err != nil {
 		return nil, fmt.Errorf("failed to add activities: %w", err)
 	}
@@ -49,17 +118,14 @@ func NewVMsWorkflow(params workflows.Params) (workflow.Workflow, error) {
 	return o, nil
 }
 
-// NewDirsWorkflow creates a workflow that powers on PBS and backs up directories
-// only, skipping VM/LXC backups.
-// The workflow executes: PowerOnPBS → BackupDirs
-// It does NOT power off PBS after completion.
-func NewDirsWorkflow(params workflows.Params) (workflow.Workflow, error) {
+// newDirsWork builds the work orchestrator that powers on PBS and backs up
+// directories only. This is work only — it does NOT power off PBS.
+func newDirsWork(params workflows.Params) (workflow.Workflow, error) {
 	o, err := newBackupOrchestrator(params)
 	if err != nil {
 		return nil, err
 	}
 
-	// Add backup activities (directories only, no VM backups)
 	if err := o.AddActivity(&PowerOnPBS{}, &BackupDirs{}); err != nil {
 		return nil, fmt.Errorf("failed to add activities: %w", err)
 	}
