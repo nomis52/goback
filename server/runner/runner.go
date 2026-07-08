@@ -69,15 +69,15 @@ type Runner struct {
 
 	mu               sync.Mutex
 	runStatus        RunSummary
-	workflow         workflow.Workflow           // Current or last run's workflow
-	statusCollection *activity.StatusHandler     // Current run's status collection
-	logCollector     *logging.LogCollector       // Captures logs during workflow execution
+	workflow         workflow.Workflow       // Current or last run's workflow
+	statusCollection *activity.StatusHandler // Current run's status collection
+	logCollector     *logging.LogCollector   // Captures logs during workflow execution
 
 	// Metrics
-	registry                          metrics.Registry
-	workflowLastRunTimestamp          metrics.GaugeVec
-	workflowLastRunDuration           metrics.GaugeVec
-	workflowLastRunSuccess            metrics.GaugeVec
+	registry                           metrics.Registry
+	workflowLastRunTimestamp           metrics.GaugeVec
+	workflowLastRunDuration            metrics.GaugeVec
+	workflowLastRunSuccess             metrics.GaugeVec
 	workflowLastSuccessfulRunTimestamp metrics.GaugeVec
 }
 

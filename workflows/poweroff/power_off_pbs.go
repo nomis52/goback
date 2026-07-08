@@ -48,8 +48,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/nomis52/goback/clients/ipmiclient"
 	"github.com/nomis52/goback/activity"
+	"github.com/nomis52/goback/clients/ipmiclient"
 )
 
 const (
