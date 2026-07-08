@@ -21,11 +21,11 @@ import (
 	"github.com/nomis52/goback/workflows/poweroff"
 )
 
-// NewFullBackupWorkflow creates the "full-backup" workflow: power on PBS, back up
-// VMs and directories concurrently, then power PBS back off.
+// NewFullConcurrentWorkflow creates the "backup-full-concur" workflow: power on PBS,
+// back up VMs and directories concurrently, then power PBS back off.
 // The workflow executes: PowerOnPBS → {BackupVMs ∥ BackupDirs} → PowerOffPBS.
 // Power-off runs even if a backup fails.
-func NewFullBackupWorkflow(params workflows.Params) (workflow.Workflow, error) {
+func NewFullConcurrentWorkflow(params workflows.Params) (workflow.Workflow, error) {
 	work, err := newConcurrentWork(params)
 	if err != nil {
 		return nil, err
@@ -33,12 +33,12 @@ func NewFullBackupWorkflow(params workflows.Params) (workflow.Workflow, error) {
 	return withPowerOff(params, work)
 }
 
-// NewSerialFullBackupWorkflow creates the "serial-full-backup" workflow: power on
-// PBS, back up VMs, then back up directories (serialised so the two workloads never
+// NewFullSequentialWorkflow creates the "backup-full-seq" workflow: power on PBS,
+// back up VMs, then back up directories (serialised so the two workloads never
 // overlap and contend for pool IO), then power PBS back off.
 // The workflow executes: (PowerOnPBS → BackupVMs) then (PowerOnPBS → BackupDirs)
 // then PowerOffPBS. Power-off runs even if a backup fails.
-func NewSerialFullBackupWorkflow(params workflows.Params) (workflow.Workflow, error) {
+func NewFullSequentialWorkflow(params workflows.Params) (workflow.Workflow, error) {
 	vmWork, err := newVMsWork(params)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create VM backup workflow: %w", err)
@@ -52,11 +52,11 @@ func NewSerialFullBackupWorkflow(params workflows.Params) (workflow.Workflow, er
 	return withPowerOff(params, workflow.Compose(vmWork, dirWork))
 }
 
-// NewComputeBackupWorkflow creates the "compute-backup" workflow: power on PBS, back
-// up VMs only, then power PBS back off.
+// NewComputeWorkflow creates the "backup-compute" workflow: power on PBS, back up
+// VMs only, then power PBS back off.
 // The workflow executes: PowerOnPBS → BackupVMs → PowerOffPBS.
 // Power-off runs even if the VM backup fails.
-func NewComputeBackupWorkflow(params workflows.Params) (workflow.Workflow, error) {
+func NewComputeWorkflow(params workflows.Params) (workflow.Workflow, error) {
 	work, err := newVMsWork(params)
 	if err != nil {
 		return nil, err
@@ -64,11 +64,11 @@ func NewComputeBackupWorkflow(params workflows.Params) (workflow.Workflow, error
 	return withPowerOff(params, work)
 }
 
-// NewDirBackupWorkflow creates the "dir-backup" workflow: power on PBS, back up
+// NewDirsWorkflow creates the "backup-dirs" workflow: power on PBS, back up
 // directories only, then power PBS back off.
 // The workflow executes: PowerOnPBS → BackupDirs → PowerOffPBS.
 // Power-off runs even if the directory backup fails.
-func NewDirBackupWorkflow(params workflows.Params) (workflow.Workflow, error) {
+func NewDirsWorkflow(params workflows.Params) (workflow.Workflow, error) {
 	work, err := newDirsWork(params)
 	if err != nil {
 		return nil, err

@@ -75,13 +75,14 @@ const (
 	defaultListenAddr      = ":8080"
 )
 
-// defaultWorkflowFactories returns the standard workflow factories for backup, compute-backup, poweroff, and demo workflows.
+// defaultWorkflowFactories returns the standard workflow factories: the backup-*
+// workflows plus the standalone poweroff and demo workflows.
 func defaultWorkflowFactories() map[string]runner.WorkflowFactory {
 	return map[string]runner.WorkflowFactory{
-		"full-backup":        backup.NewFullBackupWorkflow,
-		"compute-backup":     backup.NewComputeBackupWorkflow,
-		"dir-backup":         backup.NewDirBackupWorkflow,
-		"serial-full-backup": backup.NewSerialFullBackupWorkflow,
+		"backup-full-concur": backup.NewFullConcurrentWorkflow,
+		"backup-full-seq":    backup.NewFullSequentialWorkflow,
+		"backup-compute":     backup.NewComputeWorkflow,
+		"backup-dirs":        backup.NewDirsWorkflow,
 		"poweroff":           poweroff.NewWorkflow,
 		"demo":               demo.NewWorkflow,
 	}

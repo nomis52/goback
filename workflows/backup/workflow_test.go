@@ -34,8 +34,8 @@ func activitySet(wf workflow.Workflow) map[string]bool {
 // whose activity set is exactly the expected one. Crucially, every backup workflow
 // must include poweroff.PowerOffPBS — the power-on → work → power-off cycle is the
 // invariant these factories exist to guarantee. This is the regression guard for the
-// old "full-backup" bug, where the workflow powered on and did work but never powered
-// off.
+// old bug in the concurrent full backup (backup-full-concur, then named
+// "full-backup"), where the workflow powered on and did work but never powered off.
 func TestBackupWorkflows(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -43,8 +43,8 @@ func TestBackupWorkflows(t *testing.T) {
 		expected map[string]bool
 	}{
 		{
-			name:  "full-backup powers on, backs up VMs and dirs, then powers off",
-			build: NewFullBackupWorkflow,
+			name:  "backup-full-concur powers on, backs up VMs and dirs, then powers off",
+			build: NewFullConcurrentWorkflow,
 			expected: map[string]bool{
 				"backup.PowerOnPBS":    true,
 				"backup.BackupVMs":     true,
@@ -53,8 +53,8 @@ func TestBackupWorkflows(t *testing.T) {
 			},
 		},
 		{
-			name:  "serial-full-backup powers on, backs up VMs and dirs, then powers off",
-			build: NewSerialFullBackupWorkflow,
+			name:  "backup-full-seq powers on, backs up VMs and dirs, then powers off",
+			build: NewFullSequentialWorkflow,
 			expected: map[string]bool{
 				"backup.PowerOnPBS":    true,
 				"backup.BackupVMs":     true,
@@ -63,8 +63,8 @@ func TestBackupWorkflows(t *testing.T) {
 			},
 		},
 		{
-			name:  "compute-backup powers on, backs up VMs, then powers off",
-			build: NewComputeBackupWorkflow,
+			name:  "backup-compute powers on, backs up VMs, then powers off",
+			build: NewComputeWorkflow,
 			expected: map[string]bool{
 				"backup.PowerOnPBS":    true,
 				"backup.BackupVMs":     true,
@@ -72,8 +72,8 @@ func TestBackupWorkflows(t *testing.T) {
 			},
 		},
 		{
-			name:  "dir-backup powers on, backs up dirs, then powers off",
-			build: NewDirBackupWorkflow,
+			name:  "backup-dirs powers on, backs up dirs, then powers off",
+			build: NewDirsWorkflow,
 			expected: map[string]bool{
 				"backup.PowerOnPBS":    true,
 				"backup.BackupDirs":    true,
@@ -99,10 +99,10 @@ func TestBackupWorkflows(t *testing.T) {
 // the PBS host is malformed (surfaced while building the shared dependencies).
 func TestBackupWorkflows_InvalidConfig(t *testing.T) {
 	builds := map[string]func(workflows.Params) (workflow.Workflow, error){
-		"full-backup":        NewFullBackupWorkflow,
-		"serial-full-backup": NewSerialFullBackupWorkflow,
-		"compute-backup":     NewComputeBackupWorkflow,
-		"dir-backup":         NewDirBackupWorkflow,
+		"backup-full-concur": NewFullConcurrentWorkflow,
+		"backup-full-seq":    NewFullSequentialWorkflow,
+		"backup-compute":     NewComputeWorkflow,
+		"backup-dirs":        NewDirsWorkflow,
 	}
 
 	cfg := &config.Config{

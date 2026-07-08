@@ -117,7 +117,7 @@ listener:
 
 cron:
   - workflows:
-      - full-backup
+      - backup-full-concur
       - poweroff
     schedule: "5 4 * * *"  # Daily at 4:05am
 

@@ -2,7 +2,7 @@ listener:
   addr: ":8080"
 cron:
   - workflows:
-      - "full-backup"
+      - "backup-full-concur"
       - "poweroff"
     schedule: "5 4 * * *"
 state_dir: "./state"

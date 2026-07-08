@@ -84,10 +84,10 @@ func run() error {
 		Instance: hostname,
 	})
 
-	// Create the full-backup workflow (PowerOnPBS → {BackupDirs ∥ BackupVMs} →
-	// PowerOffPBS). Power-off is guaranteed by the factory and runs even if a
+	// Create the backup-full-concur workflow (PowerOnPBS → {BackupDirs ∥ BackupVMs}
+	// → PowerOffPBS). Power-off is guaranteed by the factory and runs even if a
 	// backup fails.
-	backupWorkflow, err := backup.NewFullBackupWorkflow(workflows.Params{
+	backupWorkflow, err := backup.NewFullConcurrentWorkflow(workflows.Params{
 		Config:           &cfg,
 		Logger:           logger,
 		StatusCollection: nil,
