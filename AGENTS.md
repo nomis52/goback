@@ -15,14 +15,16 @@ Every change follows this end-to-end lifecycle, isolated in its own worktree so
    `git worktree add ../goback-<topic> -b worktree-<topic> origin/master`. All
    build/test/run steps below happen inside that worktree.
 2. **Verify the build:** `make build`, `make test`, and `make fmt`.
-3. **Demo it:** run the `goback-demo` skill to launch the web UI against safe
-   demo config (`cfg/demo.yaml` + `cfg/demo-workflows.yaml` — no real infra) and
-   inspect the change at http://localhost:8080/.
+3. **Demo it:** `scripts/demo-start.sh` (the `goback-demo` skill) launches the
+   web UI against safe demo config (`cfg/demo.yaml` + `cfg/demo-workflows.yaml`
+   — no real infra); inspect the change at http://localhost:8080/, then
+   `scripts/demo-stop.sh` to tear it down.
 4. **Get the user's OK** on the demo before proposing a PR.
 5. **Open a PR:** push the branch and `gh pr create`. Keep each PR scoped to a
    single change. Wait for the user's OK to merge.
-6. **Merge and clean up** (after the user approves): run the `goback-merge`
-   skill — it merges the PR, pulls `master`, and removes the worktree + branch.
+6. **Merge and clean up** (after the user approves): `scripts/merge.sh` (the
+   `goback-merge` skill) merges the PR, pulls `master`, and removes the
+   worktree + branch.
 
 The demo configs are safe by construction: `cfg/demo-workflows.yaml` uses fake
 `.invalid` hosts and omits the `files:` section, so `config.LoadConfig`
@@ -60,9 +62,10 @@ make clean
 # Server mode with web UI (takes server config, not workflow config)
 ./build/goback-server --config cfg/test.yaml
 
-# Demo mode (safe, no real infra) — prefer the goback-demo skill, which also
-# builds, waits for the server, triggers the demo workflow, and cleans up
-./build/goback-server --config cfg/demo.yaml
+# Demo mode (safe, no real infra): build + launch, then tear down
+scripts/demo-start.sh          # prints http://localhost:8080/
+scripts/demo-start.sh --run    # also trigger the demo workflow
+scripts/demo-stop.sh           # stop the server and remove demo-state
 
 # Or run directly with go
 go run ./cmd/server --config cfg/test.yaml

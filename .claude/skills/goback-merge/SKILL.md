@@ -8,48 +8,18 @@ description: >-
 
 # goback merge
 
-Wraps up a change once the user has **approved the merge**: squash-merges the
-PR, updates `master` in the main checkout, and removes the worktree and its
-branch. Every step assumes the user already OK'd merging — confirm before
-running if there's any doubt.
+Wraps up a change once the user has **approved the merge**. Run from inside the
+change's worktree:
 
-## Steps
+```bash
+scripts/merge.sh
+```
 
-1. **Identify the change.** Discover the current worktree path, branch, and PR
-   rather than hard-coding:
+`scripts/merge.sh` squash-merges the branch's PR, checks out and pulls `master`
+in the main checkout, then removes this worktree and deletes the branch (local
+and remote). It refuses to run on `master`/`main`, if the worktree has
+uncommitted changes, or if the PR isn't OPEN.
 
-   ```bash
-   git worktree list                 # find this worktree's path
-   git rev-parse --abbrev-ref HEAD   # current branch, e.g. worktree-<topic>
-   gh pr view --json number,title,state,url   # confirm the PR to merge
-   ```
-
-2. **Merge the PR** (squash, and delete the remote branch):
-
-   ```bash
-   gh pr merge --squash --delete-branch
-   ```
-
-3. **Update master in the main checkout.** Worktree removal must run from the
-   main checkout, and `master` is checked out there. Substitute `<main-checkout>`
-   (the top-level repo dir, e.g. `/Users/simon/homelab/goback`):
-
-   ```bash
-   git -C <main-checkout> checkout master
-   git -C <main-checkout> pull
-   ```
-
-4. **Remove the worktree** (run from the main checkout):
-
-   ```bash
-   git -C <main-checkout> worktree remove <worktree-path>
-   ```
-
-5. **Delete the local branch** if `gh pr merge --delete-branch` didn't already
-   remove it locally:
-
-   ```bash
-   git -C <main-checkout> branch -D worktree-<topic>
-   ```
-
-6. Confirm to the user: PR merged, `master` up to date, worktree removed.
+Only run this after the user has OK'd merging — confirm first if there's any
+doubt. The worktree is deleted on success, so `cd` to the main checkout
+afterwards.
