@@ -296,6 +296,13 @@ func (a *BackupVMs) determineBackups(ctx context.Context) ([]proxmoxclient.Resou
 			continue
 		}
 
+		// Dump the raw inputs to the skip decision so it is possible to see, at
+		// debug level, why a guest was or was not skipped (e.g. its actual status
+		// string, or whether it has any prior backup).
+		a.Logger.Debug("Evaluating resource for backup",
+			"vmid", vmID, "name", resource.Name, "type", resource.Type,
+			"status", resource.Status, "last_backup", lastBackup)
+
 		// A stopped VM whose latest backup post-dates its power-off is already
 		// captured at rest and cannot have changed, so skip it. On any lookup
 		// error, or when no stop time is found, fall through to the age check
@@ -304,16 +311,37 @@ func (a *BackupVMs) determineBackups(ctx context.Context) ([]proxmoxclient.Resou
 			if stopTime, found, err := a.ProxmoxClient.LastStopTime(ctx, resource.Node, vmID); err != nil {
 				a.Logger.Warn("Failed to look up stop time, falling back to age check",
 					"vmid", vmID, "name", resource.Name, "error", err)
-			} else if found && lastBackup.After(stopTime) {
-				a.Logger.Debug("Skipping stopped VM already backed up after power-off",
-					"vmid", vmID, "name", resource.Name,
-					"last_backup", lastBackup, "stopped_at", stopTime)
-				continue
+			} else {
+				backupAfterStop := found && lastBackup.After(stopTime)
+				a.Logger.Debug("Stop-time comparison for stopped resource",
+					"vmid", vmID, "name", resource.Name, "type", resource.Type,
+					"last_backup", lastBackup, "stopped_at", stopTime,
+					"stop_time_found", found, "backup_after_stop", backupAfterStop)
+				if backupAfterStop {
+					a.Logger.Debug("Skipping stopped VM already backed up after power-off",
+						"vmid", vmID, "name", resource.Name, "type", resource.Type,
+						"last_backup", lastBackup, "stopped_at", stopTime)
+					continue
+				}
 			}
 		}
 
-		if lastBackup.IsZero() || time.Since(lastBackup) > a.MaxBackupAge {
+		switch {
+		case lastBackup.IsZero():
+			a.Logger.Debug("Selecting resource for backup",
+				"vmid", vmID, "name", resource.Name, "type", resource.Type,
+				"reason", "no prior backup", "max_backup_age", a.MaxBackupAge)
 			resourcesToBackup = append(resourcesToBackup, resource)
+		case time.Since(lastBackup) > a.MaxBackupAge:
+			a.Logger.Debug("Selecting resource for backup",
+				"vmid", vmID, "name", resource.Name, "type", resource.Type,
+				"reason", "backup older than max age",
+				"last_backup", lastBackup, "max_backup_age", a.MaxBackupAge)
+			resourcesToBackup = append(resourcesToBackup, resource)
+		default:
+			a.Logger.Debug("Skipping resource with recent backup",
+				"vmid", vmID, "name", resource.Name, "type", resource.Type,
+				"last_backup", lastBackup, "max_backup_age", a.MaxBackupAge)
 		}
 	}
 

@@ -96,20 +96,20 @@ type serverDeps struct {
 
 // Server is the HTTP server for the goback web interface.
 type Server struct {
-	addr            string
-	configPath      string
-	stateDir        string
-	logger          *slog.Logger
-	logLevel        *slog.LevelVar
-	deps            atomic.Pointer[serverDeps]
-	httpServer      *http.Server
-	runner          *runner.Runner
-	store           *runner.DiskStore
-	cronTrigger     *cron.CronTriggerManager
-	cronConfig      []serverconfig.CronTrigger
-	tlsCert    string
-	tlsKey     string
-	properties ServerProperties
+	addr        string
+	configPath  string
+	stateDir    string
+	logger      *slog.Logger
+	logLevel    *slog.LevelVar
+	deps        atomic.Pointer[serverDeps]
+	httpServer  *http.Server
+	runner      *runner.Runner
+	store       *runner.DiskStore
+	cronTrigger *cron.CronTriggerManager
+	cronConfig  []serverconfig.CronTrigger
+	tlsCert     string
+	tlsKey      string
+	properties  ServerProperties
 
 	// Metrics
 	metricsRegistry *metrics.ScrapeRegistry

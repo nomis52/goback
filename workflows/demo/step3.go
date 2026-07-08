@@ -11,9 +11,9 @@ import (
 
 // Step3 is the third demo activity that runs after Step2 completes.
 type Step3 struct {
-	Logger         *slog.Logger
+	Logger     *slog.Logger
 	StatusLine *activity.StatusLine
-	_              *Step2 // Unnamed dependency ensures Step2 runs first
+	_          *Step2 // Unnamed dependency ensures Step2 runs first
 }
 
 // Init performs structural validation.
