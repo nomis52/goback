@@ -82,12 +82,13 @@ const (
 // config or the UI. Standalone power-on/power-off remain available for manual use.
 func defaultWorkflowFactories() map[string]runner.WorkflowFactory {
 	return map[string]runner.WorkflowFactory{
-		"power-on":        poweron.NewWorkflow,
-		"power-off":       poweroff.NewWorkflow,
-		"combined-backup": backup.NewCombinedWorkflow,
-		"compute-backup":  backup.NewComputeWorkflow,
-		"dir-backup":      backup.NewDirsWorkflow,
-		"demo":            demo.NewWorkflow,
+		"power-on":          poweron.NewWorkflow,
+		"power-off":         poweroff.NewWorkflow,
+		"combined-backup":   backup.NewCombinedWorkflow,
+		"sequential-backup": backup.NewSequentialWorkflow,
+		"compute-backup":    backup.NewComputeWorkflow,
+		"dir-backup":        backup.NewDirsWorkflow,
+		"demo":              demo.NewWorkflow,
 	}
 }
 
