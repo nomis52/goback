@@ -4,7 +4,11 @@ cron:
   - workflows:
       - "combined-backup"
       - "power-off"
-    schedule: "5 4 * * *"
+    schedule: "5 4 1-31/2 * *"   # odd days of month
+  - workflows:
+      - "sequential-backup"
+      - "power-off"
+    schedule: "5 4 2-30/2 * *"   # even days of month
 state_dir: "./state"
 log_level: "info"
 workflow_config: "./config.yaml"
