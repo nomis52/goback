@@ -1,5 +1,17 @@
-// Package backup provides workflow factories for backup-related operations.
-// It composes activities into a reusable backup workflow.
+// Package backup provides workflow factories for the backup workloads: backing up
+// Proxmox VMs and/or directories to PBS.
+//
+// Each backup workflow powers PBS on first (via a PowerOnPBS dependency) and then
+// runs its backup work. PowerOnPBS is a no-op when PBS is already on, so composing
+// several backup workflows in one run is cheap, and — because the backup activities
+// depend on PowerOnPBS — a power-on failure Skips the backup work rather than letting
+// it grind against an unavailable PBS.
+//
+// These workflows do NOT power PBS off. Powering off is handled by the separate
+// poweroff workflow, stacked after the backup by the cron config or a manual UI run.
+// Power-off is kept separate (rather than a dependency) so it still runs even when the
+// backup fails: the runner composes the requested workflows with continue-on-failure
+// semantics, whereas an in-orchestrator dependent would be Skipped on failure.
 package backup
 
 import (
@@ -12,64 +24,64 @@ import (
 	"github.com/nomis52/goback/config"
 	"github.com/nomis52/goback/workflow"
 	"github.com/nomis52/goback/workflows"
+	"github.com/nomis52/goback/workflows/poweron"
 )
 
-// NewWorkflow creates a workflow that powers on PBS and performs backups.
-// The workflow executes: PowerOnPBS → BackupDirs → BackupVMs
-// It does NOT power off PBS after completion.
-func NewWorkflow(params workflows.Params) (workflow.Workflow, error) {
+// NewCombinedWorkflow creates the "combined-backup" workflow: power on PBS, then back
+// up VMs and directories concurrently. The two backup workloads depend only on
+// PowerOnPBS (not on each other), so they run at the same time. This is the one
+// backup workflow that must exist as a single workflow rather than being composed
+// from config, because config-level composition runs steps strictly in sequence.
+// The workflow executes: PowerOnPBS → {BackupVMs ∥ BackupDirs}.
+func NewCombinedWorkflow(params workflows.Params) (workflow.Workflow, error) {
 	o, err := newBackupOrchestrator(params)
 	if err != nil {
 		return nil, err
 	}
 
-	// Add backup activities
-	if err := o.AddActivity(&PowerOnPBS{}, &BackupDirs{}, &BackupVMs{}); err != nil {
+	if err := o.AddActivity(&poweron.PowerOnPBS{}, &BackupVMs{}, &BackupDirs{}); err != nil {
 		return nil, fmt.Errorf("failed to add activities: %w", err)
 	}
 
 	return o, nil
 }
 
-// NewVMsWorkflow creates a workflow that powers on PBS and backs up VMs only,
-// skipping directory/file backups.
-// The workflow executes: PowerOnPBS → BackupVMs
-// It does NOT power off PBS after completion.
-func NewVMsWorkflow(params workflows.Params) (workflow.Workflow, error) {
+// NewComputeWorkflow creates the "compute-backup" workflow: power on PBS, then back
+// up VMs only.
+// The workflow executes: PowerOnPBS → BackupVMs.
+func NewComputeWorkflow(params workflows.Params) (workflow.Workflow, error) {
 	o, err := newBackupOrchestrator(params)
 	if err != nil {
 		return nil, err
 	}
 
-	// Add backup activities (VMs only, no directory backups)
-	if err := o.AddActivity(&PowerOnPBS{}, &BackupVMs{}); err != nil {
+	if err := o.AddActivity(&poweron.PowerOnPBS{}, &BackupVMs{}); err != nil {
 		return nil, fmt.Errorf("failed to add activities: %w", err)
 	}
 
 	return o, nil
 }
 
-// NewDirsWorkflow creates a workflow that powers on PBS and backs up directories
-// only, skipping VM/LXC backups.
-// The workflow executes: PowerOnPBS → BackupDirs
-// It does NOT power off PBS after completion.
+// NewDirsWorkflow creates the "dir-backup" workflow: power on PBS, then back up
+// directories only.
+// The workflow executes: PowerOnPBS → BackupDirs.
 func NewDirsWorkflow(params workflows.Params) (workflow.Workflow, error) {
 	o, err := newBackupOrchestrator(params)
 	if err != nil {
 		return nil, err
 	}
 
-	// Add backup activities (directories only, no VM backups)
-	if err := o.AddActivity(&PowerOnPBS{}, &BackupDirs{}); err != nil {
+	if err := o.AddActivity(&poweron.PowerOnPBS{}, &BackupDirs{}); err != nil {
 		return nil, fmt.Errorf("failed to add activities: %w", err)
 	}
 
 	return o, nil
 }
 
-// newBackupOrchestrator builds an orchestrator with the shared backup
-// dependencies (IPMI controller, PBS client, Proxmox client) and common
-// factories registered, but no activities added.
+// newBackupOrchestrator builds an orchestrator with the shared backup dependencies
+// (IPMI controller and PBS client for PowerOnPBS, Proxmox client for BackupVMs) and
+// common factories registered, but no activities added. BackupDirs creates its own
+// SSH client from config.
 func newBackupOrchestrator(params workflows.Params) (*workflow.Orchestrator, error) {
 	cfg := params.Config
 	logger := params.Logger
@@ -97,14 +109,16 @@ func newBackupOrchestrator(params workflows.Params) (*workflow.Orchestrator, err
 	return o, nil
 }
 
-// deps holds all dependencies that can be injected into workflows.
+// deps holds the shared dependencies injected into the backup activities.
 type deps struct {
 	ipmiController *ipmiclient.IPMIController
 	pbsClient      *pbsclient.Client
 	proxmoxClient  *proxmoxclient.Client
 }
 
-// buildDeps creates all dependencies needed for backup workflows.
+// buildDeps creates the dependencies needed for the backup workflows: the IPMI
+// controller and PBS client used by PowerOnPBS, and the Proxmox client used by
+// BackupVMs.
 func buildDeps(cfg *config.Config, logger *slog.Logger) (*deps, error) {
 	ctrl := ipmiclient.NewIPMIController(
 		cfg.PBS.IPMI.Host,

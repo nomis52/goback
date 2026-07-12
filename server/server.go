@@ -61,11 +61,9 @@ import (
 	"github.com/nomis52/goback/server/runner"
 	"github.com/nomis52/goback/workflow"
 	"github.com/nomis52/goback/workflows/backup"
-	"github.com/nomis52/goback/workflows/computebackup"
 	"github.com/nomis52/goback/workflows/demo"
-	"github.com/nomis52/goback/workflows/dirbackup"
 	"github.com/nomis52/goback/workflows/poweroff"
-	"github.com/nomis52/goback/workflows/serialfullbackup"
+	"github.com/nomis52/goback/workflows/poweron"
 )
 
 //go:embed static
@@ -78,15 +76,18 @@ const (
 	defaultListenAddr      = ":8080"
 )
 
-// defaultWorkflowFactories returns the standard workflow factories for backup, compute-backup, poweroff, and demo workflows.
+// defaultWorkflowFactories returns the standard workflow factories. Each backup
+// workflow powers PBS on itself (via a PowerOnPBS dependency), so a run only needs to
+// stack the backup with power-off (e.g. combined-backup → power-off) from the cron
+// config or the UI. Standalone power-on/power-off remain available for manual use.
 func defaultWorkflowFactories() map[string]runner.WorkflowFactory {
 	return map[string]runner.WorkflowFactory{
-		"full-backup":        backup.NewWorkflow,
-		"compute-backup":     computebackup.NewWorkflow,
-		"dir-backup":         dirbackup.NewWorkflow,
-		"serial-full-backup": serialfullbackup.NewWorkflow,
-		"poweroff":           poweroff.NewWorkflow,
-		"demo":               demo.NewWorkflow,
+		"power-on":        poweron.NewWorkflow,
+		"power-off":       poweroff.NewWorkflow,
+		"combined-backup": backup.NewCombinedWorkflow,
+		"compute-backup":  backup.NewComputeWorkflow,
+		"dir-backup":      backup.NewDirsWorkflow,
+		"demo":            demo.NewWorkflow,
 	}
 }
 

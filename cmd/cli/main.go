@@ -86,34 +86,31 @@ func run() error {
 		Instance: hostname,
 	})
 
-	// Create backup workflow (PowerOnPBS → BackupDirs → BackupVMs)
-	backupWorkflow, err := backup.NewWorkflow(workflows.Params{
+	// Run a full backup, then power PBS off. combined-backup powers PBS on itself (as
+	// a dependency) and backs up VMs and dirs concurrently; power-off is composed
+	// after it so it runs even if the backup fails, the same way the cron config does.
+	params := workflows.Params{
 		Config:           &cfg,
 		Logger:           logger,
 		StatusCollection: nil,
 		LoggerFactory:    nil,
 		Registry:         registry,
-	})
+	}
+
+	backupWorkflow, err := backup.NewCombinedWorkflow(params)
 	if err != nil {
 		return fmt.Errorf("failed to create backup workflow: %w", err)
 	}
 
-	// Create power off workflow (PowerOffPBS)
-	powerOffWorkflow, err := poweroff.NewWorkflow(workflows.Params{
-		Config:           &cfg,
-		Logger:           logger,
-		StatusCollection: nil,
-		LoggerFactory:    nil,
-		Registry:         registry,
-	})
+	powerOffWorkflow, err := poweroff.NewWorkflow(params)
 	if err != nil {
 		return fmt.Errorf("failed to create power off workflow: %w", err)
 	}
 
-	// Compose workflows to run backup then power off
+	// Compose so power-off runs after the backup, even if the backup fails.
 	composedWorkflow := workflow.Compose(backupWorkflow, powerOffWorkflow)
 
-	// Execute composed workflow
+	// Execute the workflow
 	ctx := context.Background()
 	if err := composedWorkflow.Execute(ctx); err != nil {
 		return fmt.Errorf("workflow execution failed: %w", err)

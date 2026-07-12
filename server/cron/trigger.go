@@ -8,7 +8,7 @@
 // Example usage:
 //
 //	callback := func() error {
-//	    return runner.Run([]string{"full-backup", "poweroff"})
+//	    return runner.Run([]string{"combined-backup", "power-off"})
 //	}
 //	trigger, err := cron.NewCronTrigger("0 2 * * *", callback, logger)
 //	if err != nil {

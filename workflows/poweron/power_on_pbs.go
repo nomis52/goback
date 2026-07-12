@@ -1,4 +1,9 @@
-package backup
+// Package poweron provides orchestration for powering the PBS host on.
+//
+// The PowerOnPBS activity powers the Proxmox Backup Server on via IPMI (if it is
+// not already on) and then waits for it to become reachable before returning, so
+// that backup workflows composed after it can assume PBS is available.
+package poweron
 
 import (
 	"context"
