@@ -46,6 +46,26 @@ func NewCombinedWorkflow(params workflows.Params) (workflow.Workflow, error) {
 	return o, nil
 }
 
+// NewSequentialWorkflow creates the "sequential-backup" workflow: power on PBS, then back
+// up VMs, then back up directories — one after another rather than concurrently (as
+// combined-backup does). It composes the compute and dirs workflows, so each self-powers-on
+// (the second power-on is a no-op) and, per Compose's continue-on-failure semantics, the
+// directory backup still runs even if the VM backup fails.
+// The workflow executes: (PowerOnPBS → BackupVMs) then (PowerOnPBS → BackupDirs).
+func NewSequentialWorkflow(params workflows.Params) (workflow.Workflow, error) {
+	compute, err := NewComputeWorkflow(params)
+	if err != nil {
+		return nil, err
+	}
+
+	dirs, err := NewDirsWorkflow(params)
+	if err != nil {
+		return nil, err
+	}
+
+	return workflow.Compose(compute, dirs), nil
+}
+
 // NewComputeWorkflow creates the "compute-backup" workflow: power on PBS, then back
 // up VMs only.
 // The workflow executes: PowerOnPBS → BackupVMs.

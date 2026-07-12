@@ -50,6 +50,15 @@ func TestBackupWorkflows(t *testing.T) {
 			},
 		},
 		{
+			name:  "sequential-backup powers on, then backs up VMs and dirs",
+			build: NewSequentialWorkflow,
+			expected: map[string]bool{
+				"poweron.PowerOnPBS": true,
+				"backup.BackupVMs":   true,
+				"backup.BackupDirs":  true,
+			},
+		},
+		{
 			name:  "compute-backup powers on, then backs up VMs only",
 			build: NewComputeWorkflow,
 			expected: map[string]bool{
