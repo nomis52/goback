@@ -117,8 +117,9 @@ listener:
 
 cron:
   - workflows:
-      - backup-full-concur
-      - poweroff
+      - power-on
+      - combined-backup
+      - power-off
     schedule: "5 4 * * *"  # Daily at 4:05am
 
 state_dir: "./state"  # location to use for history

@@ -30,12 +30,10 @@ func activitySet(wf workflow.Workflow) map[string]bool {
 	return activities
 }
 
-// TestBackupWorkflows checks that every public backup factory builds a workflow
-// whose activity set is exactly the expected one. Crucially, every backup workflow
-// must include poweroff.PowerOffPBS — the power-on → work → power-off cycle is the
-// invariant these factories exist to guarantee. This is the regression guard for the
-// old bug in the concurrent full backup (backup-full-concur, then named
-// "full-backup"), where the workflow powered on and did work but never powered off.
+// TestBackupWorkflows checks that every public backup factory builds a workflow with
+// exactly the expected activities. The backup workflows are pure work: they must NOT
+// include PowerOnPBS or PowerOffPBS — powering PBS on and off is the job of the
+// separate poweron/poweroff workflows, composed around these by config.
 func TestBackupWorkflows(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -43,41 +41,25 @@ func TestBackupWorkflows(t *testing.T) {
 		expected map[string]bool
 	}{
 		{
-			name:  "backup-full-concur powers on, backs up VMs and dirs, then powers off",
-			build: NewFullConcurrentWorkflow,
+			name:  "combined-backup backs up VMs and dirs",
+			build: NewCombinedWorkflow,
 			expected: map[string]bool{
-				"backup.PowerOnPBS":    true,
-				"backup.BackupVMs":     true,
-				"backup.BackupDirs":    true,
-				"poweroff.PowerOffPBS": true,
+				"backup.BackupVMs":  true,
+				"backup.BackupDirs": true,
 			},
 		},
 		{
-			name:  "backup-full-seq powers on, backs up VMs and dirs, then powers off",
-			build: NewFullSequentialWorkflow,
-			expected: map[string]bool{
-				"backup.PowerOnPBS":    true,
-				"backup.BackupVMs":     true,
-				"backup.BackupDirs":    true,
-				"poweroff.PowerOffPBS": true,
-			},
-		},
-		{
-			name:  "backup-compute powers on, backs up VMs, then powers off",
+			name:  "compute-backup backs up VMs only",
 			build: NewComputeWorkflow,
 			expected: map[string]bool{
-				"backup.PowerOnPBS":    true,
-				"backup.BackupVMs":     true,
-				"poweroff.PowerOffPBS": true,
+				"backup.BackupVMs": true,
 			},
 		},
 		{
-			name:  "backup-dirs powers on, backs up dirs, then powers off",
+			name:  "dir-backup backs up dirs only",
 			build: NewDirsWorkflow,
 			expected: map[string]bool{
-				"backup.PowerOnPBS":    true,
-				"backup.BackupDirs":    true,
-				"poweroff.PowerOffPBS": true,
+				"backup.BackupDirs": true,
 			},
 		},
 	}
@@ -91,30 +73,6 @@ func TestBackupWorkflows(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, wf)
 			assert.Equal(t, tc.expected, activitySet(wf))
-		})
-	}
-}
-
-// TestBackupWorkflows_InvalidConfig ensures factory construction fails cleanly when
-// the PBS host is malformed (surfaced while building the shared dependencies).
-func TestBackupWorkflows_InvalidConfig(t *testing.T) {
-	builds := map[string]func(workflows.Params) (workflow.Workflow, error){
-		"backup-full-concur": NewFullConcurrentWorkflow,
-		"backup-full-seq":    NewFullSequentialWorkflow,
-		"backup-compute":     NewComputeWorkflow,
-		"backup-dirs":        NewDirsWorkflow,
-	}
-
-	cfg := &config.Config{
-		Proxmox: config.ProxmoxConfig{Host: "https://proxmox.test"},
-		PBS:     config.PBSConfig{Host: "pbs-without-scheme"},
-	}
-
-	for name, build := range builds {
-		t.Run(name, func(t *testing.T) {
-			wf, err := build(workflows.Params{Config: cfg, Logger: slog.Default()})
-			require.Error(t, err)
-			assert.Nil(t, wf)
 		})
 	}
 }

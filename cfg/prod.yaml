@@ -4,8 +4,9 @@ listener:
   tls_key: "/etc/letsencrypt/live/goback.d.ne4.org/privkey.pem"
 cron:
   - workflows:
-      - "backup-full-concur"
-      - "poweroff"
+      - "power-on"
+      - "combined-backup"
+      - "power-off"
     schedule: "5 12 * * *"
 state_dir: "/opt/goback//state"
 log_level: "info"

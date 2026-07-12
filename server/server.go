@@ -63,6 +63,7 @@ import (
 	"github.com/nomis52/goback/workflows/backup"
 	"github.com/nomis52/goback/workflows/demo"
 	"github.com/nomis52/goback/workflows/poweroff"
+	"github.com/nomis52/goback/workflows/poweron"
 )
 
 //go:embed static
@@ -75,16 +76,18 @@ const (
 	defaultListenAddr      = ":8080"
 )
 
-// defaultWorkflowFactories returns the standard workflow factories: the backup-*
-// workflows plus the standalone poweroff and demo workflows.
+// defaultWorkflowFactories returns the standard workflow factories. These are kept
+// atomic — power-on, power-off, and the individual backup workloads — so operators
+// can stack them into a run from the cron config or the UI (e.g. power-on →
+// combined-backup → power-off) without a dedicated workflow per combination.
 func defaultWorkflowFactories() map[string]runner.WorkflowFactory {
 	return map[string]runner.WorkflowFactory{
-		"backup-full-concur": backup.NewFullConcurrentWorkflow,
-		"backup-full-seq":    backup.NewFullSequentialWorkflow,
-		"backup-compute":     backup.NewComputeWorkflow,
-		"backup-dirs":        backup.NewDirsWorkflow,
-		"poweroff":           poweroff.NewWorkflow,
-		"demo":               demo.NewWorkflow,
+		"power-on":        poweron.NewWorkflow,
+		"power-off":       poweroff.NewWorkflow,
+		"combined-backup": backup.NewCombinedWorkflow,
+		"compute-backup":  backup.NewComputeWorkflow,
+		"dir-backup":      backup.NewDirsWorkflow,
+		"demo":            demo.NewWorkflow,
 	}
 }
 

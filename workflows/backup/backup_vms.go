@@ -29,7 +29,6 @@ type BackupVMs struct {
 	// Dependencies
 	ProxmoxClient *proxmoxclient.Client
 	Logger        *slog.Logger
-	PowerOnPBS    *PowerOnPBS
 	Registry      metrics.Registry
 	StatusLine    *activity.StatusLine
 

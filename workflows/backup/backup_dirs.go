@@ -78,11 +78,10 @@ func (ll *lineLogger) Close() error {
 }
 
 // BackupDirs manages the execution of directory backups on proxmox servers.
-// Runs after the PBS server is powered on
+// Assumes the PBS server is already powered on (via the separate power-on workflow).
 type BackupDirs struct {
 	// Dependencies
 	Logger     *slog.Logger
-	PowerOnPBS *PowerOnPBS
 	StatusLine *activity.StatusLine
 	Registry   metrics.Registry
 
