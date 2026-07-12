@@ -117,7 +117,6 @@ listener:
 
 cron:
   - workflows:
-      - power-on
       - combined-backup
       - power-off
     schedule: "5 4 * * *"  # Daily at 4:05am

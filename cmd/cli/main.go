@@ -14,7 +14,6 @@ import (
 	"github.com/nomis52/goback/workflows"
 	"github.com/nomis52/goback/workflows/backup"
 	"github.com/nomis52/goback/workflows/poweroff"
-	"github.com/nomis52/goback/workflows/poweron"
 )
 
 type Args struct {
@@ -87,20 +86,15 @@ func run() error {
 		Instance: hostname,
 	})
 
-	// Run a full backup: power on PBS, back up VMs and dirs concurrently, then power
-	// PBS back off. The individual workflows are power-agnostic, so the CLI composes
-	// the power cycle around the backup the same way the cron config does.
+	// Run a full backup, then power PBS off. combined-backup powers PBS on itself (as
+	// a dependency) and backs up VMs and dirs concurrently; power-off is composed
+	// after it so it runs even if the backup fails, the same way the cron config does.
 	params := workflows.Params{
 		Config:           &cfg,
 		Logger:           logger,
 		StatusCollection: nil,
 		LoggerFactory:    nil,
 		Registry:         registry,
-	}
-
-	powerOnWorkflow, err := poweron.NewWorkflow(params)
-	if err != nil {
-		return fmt.Errorf("failed to create power on workflow: %w", err)
 	}
 
 	backupWorkflow, err := backup.NewCombinedWorkflow(params)
@@ -114,7 +108,7 @@ func run() error {
 	}
 
 	// Compose so power-off runs after the backup, even if the backup fails.
-	composedWorkflow := workflow.Compose(powerOnWorkflow, backupWorkflow, powerOffWorkflow)
+	composedWorkflow := workflow.Compose(backupWorkflow, powerOffWorkflow)
 
 	// Execute the workflow
 	ctx := context.Background()

@@ -76,10 +76,10 @@ const (
 	defaultListenAddr      = ":8080"
 )
 
-// defaultWorkflowFactories returns the standard workflow factories. These are kept
-// atomic — power-on, power-off, and the individual backup workloads — so operators
-// can stack them into a run from the cron config or the UI (e.g. power-on →
-// combined-backup → power-off) without a dedicated workflow per combination.
+// defaultWorkflowFactories returns the standard workflow factories. Each backup
+// workflow powers PBS on itself (via a PowerOnPBS dependency), so a run only needs to
+// stack the backup with power-off (e.g. combined-backup → power-off) from the cron
+// config or the UI. Standalone power-on/power-off remain available for manual use.
 func defaultWorkflowFactories() map[string]runner.WorkflowFactory {
 	return map[string]runner.WorkflowFactory{
 		"power-on":        poweron.NewWorkflow,

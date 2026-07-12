@@ -18,6 +18,7 @@ import (
 	"github.com/nomis52/goback/clients/sshclient"
 	"github.com/nomis52/goback/config"
 	"github.com/nomis52/goback/metrics"
+	"github.com/nomis52/goback/workflows/poweron"
 )
 
 var (
@@ -78,12 +79,13 @@ func (ll *lineLogger) Close() error {
 }
 
 // BackupDirs manages the execution of directory backups on proxmox servers.
-// Assumes the PBS server is already powered on (via the separate power-on workflow).
+// Runs after PowerOnPBS so PBS is guaranteed to be available before the backup starts.
 type BackupDirs struct {
 	// Dependencies
 	Logger     *slog.Logger
 	StatusLine *activity.StatusLine
 	Registry   metrics.Registry
+	_          *poweron.PowerOnPBS // Unnamed dependency: run after PBS is powered on
 
 	// Configuration
 	Files          config.FilesConfig `config:"files"`

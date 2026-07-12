@@ -13,6 +13,7 @@ import (
 	"github.com/nomis52/goback/activity"
 	"github.com/nomis52/goback/clients/proxmoxclient"
 	"github.com/nomis52/goback/metrics"
+	"github.com/nomis52/goback/workflows/poweron"
 )
 
 const (
@@ -24,13 +25,15 @@ const (
 	metricBackupFailure       = "backup_failure"
 )
 
-// BackupVMs manages the execution of Proxmox backups
+// BackupVMs manages the execution of Proxmox backups. It runs after PowerOnPBS so
+// PBS is guaranteed to be available before the backup starts.
 type BackupVMs struct {
 	// Dependencies
 	ProxmoxClient *proxmoxclient.Client
 	Logger        *slog.Logger
 	Registry      metrics.Registry
 	StatusLine    *activity.StatusLine
+	_             *poweron.PowerOnPBS // Unnamed dependency: run after PBS is powered on
 
 	// Configuration
 	BackupTimeout time.Duration `config:"proxmox.backup_timeout"`

@@ -2,7 +2,6 @@ listener:
   addr: ":8080"
 cron:
   - workflows:
-      - "power-on"
       - "combined-backup"
       - "power-off"
     schedule: "5 4 * * *"

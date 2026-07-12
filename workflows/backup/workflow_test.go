@@ -31,9 +31,9 @@ func activitySet(wf workflow.Workflow) map[string]bool {
 }
 
 // TestBackupWorkflows checks that every public backup factory builds a workflow with
-// exactly the expected activities. The backup workflows are pure work: they must NOT
-// include PowerOnPBS or PowerOffPBS — powering PBS on and off is the job of the
-// separate poweron/poweroff workflows, composed around these by config.
+// exactly the expected activities. Each backup workflow powers PBS on first (via a
+// PowerOnPBS dependency) and then does its work; none of them power PBS off — that is
+// the separate poweroff workflow's job, stacked after the backup by config.
 func TestBackupWorkflows(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -41,25 +41,28 @@ func TestBackupWorkflows(t *testing.T) {
 		expected map[string]bool
 	}{
 		{
-			name:  "combined-backup backs up VMs and dirs",
+			name:  "combined-backup powers on, then backs up VMs and dirs",
 			build: NewCombinedWorkflow,
 			expected: map[string]bool{
-				"backup.BackupVMs":  true,
-				"backup.BackupDirs": true,
+				"poweron.PowerOnPBS": true,
+				"backup.BackupVMs":   true,
+				"backup.BackupDirs":  true,
 			},
 		},
 		{
-			name:  "compute-backup backs up VMs only",
+			name:  "compute-backup powers on, then backs up VMs only",
 			build: NewComputeWorkflow,
 			expected: map[string]bool{
-				"backup.BackupVMs": true,
+				"poweron.PowerOnPBS": true,
+				"backup.BackupVMs":   true,
 			},
 		},
 		{
-			name:  "dir-backup backs up dirs only",
+			name:  "dir-backup powers on, then backs up dirs only",
 			build: NewDirsWorkflow,
 			expected: map[string]bool{
-				"backup.BackupDirs": true,
+				"poweron.PowerOnPBS": true,
+				"backup.BackupDirs":  true,
 			},
 		},
 	}
