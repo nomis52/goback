@@ -8,8 +8,29 @@ Goback is a PBS (Proxmox Backup Server) backup automation system written in Go. 
 
 ## Development Workflow
 
-- **Use a separate git worktree for each change.** Do not commit directly to `master`. Create a dedicated worktree on its own branch (e.g. `git worktree add ../goback-<topic> -b worktree-<topic> origin/master`) so unrelated changes stay isolated and `master` always stays clean and releasable.
-- **Open a GitHub PR when the change is ready.** Once the change builds, `make test` passes, and `make fmt` has been run, push the branch and open a pull request (`gh pr create`) for review rather than merging locally. Keep each PR scoped to a single change.
+Every change follows this end-to-end lifecycle, isolated in its own worktree so
+`master` always stays clean and releasable:
+
+1. **Create a worktree** on its own branch off `origin/master`, e.g.
+   `git worktree add ../goback-<topic> -b worktree-<topic> origin/master`. All
+   build/test/run steps below happen inside that worktree.
+2. **Verify the build:** `make build`, `make test`, and `make fmt`.
+3. **Demo it:** `scripts/demo-start.sh` (the `goback-demo` skill) launches the
+   web UI against safe demo config (`cfg/demo.yaml` + `cfg/demo-workflows.yaml`
+   — no real infra) on an automatically chosen free port; inspect the change at
+   the URL it prints, then `scripts/demo-stop.sh` to tear it down.
+4. **Get the user's OK** on the demo before proposing a PR.
+5. **Open a PR:** push the branch and `gh pr create`. Keep each PR scoped to a
+   single change. Wait for the user's OK to merge.
+6. **Merge and clean up** (after the user approves): `scripts/merge.sh` (the
+   `goback-merge` skill) merges the PR, pulls `master`, and removes the
+   worktree + branch.
+
+The demo configs are safe by construction: `cfg/demo-workflows.yaml` uses fake
+`.invalid` hosts and omits the `files:` section, so `config.LoadConfig`
+validates without contacting any host or reading an SSH key, and only the
+sleep-based `demo` workflow is meant to run against it. **Never point the demo
+at the real `config.yaml`.**
 
 ## Build and Test Commands
 
@@ -40,6 +61,12 @@ make clean
 
 # Server mode with web UI (takes server config, not workflow config)
 ./build/goback-server --config cfg/test.yaml
+
+# Demo mode (safe, no real infra): build + launch, then tear down.
+# A free port is chosen automatically so concurrent demos don't collide.
+scripts/demo-start.sh          # prints the URL
+scripts/demo-start.sh --run    # also trigger the demo workflow
+scripts/demo-stop.sh           # stop the server and remove demo-state
 
 # Or run directly with go
 go run ./cmd/server --config cfg/test.yaml

@@ -4,3 +4,4 @@ goback-poweroff
 build/
 config.yaml
 state
+demo-state

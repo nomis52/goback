@@ -1,0 +1,21 @@
+# Demo workflow config: intentionally fake infrastructure.
+#
+# This satisfies config.LoadConfig validation without contacting any real host,
+# API token, or SSH key. Only the "demo" workflow (which uses none of this) is
+# meant to run against it. Clients are constructed lazily, so the unreachable
+# .invalid hosts below are never dialed at startup or during the demo run.
+#
+# NOTE: there is deliberately no `files:` section — its SSH private-key check
+# only runs when files.host is set, so omitting it keeps the demo off any real
+# key. Durations and compute settings are omitted so defaults apply.
+pbs:
+  host: "demo-pbs.invalid"
+  ipmi:
+    host: "demo-ipmi.invalid"
+    username: "demo"
+    password: "demo"
+proxmox:
+  host: "demo-proxmox.invalid"
+  storage: "demo-storage"
+monitoring:
+  victoriametrics_url: "http://localhost:9999"
