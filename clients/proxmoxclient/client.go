@@ -94,7 +94,7 @@ func (c *Client) Version() (string, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return "", statusError(resp)
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -114,7 +114,7 @@ func (c *Client) ListComputeResources(ctx context.Context) ([]Resource, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return nil, statusError(resp)
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -156,7 +156,7 @@ func (c *Client) ListBackups(ctx context.Context, node, storage string) ([]Backu
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return nil, statusError(resp)
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -223,7 +223,7 @@ func (c *Client) Backup(ctx context.Context, node string, vmid VMID, storage str
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return "", statusError(resp)
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -259,7 +259,7 @@ func (c *Client) TaskStatus(ctx context.Context, node string, taskID TaskID) (*T
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return nil, statusError(resp)
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -301,7 +301,7 @@ func (c *Client) LastStopTime(ctx context.Context, node string, vmid VMID) (time
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return time.Time{}, false, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return time.Time{}, false, statusError(resp)
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -375,4 +375,32 @@ func (c *Client) doRequest(ctx context.Context, method, path string) (*http.Resp
 		"url", url)
 
 	return http.DefaultClient.Do(req)
+}
+
+// maxErrorBodyBytes caps how much of an error response body is kept in an
+// error message, so a stray HTML page can't flood the logs.
+const maxErrorBodyBytes = 512
+
+// statusError builds an error for a non-200 response. Proxmox reports the
+// underlying failure in the HTTP reason phrase (e.g. "500 storage 'pbs' is not
+// online") and sometimes in the body, so both are included: without them a
+// bare status code gives no clue whether the problem is the request, the
+// credentials, or the storage backend.
+func statusError(resp *http.Response) error {
+	msg := strings.TrimSpace(strings.TrimPrefix(resp.Status, fmt.Sprintf("%d", resp.StatusCode)))
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
+	if err == nil {
+		if detail := strings.TrimSpace(string(body)); detail != "" && detail != `{"data":null}` {
+			if msg != "" {
+				msg += ": "
+			}
+			msg += detail
+		}
+	}
+
+	if msg == "" {
+		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+	return fmt.Errorf("unexpected status code: %d (%s)", resp.StatusCode, msg)
 }

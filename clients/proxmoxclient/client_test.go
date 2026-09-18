@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -621,6 +622,55 @@ func TestBackup(t *testing.T) {
 					tt.verifyFn(t, taskID)
 				}
 			}
+		})
+	}
+}
+
+func TestStatusErrorIncludesDetail(t *testing.T) {
+	tests := []struct {
+		name    string
+		body    string
+		want    string
+		notWant string
+	}{
+		{
+			name: "body detail is surfaced",
+			body: "storage 'pbs' is not online",
+			want: "storage 'pbs' is not online",
+		},
+		{
+			name:    "empty proxmox envelope is omitted",
+			body:    `{"data":null}`,
+			notWant: `{"data":null}`,
+		},
+		{
+			name: "long body is truncated",
+			body: strings.Repeat("x", maxErrorBodyBytes*2),
+			want: strings.Repeat("x", maxErrorBodyBytes),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte(tt.body))
+			}))
+			defer ts.Close()
+
+			client, err := New(ts.URL)
+			require.NoError(t, err)
+
+			_, err = client.ListBackups(context.Background(), "pve2", "pbs")
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "unexpected status code: 500")
+			if tt.want != "" {
+				assert.Contains(t, err.Error(), tt.want)
+			}
+			if tt.notWant != "" {
+				assert.NotContains(t, err.Error(), tt.notWant)
+			}
+			assert.Less(t, len(err.Error()), maxErrorBodyBytes*2)
 		})
 	}
 }
