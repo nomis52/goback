@@ -205,8 +205,10 @@ func (a *BackupDirs) backupAllDirs(sshClient *sshclient.SSHClient, sources []str
 	token := a.Files.Token
 	target := a.Files.Target
 
-	// Build the command with all sources in a single backup command
-	cmd := buildBackupCommand(token, target, sources)
+	// Build the command with all sources in a single backup command. The token is
+	// deliberately absent from the command line: it is delivered on stdin instead,
+	// so it never appears in logs, state files, or the remote host's process list.
+	cmd := buildBackupCommand(target, sources)
 
 	a.Logger.Debug("Running consolidated backup command", "command", cmd, "source_count", len(sources))
 
@@ -216,7 +218,11 @@ func (a *BackupDirs) backupAllDirs(sshClient *sshclient.SSHClient, sources []str
 	defer stdoutLogger.Close()
 	defer stderrLogger.Close()
 
-	err := sshClient.Run(cmd, sshclient.WithStdout(stdoutLogger), sshclient.WithStderr(stderrLogger))
+	err := sshClient.Run(cmd,
+		sshclient.WithStdin(strings.NewReader(token+"\n")),
+		sshclient.WithStdout(stdoutLogger),
+		sshclient.WithStderr(stderrLogger),
+	)
 
 	labels := prometheus.Labels{"target": target}
 	if err != nil {
@@ -228,9 +234,14 @@ func (a *BackupDirs) backupAllDirs(sshClient *sshclient.SSHClient, sources []str
 	return err
 }
 
-// buildBackupCommand constructs the PBS backup command with all sources
-func buildBackupCommand(token, target string, sources []string) string {
-	cmd := "export PBS_PASSWORD='" + token + "' && proxmox-backup-client backup"
+// buildBackupCommand constructs the PBS backup command with all sources.
+//
+// The PBS token is not part of the returned command. PBS_PASSWORD_FD=0 tells
+// proxmox-backup-client to read the password from its standard input, which the
+// caller must supply (see backupAllDirs). This requires proxmox-backup-client 2.1
+// or later on the remote host.
+func buildBackupCommand(target string, sources []string) string {
+	cmd := "PBS_PASSWORD_FD=0 proxmox-backup-client backup"
 	for _, source := range sources {
 		cmd += " " + source
 	}

@@ -3,25 +3,57 @@ package logging
 import (
 	"context"
 	"log/slog"
+	"strings"
 )
+
+// redactedMarker replaces any sensitive value found in a captured log entry.
+const redactedMarker = "***REDACTED***"
 
 // CapturingHandler wraps an slog.Handler to capture log records while passing them through.
 type CapturingHandler struct {
-	underlying slog.Handler  // Pass-through to actual handler
-	collector  *LogCollector // Stores captured logs
-	activityID string        // Auto-tagged on all logs
-	attrs      []slog.Attr   // Attributes added via WithAttrs
-	groups     []string      // Groups added via WithGroup
+	underlying slog.Handler      // Pass-through to actual handler
+	collector  *LogCollector     // Stores captured logs
+	activityID string            // Auto-tagged on all logs
+	attrs      []slog.Attr       // Attributes added via WithAttrs
+	groups     []string          // Groups added via WithGroup
+	redactor   *strings.Replacer // Masks sensitive values in captured entries; nil disables
+}
+
+// CapturingHandlerOption configures a CapturingHandler.
+type CapturingHandlerOption func(*CapturingHandler)
+
+// WithRedactedValues masks every occurrence of the given values in captured log
+// messages and string attributes. Empty values are ignored. Only the captured copy
+// is redacted; records passed through to the underlying handler are unchanged.
+func WithRedactedValues(values []string) CapturingHandlerOption {
+	return func(h *CapturingHandler) {
+		pairs := make([]string, 0, 2*len(values))
+		for _, v := range values {
+			if v == "" {
+				continue
+			}
+			pairs = append(pairs, v, redactedMarker)
+		}
+		if len(pairs) == 0 {
+			h.redactor = nil
+			return
+		}
+		h.redactor = strings.NewReplacer(pairs...)
+	}
 }
 
 // NewCapturingHandler creates a new CapturingHandler that captures logs to the collector
 // while passing them through to the underlying handler.
-func NewCapturingHandler(underlying slog.Handler, collector *LogCollector, activityID string) *CapturingHandler {
-	return &CapturingHandler{
+func NewCapturingHandler(underlying slog.Handler, collector *LogCollector, activityID string, opts ...CapturingHandlerOption) *CapturingHandler {
+	h := &CapturingHandler{
 		underlying: underlying,
 		collector:  collector,
 		activityID: activityID,
 	}
+	for _, opt := range opts {
+		opt(h)
+	}
+	return h
 }
 
 // Enabled always returns true to capture all log levels regardless of the underlying handler's level.
@@ -37,18 +69,18 @@ func (h *CapturingHandler) Handle(ctx context.Context, r slog.Record) error {
 	entry := LogEntry{
 		Time:       r.Time,
 		Level:      r.Level.String(),
-		Message:    r.Message,
+		Message:    h.redact(r.Message),
 		Attributes: make(map[string]interface{}, r.NumAttrs()+len(h.attrs)),
 	}
 
 	// 2. Add attributes from WithAttrs calls (in order)
 	for _, attr := range h.attrs {
-		entry.Attributes[attr.Key] = resolveValue(attr.Value)
+		entry.Attributes[attr.Key] = h.redactValue(resolveValue(attr.Value))
 	}
 
 	// 3. Add attributes from this specific log call
 	r.Attrs(func(a slog.Attr) bool {
-		entry.Attributes[a.Key] = resolveValue(a.Value)
+		entry.Attributes[a.Key] = h.redactValue(resolveValue(a.Value))
 		return true // Continue iteration
 	})
 
@@ -74,6 +106,7 @@ func (h *CapturingHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 		activityID: h.activityID,                  // Same activity ID
 		attrs:      newAttrs,                      // Accumulated attributes
 		groups:     h.groups,                      // Same groups
+		redactor:   h.redactor,                    // Same redaction
 	}
 }
 
@@ -92,6 +125,36 @@ func (h *CapturingHandler) WithGroup(name string) slog.Handler {
 		activityID: h.activityID,
 		attrs:      h.attrs,   // Keep same attributes
 		groups:     newGroups, // Accumulated groups
+		redactor:   h.redactor,
+	}
+}
+
+// redact masks sensitive values in s. It is a no-op when no values are configured.
+func (h *CapturingHandler) redact(s string) string {
+	if h.redactor == nil {
+		return s
+	}
+	return h.redactor.Replace(s)
+}
+
+// redactValue masks sensitive values inside a resolved attribute value. Strings are
+// redacted directly and groups (maps) are redacted recursively; other kinds are
+// returned unchanged.
+func (h *CapturingHandler) redactValue(v interface{}) interface{} {
+	if h.redactor == nil {
+		return v
+	}
+	switch val := v.(type) {
+	case string:
+		return h.redactor.Replace(val)
+	case map[string]interface{}:
+		redacted := make(map[string]interface{}, len(val))
+		for k, inner := range val {
+			redacted[k] = h.redactValue(inner)
+		}
+		return redacted
+	default:
+		return v
 	}
 }
 

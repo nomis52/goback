@@ -300,3 +300,45 @@ func TestCapturingHandler_ErrorAttribute(t *testing.T) {
 	assert.Equal(t, "test error message", log.Attributes["error"])
 	assert.Equal(t, int64(5), log.Attributes["attempt"])
 }
+
+func TestCapturingHandler_WithRedactedValues(t *testing.T) {
+	collector := NewLogCollector()
+	var passthrough bytes.Buffer
+	underlying := slog.NewJSONHandler(&passthrough, nil)
+	handler := NewCapturingHandler(underlying, collector, "test-activity",
+		WithRedactedValues([]string{"s3cret", "", "other-secret"}))
+
+	logger := slog.New(handler).With("base", "token=s3cret")
+	logger.Info("running cmd s3cret and other-secret",
+		"command", "export PBS_PASSWORD='s3cret' && run",
+		"count", 2,
+		slog.Group("nested", "inner", "s3cret here"),
+	)
+
+	logs := collector.GetLogs("test-activity")
+	require.Len(t, logs, 1)
+	entry := logs[0]
+
+	assert.Equal(t, "running cmd ***REDACTED*** and ***REDACTED***", entry.Message)
+	assert.Equal(t, "token=***REDACTED***", entry.Attributes["base"])
+	assert.Equal(t, "export PBS_PASSWORD='***REDACTED***' && run", entry.Attributes["command"])
+	assert.Equal(t, int64(2), entry.Attributes["count"])
+	assert.Equal(t, map[string]interface{}{"inner": "***REDACTED*** here"}, entry.Attributes["nested"])
+
+	// The underlying handler receives the record unchanged.
+	assert.Contains(t, passthrough.String(), "s3cret")
+}
+
+func TestCapturingHandler_WithRedactedValues_Empty(t *testing.T) {
+	collector := NewLogCollector()
+	underlying := slog.NewJSONHandler(bytes.NewBuffer(nil), nil)
+	handler := NewCapturingHandler(underlying, collector, "test-activity",
+		WithRedactedValues([]string{"", ""}))
+
+	slog.New(handler).Info("plain message", "key", "value")
+
+	logs := collector.GetLogs("test-activity")
+	require.Len(t, logs, 1)
+	assert.Equal(t, "plain message", logs[0].Message)
+	assert.Equal(t, "value", logs[0].Attributes["key"])
+}
