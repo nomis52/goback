@@ -402,9 +402,11 @@ func (r *Runner) executeRun(ctx context.Context, workflowNames []string) error {
 	// Create log collector for this run
 	logCollector := logging.NewLogCollector()
 
-	// Create logger factory that captures logs per activity
+	// Create logger factory that captures logs per activity. Configured secrets are
+	// redacted from captured entries so they can never reach state files or the API.
+	redact := logging.WithRedactedValues(cfg.SensitiveValues())
 	loggerFactory := func(id workflow.ActivityID) *slog.Logger {
-		handler := logging.NewCapturingHandler(r.logger.Handler(), logCollector, id.String())
+		handler := logging.NewCapturingHandler(r.logger.Handler(), logCollector, id.String(), redact)
 		return slog.New(handler)
 	}
 

@@ -247,3 +247,19 @@ files:
 	assert.Equal(t, "home.pxar:/p1/home", b.Sources[0], "Files first source")
 	assert.Equal(t, "root.pxar:/p1/root", b.Sources[1], "Files second source")
 }
+
+func TestConfig_SensitiveValues(t *testing.T) {
+	cfg := &Config{}
+	cfg.PBS.IPMI.Password = "ipmi-secret"
+	cfg.Proxmox.Token = "proxmox-secret"
+	cfg.Files.Token = "pbs-secret"
+
+	assert.Equal(t, []string{"ipmi-secret", "proxmox-secret", "pbs-secret"}, cfg.SensitiveValues())
+
+	// Empty sensitive fields are skipped, and non-sensitive fields are never included.
+	cfg.Proxmox.Token = ""
+	cfg.Proxmox.Host = "pve.example"
+	assert.Equal(t, []string{"ipmi-secret", "pbs-secret"}, cfg.SensitiveValues())
+
+	assert.Empty(t, (&Config{}).SensitiveValues())
+}

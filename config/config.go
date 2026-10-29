@@ -283,6 +283,14 @@ func (c *Config) Redacted() Config {
 	return redacted
 }
 
+// SensitiveValues returns the non-empty values of every field tagged sensitive:"true",
+// for use by log redaction. The order is the struct declaration order.
+func (c *Config) SensitiveValues() []string {
+	var values []string
+	collectSensitiveValues(reflect.ValueOf(*c), &values)
+	return values
+}
+
 // redactSensitiveFields recursively walks a struct and redacts fields tagged with sensitive:"true"
 func redactSensitiveFields(v reflect.Value) {
 	if !v.IsValid() || !v.CanSet() {
@@ -310,5 +318,27 @@ func redactSensitiveFields(v reflect.Value) {
 				redactSensitiveFields(field)
 			}
 		}
+	}
+}
+
+// collectSensitiveValues recursively walks a struct and appends the non-empty string
+// values of fields tagged with sensitive:"true" to out.
+func collectSensitiveValues(v reflect.Value, out *[]string) {
+	if !v.IsValid() || v.Kind() != reflect.Struct {
+		return
+	}
+
+	t := v.Type()
+	for i := 0; i < v.NumField(); i++ {
+		field := v.Field(i)
+		fieldType := t.Field(i)
+
+		if fieldType.Tag.Get("sensitive") == "true" {
+			if field.Kind() == reflect.String && field.String() != "" {
+				*out = append(*out, field.String())
+			}
+			continue
+		}
+		collectSensitiveValues(field, out)
 	}
 }
