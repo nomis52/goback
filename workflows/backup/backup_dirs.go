@@ -216,7 +216,7 @@ func (a *BackupDirs) backupAllDirs(sshClient *sshclient.SSHClient, sources []str
 	defer stdoutLogger.Close()
 	defer stderrLogger.Close()
 
-	err := sshClient.RunWithWriter(cmd, stdoutLogger, stderrLogger)
+	err := sshClient.Run(cmd, sshclient.WithStdout(stdoutLogger), sshclient.WithStderr(stderrLogger))
 
 	labels := prometheus.Labels{"target": target}
 	if err != nil {
@@ -252,7 +252,7 @@ func (a *BackupDirs) waitForPBSHost(ctx context.Context, sshClient *sshclient.SS
 	for attempt := 1; attempt <= pbsConnectivityMaxRetries; attempt++ {
 		// Test connectivity using a simple nc (netcat) command
 		cmd := fmt.Sprintf("nc -z -w5 %s 8007 2>/dev/null", pbsHost)
-		_, _, err := sshClient.Run(cmd)
+		err := sshClient.Run(cmd)
 		if err == nil {
 			a.Logger.Debug("PBS connectivity test successful", "pbs_host", pbsHost, "attempts", attempt)
 			return nil
