@@ -20,8 +20,16 @@ type DiskStore struct {
 	mu        sync.Mutex
 }
 
+const (
+	// stateDirPerm restricts the state directory to the service user. Run files
+	// contain captured activity logs, which must not be world-readable.
+	stateDirPerm = 0700
+	// stateFilePerm restricts run files to the service user.
+	stateFilePerm = 0600
+)
+
 // NewDiskStore creates a new disk-backed store.
-// The directory is created if it doesn't exist, and existing runs are loaded.
+// The directory is created with mode 0700 if it doesn't exist, and existing runs are loaded.
 func NewDiskStore(dir string, maxCount int, logger *slog.Logger) (*DiskStore, error) {
 	s := &DiskStore{
 		dir:       dir,
@@ -32,7 +40,7 @@ func NewDiskStore(dir string, maxCount int, logger *slog.Logger) (*DiskStore, er
 	}
 
 	// Create directory if it doesn't exist
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, stateDirPerm); err != nil {
 		return nil, fmt.Errorf("failed to create state directory: %w", err)
 	}
 
@@ -101,7 +109,7 @@ func (s *DiskStore) Save(summary RunSummary, logs []ActivityExecution) error {
 		return fmt.Errorf("failed to marshal run: %w", err)
 	}
 
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	if err := os.WriteFile(path, data, stateFilePerm); err != nil {
 		return fmt.Errorf("failed to write run file: %w", err)
 	}
 

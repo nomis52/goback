@@ -78,6 +78,24 @@ func TestDiskStore_Save(t *testing.T) {
 	// Check filename format
 	expectedName := now.Format("2006-01-02T15-04-05") + ".json"
 	assert.Equal(t, expectedName, files[0].Name())
+
+	// Run files hold captured logs and must be readable only by the service user.
+	info, err := os.Stat(filepath.Join(tmpDir, expectedName))
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
+}
+
+func TestNewDiskStore_CreatesPrivateDirectory(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "state")
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+
+	_, err := NewDiskStore(dir, 10, logger)
+	require.NoError(t, err)
+
+	info, err := os.Stat(dir)
+	require.NoError(t, err)
+	assert.True(t, info.IsDir())
+	assert.Equal(t, os.FileMode(0700), info.Mode().Perm())
 }
 
 func TestDiskStore_SaveWithoutStartTime(t *testing.T) {
