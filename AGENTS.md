@@ -129,6 +129,7 @@ The **runner** (server/runner/) prevents concurrent runs, tracks current status,
 - `orchestrator/` - Dependency-resolved activity execution engine
 - `workflows/backup/` - Backup workflow and activities (PowerOnPBS, BackupVMs, BackupDirs)
 - `workflows/poweroff/` - Power-off workflow and activity (PowerOffPBS)
+- `workflows/maintenance/` - PBS maintenance workflows and activities (PrunePBS, GarbageCollectPBS)
 - `config/` - YAML configuration loading and validation
 - `clients/ipmiclient/` - IPMI controller for power management
 - `clients/pbsclient/` - PBS API client

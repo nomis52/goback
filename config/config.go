@@ -16,6 +16,11 @@ const (
 	defaultShutdownTimeout  = 2 * time.Minute
 	defaultBackupJobTimeout = 2 * time.Hour
 
+	// defaultMaintenanceTaskTimeout bounds how long the maintenance workflows wait
+	// for a PBS prune or garbage-collection task. The first GC on a datastore that
+	// has never been pruned can take hours on spinning disks.
+	defaultMaintenanceTaskTimeout = 4 * time.Hour
+
 	// Default backup settings
 	defaultMaxAge     = 24 * time.Hour // 24 hours default
 	defaultBackupMode = "snapshot"     // default backup mode
@@ -33,12 +38,13 @@ const (
 
 // Config represents the complete application configuration
 type Config struct {
-	PBS        PBSConfig        `yaml:"pbs"`
-	Proxmox    ProxmoxConfig    `yaml:"proxmox"`
-	Compute    ComputeConfig    `yaml:"compute"`
-	Files      FilesConfig      `yaml:"files"`
-	Monitoring MonitoringConfig `yaml:"monitoring"`
-	Logging    LoggingConfig    `yaml:"logging"`
+	PBS         PBSConfig         `yaml:"pbs"`
+	Proxmox     ProxmoxConfig     `yaml:"proxmox"`
+	Compute     ComputeConfig     `yaml:"compute"`
+	Files       FilesConfig       `yaml:"files"`
+	Maintenance MaintenanceConfig `yaml:"maintenance"`
+	Monitoring  MonitoringConfig  `yaml:"monitoring"`
+	Logging     LoggingConfig     `yaml:"logging"`
 }
 
 // IPMIConfig holds IPMI connection settings
@@ -89,6 +95,29 @@ type FilesConfig struct {
 	Token          string   `yaml:"token" sensitive:"true"`
 	Target         string   `yaml:"target"`
 	Sources        []string `yaml:"sources"`
+}
+
+// MaintenanceConfig holds the settings for PBS datastore maintenance (pruning old
+// snapshots and garbage-collecting the chunks they referenced), driven through the
+// PBS API by the pbs-prune, pbs-gc and pbs-maintenance workflows. The whole section
+// is optional; the workflows fail with a clear error when the field they need is
+// missing.
+type MaintenanceConfig struct {
+	// Token is a PBS API token in "user@realm!tokenname:secret" form. It needs
+	// Datastore.Modify on the datastore (both to run the prune job and to start GC).
+	Token string `yaml:"token" sensitive:"true"`
+
+	// PruneJob is the ID of the PBS prune job to run. Keep the job disabled in PBS
+	// so its scheduler never starts it; goback runs it at the right point in the
+	// backup run instead (a manual run ignores the disable flag).
+	PruneJob string `yaml:"prune_job"`
+
+	// Datastore is the PBS datastore to garbage-collect.
+	Datastore string `yaml:"datastore"`
+
+	// TaskTimeout is the maximum time to wait for a prune or GC task to finish.
+	// The task itself keeps running on PBS when the wait gives up.
+	TaskTimeout time.Duration `yaml:"task_timeout"`
 }
 
 // MonitoringConfig holds metrics and monitoring settings
@@ -171,6 +200,16 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// Maintenance validation (if either maintenance workflow is configured)
+	if c.Maintenance.PruneJob != "" || c.Maintenance.Datastore != "" {
+		if c.Maintenance.Token == "" {
+			return fmt.Errorf("maintenance token is required when prune_job or datastore is set")
+		}
+	}
+	if c.Maintenance.TaskTimeout <= 0 {
+		return fmt.Errorf("maintenance task_timeout must be positive")
+	}
+
 	// Compute validation
 	if c.Compute.MaxBackupAge < 0 {
 		return fmt.Errorf("compute max_backup_age cannot be negative")
@@ -222,6 +261,9 @@ func (c *Config) SetDefaults() {
 	}
 	if c.Proxmox.BackupTimeout == 0 {
 		c.Proxmox.BackupTimeout = defaultBackupJobTimeout
+	}
+	if c.Maintenance.TaskTimeout == 0 {
+		c.Maintenance.TaskTimeout = defaultMaintenanceTaskTimeout
 	}
 	if c.Monitoring.MetricsPrefix == "" {
 		c.Monitoring.MetricsPrefix = defaultMetricsPrefix
