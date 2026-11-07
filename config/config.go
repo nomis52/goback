@@ -16,6 +16,11 @@ const (
 	defaultShutdownTimeout  = 2 * time.Minute
 	defaultBackupJobTimeout = 2 * time.Hour
 
+	// defaultPBSTaskTimeout bounds how long the maintenance workflows wait for a
+	// PBS prune or garbage-collection task. The first GC on a datastore that has
+	// never been pruned can take hours on spinning disks.
+	defaultPBSTaskTimeout = 4 * time.Hour
+
 	// Default backup settings
 	defaultMaxAge     = 24 * time.Hour // 24 hours default
 	defaultBackupMode = "snapshot"     // default backup mode
@@ -64,6 +69,28 @@ type PBSConfig struct {
 
 	// ShutdownTimeout is the maximum time to wait for graceful shutdown
 	ShutdownTimeout time.Duration `yaml:"shutdown_timeout"`
+
+	// The remaining fields configure datastore maintenance (pruning old snapshots
+	// and garbage-collecting the chunks they referenced), driven through the PBS
+	// API by the pbs-prune, pbs-gc and pbs-maintenance workflows. They are
+	// optional; those workflows fail with a clear error when a field they need is
+	// missing.
+
+	// Token is a PBS API token in "user@realm!tokenname:secret" form. It needs
+	// Datastore.Modify on the datastore (both to run the prune job and to start GC).
+	Token string `yaml:"token" sensitive:"true"`
+
+	// PruneJob is the ID of the PBS prune job to run. Keep the job disabled in PBS
+	// so its scheduler never starts it; goback runs it at the right point in the
+	// backup run instead (a manual run ignores the disable flag).
+	PruneJob string `yaml:"prune_job"`
+
+	// Datastore is the PBS datastore to garbage-collect.
+	Datastore string `yaml:"datastore"`
+
+	// TaskTimeout is the maximum time to wait for a prune or GC task to finish.
+	// The task itself keeps running on PBS when the wait gives up.
+	TaskTimeout time.Duration `yaml:"task_timeout"`
 }
 
 // ProxmoxConfig holds Proxmox API connection settings
@@ -126,6 +153,14 @@ func (c *Config) Validate() error {
 	}
 	if c.PBS.ShutdownTimeout <= 0 {
 		return fmt.Errorf("PBS shutdown timeout must be positive")
+	}
+	if c.PBS.PruneJob != "" || c.PBS.Datastore != "" {
+		if c.PBS.Token == "" {
+			return fmt.Errorf("PBS token is required when prune_job or datastore is set")
+		}
+	}
+	if c.PBS.TaskTimeout <= 0 {
+		return fmt.Errorf("PBS task timeout must be positive")
 	}
 
 	// Proxmox validation
@@ -219,6 +254,9 @@ func (c *Config) SetDefaults() {
 	}
 	if c.PBS.ShutdownTimeout == 0 {
 		c.PBS.ShutdownTimeout = defaultShutdownTimeout
+	}
+	if c.PBS.TaskTimeout == 0 {
+		c.PBS.TaskTimeout = defaultPBSTaskTimeout
 	}
 	if c.Proxmox.BackupTimeout == 0 {
 		c.Proxmox.BackupTimeout = defaultBackupJobTimeout
