@@ -61,7 +61,7 @@ All clients follow the same pattern: main type is `Client`, constructor is `New(
 | Package | Description |
 |---------|-------------|
 | `clients/ipmiclient/` | IPMI controller using `ipmitool` command-line. Power on/off/status operations. |
-| `clients/pbsclient/` | PBS HTTP API client. Implements `Ping()` for availability checks. |
+| `clients/pbsclient/` | PBS HTTP API client. Implements `Ping()` for availability checks, and token-authenticated `RunPruneJob()`, `StartGarbageCollection()`, `TaskStatus()` and `WaitForTask()` for datastore maintenance. |
 | `clients/proxmoxclient/` | Proxmox VE API client. Implements `ListComputeResources()`, `ListBackups()`, `Backup()`. |
 | `clients/sshclient/` | SSH client for file-based backups. Supports multiple commands over single connection. |
 
