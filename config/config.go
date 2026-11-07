@@ -72,7 +72,7 @@ type PBSConfig struct {
 
 	// The remaining fields configure datastore maintenance (pruning old snapshots
 	// and garbage-collecting the chunks they referenced), driven through the PBS
-	// API by the pbs-prune, pbs-gc and pbs-maintenance workflows. They are
+	// API by the pbs-maintenance workflow. They are
 	// optional; those workflows fail with a clear error when a field they need is
 	// missing.
 

@@ -80,9 +80,9 @@ const (
 // defaultWorkflowFactories returns the standard workflow factories. Each backup
 // workflow powers PBS on itself (via a PowerOnPBS dependency), so a run only needs to
 // stack the backup with power-off (e.g. combined-backup → power-off) from the cron
-// config or the UI. The PBS maintenance workflows (prune, GC, or both) slot in between
-// the backup and power-off the same way. Standalone power-on/power-off remain
-// available for manual use.
+// config or the UI. The PBS maintenance workflow (prune, then GC) slots in between the
+// backup and power-off the same way. Standalone power-on/power-off remain available
+// for manual use.
 func defaultWorkflowFactories() map[string]runner.WorkflowFactory {
 	return map[string]runner.WorkflowFactory{
 		"power-on":          poweron.NewWorkflow,
@@ -91,8 +91,6 @@ func defaultWorkflowFactories() map[string]runner.WorkflowFactory {
 		"sequential-backup": backup.NewSequentialWorkflow,
 		"compute-backup":    backup.NewComputeWorkflow,
 		"dir-backup":        backup.NewDirsWorkflow,
-		"pbs-prune":         maintenance.NewPruneWorkflow,
-		"pbs-gc":            maintenance.NewGCWorkflow,
 		"pbs-maintenance":   maintenance.NewWorkflow,
 		"demo":              demo.NewWorkflow,
 	}

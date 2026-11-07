@@ -53,7 +53,7 @@ goback/
 | `workflows/` | Contains `Params` struct for workflow construction and dependency injection. |
 | `workflows/backup/` | Backup workflow: PowerOnPBS → BackupDirs → BackupVMs activities. |
 | `workflows/demo/` | Demo workflow for development/testing purposes. |
-| `workflows/maintenance/` | PBS maintenance workflows: PowerOnPBS → PrunePBS (run a disabled PBS prune job) and PowerOnPBS → GarbageCollectPBS, or both in sequence. |
+| `workflows/maintenance/` | PBS maintenance workflow: (PowerOnPBS → PrunePBS, running a disabled PBS prune job) then (PowerOnPBS → GarbageCollectPBS). |
 | `workflows/poweroff/` | Power-off workflow: PowerOffPBS activity. |
 
 #### Client Packages

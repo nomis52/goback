@@ -33,8 +33,9 @@ func activitySet(wf workflow.Workflow) map[string]bool {
 }
 
 // TestMaintenanceWorkflows checks that every public factory builds a workflow with
-// exactly the expected activities. Each one powers PBS on first (via a PowerOnPBS
-// dependency); none of them power PBS off.
+// exactly the expected activities. Only NewWorkflow ("pbs-maintenance") is registered
+// with the server; the other two are its halves. Each one powers PBS on first (via a
+// PowerOnPBS dependency); none of them power PBS off.
 func TestMaintenanceWorkflows(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -42,7 +43,7 @@ func TestMaintenanceWorkflows(t *testing.T) {
 		expected map[string]bool
 	}{
 		{
-			name:  "pbs-prune powers on, then prunes",
+			name:  "prune half powers on, then prunes",
 			build: NewPruneWorkflow,
 			expected: map[string]bool{
 				"poweron.PowerOnPBS":   true,
@@ -50,7 +51,7 @@ func TestMaintenanceWorkflows(t *testing.T) {
 			},
 		},
 		{
-			name:  "pbs-gc powers on, then garbage-collects",
+			name:  "GC half powers on, then garbage-collects",
 			build: NewGCWorkflow,
 			expected: map[string]bool{
 				"poweron.PowerOnPBS":            true,
@@ -86,8 +87,8 @@ func TestMaintenanceWorkflowsInvalidPBSHost(t *testing.T) {
 		name  string
 		build func(workflows.Params) (workflow.Workflow, error)
 	}{
-		{name: "pbs-prune", build: NewPruneWorkflow},
-		{name: "pbs-gc", build: NewGCWorkflow},
+		{name: "prune half", build: NewPruneWorkflow},
+		{name: "GC half", build: NewGCWorkflow},
 		{name: "pbs-maintenance", build: NewWorkflow},
 	}
 

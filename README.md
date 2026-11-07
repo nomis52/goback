@@ -96,9 +96,9 @@ logging:
 
 PBS can schedule pruning and garbage collection itself, but on a server that is
 only powered on for the backup run those schedules all fire as missed-job
-catch-ups right after boot, on top of the backup. The `pbs-prune`, `pbs-gc` and
-`pbs-maintenance` (prune, then GC) workflows run the same jobs through the PBS
-API at a point you choose instead, typically between the backup and power-off:
+catch-ups right after boot, on top of the backup. The `pbs-maintenance` workflow
+(prune, then GC) runs the same jobs through the PBS API at a point you choose
+instead, typically between the backup and power-off:
 
 ```yaml
 cron:
@@ -119,15 +119,16 @@ Setup on PBS:
    run the prune job and to start GC) and put it in `pbs.token` as
    `user@realm!tokenname:secret`. Set `pbs.prune_job` and `pbs.datastore`.
 
-Each workflow powers PBS on first (a no-op when it is already on), starts the
-task, and waits for it to finish, updating its status line with the elapsed time.
+The workflow powers PBS on first (a no-op when it is already on), then runs the
+prune job and garbage collection in turn, waiting for each task to finish and
+updating its status line with the elapsed time. GC still runs if the prune fails.
 A task that does not finish within `pbs.task_timeout` (default 4h) fails
 the workflow but keeps running on PBS. Metrics: `prune_last_success`,
 `prune_last_duration_seconds`, `prune_failure` (label `job`) and `gc_last_success`,
 `gc_last_duration_seconds`, `gc_failure` (label `datastore`), under the configured
 prefix. The first prune and GC on a datastore that has never been pruned can take
-hours, so start them by hand from the UI on a day with time to spare before adding
-them to the cron.
+hours, so start the workflow by hand from the UI on a day with time to spare
+before adding it to the cron.
 
 ## Usage
 

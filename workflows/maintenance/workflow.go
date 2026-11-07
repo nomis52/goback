@@ -12,8 +12,8 @@
 // the disable flag only stops the PBS scheduler (and the boot-time catch-up); a
 // manual run through the API still works.
 //
-// Like the backup workflows, each maintenance workflow powers PBS on first (a
-// no-op when it is already on) and none of them power it off.
+// Like the backup workflows, the maintenance workflow powers PBS on first (a
+// no-op when it is already on) and does not power it off.
 package maintenance
 
 import (
@@ -27,7 +27,7 @@ import (
 )
 
 // NewWorkflow creates the "pbs-maintenance" workflow: prune, then garbage-collect.
-// It composes the prune and GC workflows, so GC still runs when the prune fails
+// It composes the prune and GC workflows below, so GC still runs when the prune fails
 // (per Compose's continue-on-failure semantics): GC only frees chunks that are
 // already unreferenced, and a prune failure is usually a lock on one group rather
 // than a datastore problem.
@@ -46,8 +46,8 @@ func NewWorkflow(params workflows.Params) (workflow.Workflow, error) {
 	return workflow.Compose(prune, gc), nil
 }
 
-// NewPruneWorkflow creates the "pbs-prune" workflow: power on PBS, then run the
-// configured prune job and wait for it to finish.
+// NewPruneWorkflow creates the prune half of pbs-maintenance: power on PBS, then
+// run the configured prune job and wait for it to finish.
 // The workflow executes: PowerOnPBS → PrunePBS.
 func NewPruneWorkflow(params workflows.Params) (workflow.Workflow, error) {
 	o, err := newMaintenanceOrchestrator(params)
@@ -62,8 +62,8 @@ func NewPruneWorkflow(params workflows.Params) (workflow.Workflow, error) {
 	return o, nil
 }
 
-// NewGCWorkflow creates the "pbs-gc" workflow: power on PBS, then run garbage
-// collection on the configured datastore and wait for it to finish.
+// NewGCWorkflow creates the GC half of pbs-maintenance: power on PBS, then run
+// garbage collection on the configured datastore and wait for it to finish.
 // The workflow executes: PowerOnPBS → GarbageCollectPBS.
 func NewGCWorkflow(params workflows.Params) (workflow.Workflow, error) {
 	o, err := newMaintenanceOrchestrator(params)
