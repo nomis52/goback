@@ -47,6 +47,11 @@ pbs:
   boot_timeout: "5m"
   service_wait_time: "30s"
   shutdown_timeout: "2m"
+  # Optional: PBS prune + garbage collection (see "PBS maintenance" below)
+  token: "goback@pbs!maintenance:your-pbs-token"
+  prune_job: goback-prune         # a prune job configured (and disabled) on PBS
+  datastore: storage              # the datastore to garbage-collect
+  task_timeout: "4h"              # how long to wait for each task
 
 proxmox:
   host: "https://pve.example.com:8006/"
@@ -80,12 +85,50 @@ logging:
 
 | Section | Description |
 |---------|-------------|
-| `pbs` | PBS server address and IPMI credentials for power management |
+| `pbs` | PBS server address and IPMI credentials for power management, plus the optional API token, prune job and datastore for [PBS maintenance](#pbs-maintenance-prune-and-garbage-collection) |
 | `proxmox` | Proxmox VE API connection for triggering VM/LXC backups |
 | `compute` | Settings for VM/LXC backups (skip if recent backup exists) |
 | `files` | SSH-based file backups using `proxmox-backup-client` |
 | `monitoring` | Optional metrics push to VictoriaMetrics/Prometheus |
 | `logging` | Log level, format, and output destination |
+
+### PBS maintenance (prune and garbage collection)
+
+PBS can schedule pruning and garbage collection itself, but on a server that is
+only powered on for the backup run those schedules all fire as missed-job
+catch-ups right after boot, on top of the backup. The `pbs-maintenance` workflow
+(prune, then GC) runs the same jobs through the PBS API at a point you choose
+instead, typically between the backup and power-off:
+
+```yaml
+cron:
+  - workflows:
+      - "combined-backup"
+      - "pbs-maintenance"
+      - "power-off"
+    schedule: "5 12 * * *"
+```
+
+Setup on PBS:
+
+1. Create a prune job on the datastore with the retention you want and **leave it
+   disabled**. The disable flag only stops the PBS scheduler; goback starts the
+   job with the API's manual-run call, which ignores it. Retention stays visible
+   and editable in the PBS UI, and the job's last-run status shows there too.
+2. Create an API token with `Datastore.Modify` on the datastore (needed both to
+   run the prune job and to start GC) and put it in `pbs.token` as
+   `user@realm!tokenname:secret`. Set `pbs.prune_job` and `pbs.datastore`.
+
+The workflow powers PBS on first (a no-op when it is already on), then runs the
+prune job and garbage collection in turn, waiting for each task to finish and
+updating its status line with the elapsed time. GC still runs if the prune fails.
+A task that does not finish within `pbs.task_timeout` (default 4h) fails
+the workflow but keeps running on PBS. Metrics: `prune_last_success`,
+`prune_last_duration_seconds`, `prune_failure` (label `job`) and `gc_last_success`,
+`gc_last_duration_seconds`, `gc_failure` (label `datastore`), under the configured
+prefix. The first prune and GC on a datastore that has never been pruned can take
+hours, so start the workflow by hand from the UI on a day with time to spare
+before adding it to the cron.
 
 ## Usage
 

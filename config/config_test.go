@@ -16,6 +16,7 @@ const (
 	testShutdownTimeout = time.Minute
 	testBackupTimeout   = time.Minute
 	testMaxBackupAge    = 24 * time.Hour
+	testTaskTimeout     = time.Hour
 
 	// Test time strings for parsing tests
 	test24Hours = 24 * time.Hour
@@ -38,6 +39,7 @@ func TestConfig_Validate(t *testing.T) {
 					IPMI:            IPMIConfig{Host: "1.2.3.4", Username: "u", Password: "p"},
 					BootTimeout:     testBootTimeout,
 					ShutdownTimeout: testShutdownTimeout,
+					TaskTimeout:     testTaskTimeout,
 				},
 				Proxmox: ProxmoxConfig{
 					Host:          "1.2.3.5",
@@ -51,33 +53,43 @@ func TestConfig_Validate(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "missing IPMI host",
-			cfg:     Config{Proxmox: ProxmoxConfig{Host: "h", Token: "t", Storage: "s"}, PBS: PBSConfig{Host: "h"}, Compute: ComputeConfig{MaxBackupAge: testMaxBackupAge}, Monitoring: MonitoringConfig{VictoriaMetricsURL: "u"}},
+			name: "PBS prune job without token",
+			cfg: Config{
+				PBS:        PBSConfig{Host: "h", IPMI: IPMIConfig{Host: "h", Username: "u", Password: "p"}, BootTimeout: testShutdownTimeout, ShutdownTimeout: testShutdownTimeout, TaskTimeout: testTaskTimeout, PruneJob: "goback-prune"},
+				Proxmox:    ProxmoxConfig{Host: "h", Token: "t", Storage: "s", BackupTimeout: testShutdownTimeout},
+				Compute:    ComputeConfig{MaxBackupAge: testMaxBackupAge},
+				Monitoring: MonitoringConfig{VictoriaMetricsURL: "u"},
+			},
 			wantErr: true,
 		},
 		{
-			name:    "missing Proxmox host",
-			cfg:     Config{PBS: PBSConfig{Host: "h", IPMI: IPMIConfig{Host: "h", Username: "u", Password: "p"}, BootTimeout: testShutdownTimeout, ShutdownTimeout: testShutdownTimeout}, Proxmox: ProxmoxConfig{Token: "t", Storage: "s", BackupTimeout: testShutdownTimeout}, Compute: ComputeConfig{MaxBackupAge: testMaxBackupAge}, Monitoring: MonitoringConfig{VictoriaMetricsURL: "u"}},
+			name: "PBS datastore without token",
+			cfg: Config{
+				PBS:        PBSConfig{Host: "h", IPMI: IPMIConfig{Host: "h", Username: "u", Password: "p"}, BootTimeout: testShutdownTimeout, ShutdownTimeout: testShutdownTimeout, TaskTimeout: testTaskTimeout, Datastore: "tank"},
+				Proxmox:    ProxmoxConfig{Host: "h", Token: "t", Storage: "s", BackupTimeout: testShutdownTimeout},
+				Compute:    ComputeConfig{MaxBackupAge: testMaxBackupAge},
+				Monitoring: MonitoringConfig{VictoriaMetricsURL: "u"},
+			},
 			wantErr: true,
 		},
 		{
-			name:    "missing PBS host",
-			cfg:     Config{PBS: PBSConfig{IPMI: IPMIConfig{Host: "h", Username: "u", Password: "p"}, BootTimeout: testShutdownTimeout, ShutdownTimeout: testShutdownTimeout}, Proxmox: ProxmoxConfig{Host: "h", Token: "t", Storage: "s", BackupTimeout: testShutdownTimeout}, Compute: ComputeConfig{MaxBackupAge: testMaxBackupAge}, Monitoring: MonitoringConfig{VictoriaMetricsURL: "u"}},
-			wantErr: true,
+			name: "PBS maintenance with token is valid",
+			cfg: Config{
+				PBS:        PBSConfig{Host: "h", IPMI: IPMIConfig{Host: "h", Username: "u", Password: "p"}, BootTimeout: testShutdownTimeout, ShutdownTimeout: testShutdownTimeout, TaskTimeout: testTaskTimeout, Token: "goback@pbs!maint:secret", PruneJob: "goback-prune", Datastore: "tank"},
+				Proxmox:    ProxmoxConfig{Host: "h", Token: "t", Storage: "s", BackupTimeout: testShutdownTimeout},
+				Compute:    ComputeConfig{MaxBackupAge: testMaxBackupAge},
+				Monitoring: MonitoringConfig{VictoriaMetricsURL: "u"},
+			},
+			wantErr: false,
 		},
 		{
-			name:    "missing VictoriaMetrics URL",
-			cfg:     Config{PBS: PBSConfig{Host: "h", IPMI: IPMIConfig{Host: "h", Username: "u", Password: "p"}, BootTimeout: testShutdownTimeout, ShutdownTimeout: testShutdownTimeout}, Proxmox: ProxmoxConfig{Host: "h", Token: "t", Storage: "s", BackupTimeout: testShutdownTimeout}, Compute: ComputeConfig{MaxBackupAge: testMaxBackupAge}},
-			wantErr: true,
-		},
-		{
-			name:    "non-positive boot timeout",
-			cfg:     Config{PBS: PBSConfig{Host: "h", IPMI: IPMIConfig{Host: "h", Username: "u", Password: "p"}, BootTimeout: 0, ShutdownTimeout: testShutdownTimeout}, Proxmox: ProxmoxConfig{Host: "h", Token: "t", Storage: "s", BackupTimeout: testShutdownTimeout}, Compute: ComputeConfig{MaxBackupAge: testMaxBackupAge}, Monitoring: MonitoringConfig{VictoriaMetricsURL: "u"}},
-			wantErr: true,
-		},
-		{
-			name:    "non-positive backup job timeout",
-			cfg:     Config{PBS: PBSConfig{Host: "h", IPMI: IPMIConfig{Host: "h", Username: "u", Password: "p"}, BootTimeout: testShutdownTimeout, ShutdownTimeout: testShutdownTimeout}, Proxmox: ProxmoxConfig{Host: "h", Token: "t", Storage: "s", BackupTimeout: 0}, Compute: ComputeConfig{MaxBackupAge: testMaxBackupAge}, Monitoring: MonitoringConfig{VictoriaMetricsURL: "u"}},
+			name: "non-positive PBS task timeout",
+			cfg: Config{
+				PBS:        PBSConfig{Host: "h", IPMI: IPMIConfig{Host: "h", Username: "u", Password: "p"}, BootTimeout: testShutdownTimeout, ShutdownTimeout: testShutdownTimeout},
+				Proxmox:    ProxmoxConfig{Host: "h", Token: "t", Storage: "s", BackupTimeout: testShutdownTimeout},
+				Compute:    ComputeConfig{MaxBackupAge: testMaxBackupAge},
+				Monitoring: MonitoringConfig{VictoriaMetricsURL: "u"},
+			},
 			wantErr: true,
 		},
 	}
@@ -100,6 +112,7 @@ func TestConfig_SetDefaults(t *testing.T) {
 
 	assert.Equal(t, testBootTimeout, cfg.PBS.BootTimeout, "BootTimeout default")
 	assert.Equal(t, 2*time.Hour, cfg.Proxmox.BackupTimeout, "BackupTimeout default")
+	assert.Equal(t, 4*time.Hour, cfg.PBS.TaskTimeout, "PBS TaskTimeout default")
 	assert.Equal(t, 2*time.Minute, cfg.PBS.ShutdownTimeout, "ShutdownTimeout default")
 	assert.Equal(t, testMaxBackupAge, cfg.Compute.MaxBackupAge, "MaxBackupAge default")
 	assert.Equal(t, "pbs_automation", cfg.Monitoring.MetricsPrefix, "MetricsPrefix default")
@@ -252,14 +265,15 @@ func TestConfig_SensitiveValues(t *testing.T) {
 	cfg := &Config{}
 	cfg.PBS.IPMI.Password = "ipmi-secret"
 	cfg.Proxmox.Token = "proxmox-secret"
+	cfg.PBS.Token = "pbs-api-secret"
 	cfg.Files.Token = "pbs-secret"
 
-	assert.Equal(t, []string{"ipmi-secret", "proxmox-secret", "pbs-secret"}, cfg.SensitiveValues())
+	assert.Equal(t, []string{"ipmi-secret", "pbs-api-secret", "proxmox-secret", "pbs-secret"}, cfg.SensitiveValues())
 
 	// Empty sensitive fields are skipped, and non-sensitive fields are never included.
 	cfg.Proxmox.Token = ""
 	cfg.Proxmox.Host = "pve.example"
-	assert.Equal(t, []string{"ipmi-secret", "pbs-secret"}, cfg.SensitiveValues())
+	assert.Equal(t, []string{"ipmi-secret", "pbs-api-secret", "pbs-secret"}, cfg.SensitiveValues())
 
 	assert.Empty(t, (&Config{}).SensitiveValues())
 }
