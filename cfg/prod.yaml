@@ -4,13 +4,18 @@ listener:
   tls_key: "/etc/letsencrypt/live/goback.d.ne4.org/privkey.pem"
 cron:
   - workflows:
-      - "combined-backup"
+      - "compute-backup"
       - "power-off"
-    schedule: "5 12 1-31/2 * *"   # odd days of month
+    schedule: "5 12 * * 0,3,6"       # Sun Wed Sat: guests only
+  - workflows:
+      - "pbs-maintenance"
+      - "compute-backup"
+      - "power-off"
+    schedule: "5 12 * * 2,5"         # Tue Fri: prune + GC first (warms the snapshot listing), then guests
   - workflows:
       - "sequential-backup"
       - "power-off"
-    schedule: "5 12 2-30/2 * *"   # even days of month
+    schedule: "5 12 * * 1,4"         # Mon Thu: guests, then directories (no GC on these long days)
 state_dir: "/opt/goback//state"
 log_level: "info"
 workflow_config: "/opt/goback/cfg/workflows.yaml"
