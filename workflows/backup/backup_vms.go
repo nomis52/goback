@@ -18,11 +18,18 @@ import (
 
 const (
 	backupStatusCheckInterval = 10 * time.Second
-	pbsStorageRetryInterval   = 5 * time.Second
-	pbsStorageMaxRetries      = 6 // 30 seconds total
-	backupProgressTemplate    = "Backing up VMs, %d/%d complete"
-	metricLastBackup          = "last_backup"
-	metricBackupFailure       = "backup_failure"
+	// taskStatusMaxConsecutiveFailures is how many status polls in a row may fail
+	// before a backup is given up on: 5 minutes at backupStatusCheckInterval. A
+	// failed poll says nothing about the vzdump task, which keeps running on the
+	// node, so a transient API error (a dropped proxied connection, a DNS blip, a
+	// pveproxy restart) must not mark the backup failed. One run lost a guest to a
+	// single HTTP 596 and another lost 21 to a five-second DNS outage.
+	taskStatusMaxConsecutiveFailures = 30
+	pbsStorageRetryInterval          = 5 * time.Second
+	pbsStorageMaxRetries             = 6 // 30 seconds total
+	backupProgressTemplate           = "Backing up VMs, %d/%d complete"
+	metricLastBackup                 = "last_backup"
+	metricBackupFailure              = "backup_failure"
 )
 
 // BackupVMs manages the execution of Proxmox backups. It runs after PowerOnPBS so
@@ -41,6 +48,10 @@ type BackupVMs struct {
 	MaxBackupAge  time.Duration `config:"compute.max_backup_age"`
 	Mode          string        `config:"compute.mode"`
 	Compress      string        `config:"compute.compress"`
+
+	// StatusCheckInterval is how often a running backup task is polled. Zero
+	// means backupStatusCheckInterval; it is settable so tests can poll quickly.
+	StatusCheckInterval time.Duration
 
 	// Metrics (initialized in Init)
 	lastBackupGauge metrics.GaugeVec
@@ -198,12 +209,19 @@ func (a *BackupVMs) performBackup(ctx context.Context, resource proxmoxclient.Re
 	}
 
 	// Poll for task completion
-	ticker := time.NewTicker(backupStatusCheckInterval)
+	interval := a.StatusCheckInterval
+	if interval <= 0 {
+		interval = backupStatusCheckInterval
+	}
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	timeout := time.After(a.BackupTimeout)
 
-	var lastStatus string
+	var (
+		lastStatus          string
+		consecutiveFailures int
+	)
 
 	for {
 		select {
@@ -214,14 +232,31 @@ func (a *BackupVMs) performBackup(ctx context.Context, resource proxmoxclient.Re
 		case <-ticker.C:
 			status, err := a.ProxmoxClient.TaskStatus(ctx, resource.Node, taskID)
 			if err != nil {
-				a.Logger.Error("Failed to get task status",
+				// The task runs on the node whether or not we can see it, so keep
+				// polling through transient API failures and only give up once
+				// they persist.
+				consecutiveFailures++
+				if consecutiveFailures >= taskStatusMaxConsecutiveFailures {
+					a.Logger.Error("Failed to get task status, giving up",
+						"vmid", resource.VMID,
+						"name", resource.Name,
+						"node", resource.Node,
+						"task_id", taskID,
+						"consecutive_failures", consecutiveFailures,
+						"error", err)
+					return fmt.Errorf("task status unavailable after %d consecutive polls: %w", consecutiveFailures, err)
+				}
+				a.Logger.Warn("Failed to get task status, retrying",
 					"vmid", resource.VMID,
 					"name", resource.Name,
 					"node", resource.Node,
 					"task_id", taskID,
+					"consecutive_failures", consecutiveFailures,
+					"max_consecutive_failures", taskStatusMaxConsecutiveFailures,
 					"error", err)
-				return err
+				continue
 			}
+			consecutiveFailures = 0
 
 			// Only log when the task status changes to avoid spamming the logs
 			// on every poll.
